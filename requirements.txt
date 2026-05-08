@@ -3,5 +3,5 @@ django-cors-headers==4.2.0
 djangorestframework==3.14.0
 djoser==2.2.0
 gunicorn==21.2.0
-psycopg2-binary==2.9.3
+psycopg2-binary==2.9.10
 python-decouple==3.8
