@@ -1,0 +1,24 @@
+10/02/2025:
+se le pregunto a ChatGPT para ver si la forma en la que estaba gestionando el manejo de las imagenes era correcto. Actualmente, cada momento que interactuo con las 
+imagenes, se generan los cambios en cloudinary. Si borro una image, automaticamente queda borrada de la nube. GPT me recomienda que lo haga todo mediante subidas de 
+archivos con tags de temporary. Veo que esto puede ser un problema ya que aumenta considerablemente la complegidad. Otra forma de manejar esto es mediante el guardado
+de las imagenes solamente cuando hacemos un submit. De esta manera tenemos los siguientes casos:
+1. item creado con imagen
+2. item con imagen subida pero cancelado
+3. item sin image, modificado para subir imagen y aceptado
+4. item sin image, modificado para subir imagen y cancelado
+5. item con image, modificado para eliminar imagen y aceptado
+6. item con image, modificado para eliminar imagen y cancelado
+7. item con imagen, modificada la imagen original y subida imagen nueva, aceptado
+8. item con imagen, modificada la imagen original y subida imagen nueva, cancelado
+9. eliminación de item desde pantalla principal.
+
+este approach aparentemente funciona para todos los escenarios. mañana probar este approach y ver si funciona correctamente. no hacer push hasta no comprobar que funciona.
+
+
+11/02/2025:
+Se modifico FormComponent para que almacenara una archivo temporal y este solamente se subiera a cloudinary si se generaba el submit. esto tambien aplica para la edicion
+de los items, solamente se efectuarian los cambios, ya sea eliminación o susititución de imagen si el cambio era acepotado.
+tambien se generaron ciertos cambios, como eliminar el nombre nativo del archivo para ponerle un nombre de tipo: categoria-nombre-timestamp. de esta manera todos los archivos
+hacen alusión a los elementos con los que estan ligados. Esto quedo probado en todos los escenarios.
+

@@ -1,0 +1,14 @@
+# local env files
+.env*.local
+.env
+node_modules/
+.env
+*.log
+build/
+dist/
+.DS_Store# Entorno virtual
+env/
+# Cachés de Python
+__pycache__/
+*.pyc
+*.pyo
