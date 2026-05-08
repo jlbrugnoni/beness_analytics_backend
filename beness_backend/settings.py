@@ -132,9 +132,9 @@ if config("PGHOST", default=None):
     DATABASES = {
         "default": {
             "ENGINE": "django.db.backends.postgresql",
-            "NAME": config("POSTGRES_DB"),
-            "USER": config("POSTGRES_USER"),
-            "PASSWORD": config("POSTGRES_PASSWORD"),
+            "NAME": config("POSTGRES_DB", default=config("PGDATABASE", default="")),
+            "USER": config("POSTGRES_USER", default=config("PGUSER", default="")),
+            "PASSWORD": config("POSTGRES_PASSWORD", default=config("PGPASSWORD", default="")),
             "HOST": config("PGHOST"),
             "PORT": config("PGPORT"),
         }
