@@ -1,14 +1,16 @@
-# local env files
+# Local env files
+.env
 .env*.local
-.env
-node_modules/
-.env
 *.log
 build/
 dist/
-.DS_Store# Entorno virtual
+db.sqlite3
+.DS_Store
+
+# Virtualenv
 env/
-# Cachés de Python
+
+# Python caches
 __pycache__/
 *.pyc
 *.pyo
