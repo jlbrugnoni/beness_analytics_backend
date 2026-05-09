@@ -590,7 +590,6 @@ def build_service_purchase_lookup_preview(site, valid_rows):
 def attendance_natural_key(site, payload):
     return hash_parts([
         site.id,
-        payload.get("_occurrence_index"),
         payload.get("ID del cliente"),
         payload.get("_visit_date"),
         payload.get("Tiempo"),
@@ -611,7 +610,6 @@ def attendance_snapshot(payload, related):
         "service_category_id": related["service_category"].id if related["service_category"] else None,
         "pricing_option_id": related["pricing_option"].id if related["pricing_option"] else None,
         "payment_method_id": related["payment_method"].id if related["payment_method"] else None,
-        "occurrence_index": payload.get("_occurrence_index"),
         "visit_date": payload.get("_visit_date"),
         "visit_time_raw": payload.get("Tiempo"),
         "weekday_raw": payload.get("Día de la semana"),
@@ -669,7 +667,6 @@ def import_attendance_report(uploaded_file, site, uploaded_by=None):
     }
 
     rows_to_import = preview_attendance_rows(uploaded_file)
-    assign_occurrence_indexes(rows_to_import["valid_rows"], lambda payload: attendance_natural_key(site, payload))
     current_visit_candidates = {}
 
     for row in rows_to_import["valid_rows"]:
