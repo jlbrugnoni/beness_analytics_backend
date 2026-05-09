@@ -1,7 +1,7 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from .models import Center, ClassType, Client, CustomUser, Instructor, LoginLog, ReportImport, Room
+from .models import CustomUser, LoginLog, ReportImport
 
 
 @admin.register(CustomUser)
@@ -39,22 +39,5 @@ class CustomUserAdmin(UserAdmin):
     readonly_fields = ("last_login", "date_joined")
 
 
-@admin.register(Center)
-class CenterAdmin(admin.ModelAdmin):
-    list_display = ("name", "city", "active")
-    search_fields = ("name", "city")
-    list_filter = ("active",)
-
-
-@admin.register(Room)
-class RoomAdmin(admin.ModelAdmin):
-    list_display = ("name", "center", "capacity", "active")
-    search_fields = ("name", "center__name")
-    list_filter = ("center", "active")
-
-
-admin.site.register(Instructor)
-admin.site.register(Client)
-admin.site.register(ClassType)
 admin.site.register(ReportImport)
 admin.site.register(LoginLog)

@@ -81,35 +81,6 @@ class BaseModel(models.Model):
         return self.name
 
 
-class Center(BaseModel):
-    address = models.TextField(blank=True, null=True)
-    city = models.CharField(max_length=100, blank=True, null=True)
-
-
-class Room(BaseModel):
-    center = models.ForeignKey(Center, on_delete=models.CASCADE, related_name="rooms")
-    capacity = models.PositiveIntegerField(null=True, blank=True)
-
-    class Meta:
-        unique_together = ("center", "name")
-        ordering = ["center__name", "name"]
-
-
-class Instructor(BaseModel):
-    email = models.EmailField(blank=True, null=True)
-    phone = models.CharField(max_length=30, blank=True, null=True)
-
-
-class Client(BaseModel):
-    external_id = models.CharField(max_length=100, blank=True, null=True, db_index=True)
-    email = models.EmailField(blank=True, null=True)
-    phone = models.CharField(max_length=30, blank=True, null=True)
-
-
-class ClassType(BaseModel):
-    pass
-
-
 class ReportImport(models.Model):
     STATUS_PENDING = "pending"
     STATUS_PROCESSING = "processing"

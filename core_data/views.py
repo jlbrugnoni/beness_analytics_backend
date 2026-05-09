@@ -8,17 +8,12 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import Center, ClassType, Client, Instructor, LoginLog, ReportImport, Room
+from .models import LoginLog, ReportImport
 from .serializers import (
-    CenterSerializer,
     ChangePasswordSerializer,
-    ClassTypeSerializer,
-    ClientSerializer,
     GroupSerializer,
-    InstructorSerializer,
     LoginLogSerializer,
     ReportImportSerializer,
-    RoomSerializer,
     UserSerializer,
 )
 
@@ -107,36 +102,6 @@ class UserViewSet(viewsets.ViewSet):
         user.set_password(new_password)
         user.save()
         return Response({"message": "Password updated successfully"})
-
-
-class CenterViewSet(viewsets.ModelViewSet):
-    queryset = Center.objects.all()
-    serializer_class = CenterSerializer
-    permission_classes = [IsAuthenticated]
-
-
-class RoomViewSet(viewsets.ModelViewSet):
-    queryset = Room.objects.select_related("center").all()
-    serializer_class = RoomSerializer
-    permission_classes = [IsAuthenticated]
-
-
-class InstructorViewSet(viewsets.ModelViewSet):
-    queryset = Instructor.objects.all()
-    serializer_class = InstructorSerializer
-    permission_classes = [IsAuthenticated]
-
-
-class ClientViewSet(viewsets.ModelViewSet):
-    queryset = Client.objects.all()
-    serializer_class = ClientSerializer
-    permission_classes = [IsAuthenticated]
-
-
-class ClassTypeViewSet(viewsets.ModelViewSet):
-    queryset = ClassType.objects.all()
-    serializer_class = ClassTypeSerializer
-    permission_classes = [IsAuthenticated]
 
 
 class ReportImportViewSet(viewsets.ModelViewSet):

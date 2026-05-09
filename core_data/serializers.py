@@ -2,7 +2,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from rest_framework import serializers
 
-from .models import Center, ClassType, Client, Instructor, LoginLog, ReportImport, Room
+from .models import LoginLog, ReportImport
 
 
 User = get_user_model()
@@ -51,38 +51,6 @@ class GroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
         fields = ["id", "name"]
-
-
-class CenterSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Center
-        fields = "__all__"
-
-
-class RoomSerializer(serializers.ModelSerializer):
-    center_name = serializers.CharField(source="center.name", read_only=True)
-
-    class Meta:
-        model = Room
-        fields = "__all__"
-
-
-class InstructorSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Instructor
-        fields = "__all__"
-
-
-class ClientSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Client
-        fields = "__all__"
-
-
-class ClassTypeSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = ClassType
-        fields = "__all__"
 
 
 class ReportImportSerializer(serializers.ModelSerializer):

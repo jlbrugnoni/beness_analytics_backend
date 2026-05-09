@@ -6,11 +6,6 @@ from . import views
 
 router = DefaultRouter()
 router.register(r"users", views.UserViewSet, basename="user")
-router.register(r"centers", views.CenterViewSet, basename="center")
-router.register(r"rooms", views.RoomViewSet, basename="room")
-router.register(r"instructors", views.InstructorViewSet, basename="instructor")
-router.register(r"clients", views.ClientViewSet, basename="client")
-router.register(r"class-types", views.ClassTypeViewSet, basename="class-type")
 router.register(r"report-imports", views.ReportImportViewSet, basename="report-import")
 router.register(r"login-logs", views.LoginLogViewSet, basename="login-log")
 
