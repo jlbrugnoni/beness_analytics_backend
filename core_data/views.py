@@ -8,12 +8,19 @@ from rest_framework.decorators import action, api_view, permission_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .models import LoginLog, ReportImport
+from .models import Client, LoginLog, PaymentMethod, PricingOption, ReportImport, ServiceCategory, Site, StaffMember, Studio
 from .serializers import (
     ChangePasswordSerializer,
+    ClientSerializer,
     GroupSerializer,
     LoginLogSerializer,
+    PaymentMethodSerializer,
+    PricingOptionSerializer,
     ReportImportSerializer,
+    ServiceCategorySerializer,
+    SiteSerializer,
+    StaffMemberSerializer,
+    StudioSerializer,
     UserSerializer,
 )
 
@@ -102,6 +109,48 @@ class UserViewSet(viewsets.ViewSet):
         user.set_password(new_password)
         user.save()
         return Response({"message": "Password updated successfully"})
+
+
+class SiteViewSet(viewsets.ModelViewSet):
+    queryset = Site.objects.all()
+    serializer_class = SiteSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class StudioViewSet(viewsets.ModelViewSet):
+    queryset = Studio.objects.select_related("site").all()
+    serializer_class = StudioSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class ClientViewSet(viewsets.ModelViewSet):
+    queryset = Client.objects.select_related("site").all()
+    serializer_class = ClientSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class StaffMemberViewSet(viewsets.ModelViewSet):
+    queryset = StaffMember.objects.select_related("site").all()
+    serializer_class = StaffMemberSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class ServiceCategoryViewSet(viewsets.ModelViewSet):
+    queryset = ServiceCategory.objects.select_related("site").all()
+    serializer_class = ServiceCategorySerializer
+    permission_classes = [IsAuthenticated]
+
+
+class PricingOptionViewSet(viewsets.ModelViewSet):
+    queryset = PricingOption.objects.select_related("site", "service_category").all()
+    serializer_class = PricingOptionSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class PaymentMethodViewSet(viewsets.ModelViewSet):
+    queryset = PaymentMethod.objects.select_related("site").all()
+    serializer_class = PaymentMethodSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class ReportImportViewSet(viewsets.ModelViewSet):

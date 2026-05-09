@@ -1,7 +1,18 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
-from .models import CustomUser, LoginLog, ReportImport
+from .models import (
+    Client,
+    CustomUser,
+    LoginLog,
+    PaymentMethod,
+    PricingOption,
+    ReportImport,
+    ServiceCategory,
+    Site,
+    StaffMember,
+    Studio,
+)
 
 
 @admin.register(CustomUser)
@@ -41,3 +52,12 @@ class CustomUserAdmin(UserAdmin):
 
 admin.site.register(ReportImport)
 admin.site.register(LoginLog)
+
+
+admin.site.register(Site)
+admin.site.register(Studio)
+admin.site.register(Client)
+admin.site.register(StaffMember)
+admin.site.register(ServiceCategory)
+admin.site.register(PricingOption)
+admin.site.register(PaymentMethod)

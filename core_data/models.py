@@ -81,6 +81,74 @@ class BaseModel(models.Model):
         return self.name
 
 
+class Site(BaseModel):
+    COUNTRY_DOMINICAN_REPUBLIC = "DO"
+    COUNTRY_SPAIN = "ES"
+
+    COUNTRY_CHOICES = [
+        (COUNTRY_DOMINICAN_REPUBLIC, "Dominican Republic"),
+        (COUNTRY_SPAIN, "Spain"),
+    ]
+
+    country_code = models.CharField(max_length=2, choices=COUNTRY_CHOICES)
+    mindbody_site_id = models.CharField(max_length=100, blank=True, null=True)
+
+    class Meta(BaseModel.Meta):
+        unique_together = ("country_code", "name")
+
+
+class SiteScopedModel(BaseModel):
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="%(class)ss")
+    mindbody_id = models.CharField(max_length=100, blank=True, null=True, db_index=True)
+    mindbody_name = models.CharField(max_length=255, blank=True, null=True)
+    normalized_name = models.CharField(max_length=255, blank=True, null=True, db_index=True)
+
+    class Meta:
+        abstract = True
+        ordering = ["site__name", "name"]
+
+    def save(self, *args, **kwargs):
+        if not self.mindbody_name:
+            self.mindbody_name = self.name
+        if not self.normalized_name:
+            self.normalized_name = self.name.strip().casefold()
+        super().save(*args, **kwargs)
+
+
+class Studio(SiteScopedModel):
+    pass
+
+
+class Client(SiteScopedModel):
+    email = models.EmailField(blank=True, null=True)
+    phone = models.CharField(max_length=50, blank=True, null=True)
+
+    class Meta(SiteScopedModel.Meta):
+        unique_together = ("site", "mindbody_id")
+
+
+class StaffMember(SiteScopedModel):
+    pass
+
+
+class ServiceCategory(SiteScopedModel):
+    pass
+
+
+class PricingOption(SiteScopedModel):
+    service_category = models.ForeignKey(
+        ServiceCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="pricing_options",
+    )
+
+
+class PaymentMethod(SiteScopedModel):
+    pass
+
+
 class ReportImport(models.Model):
     STATUS_PENDING = "pending"
     STATUS_PROCESSING = "processing"

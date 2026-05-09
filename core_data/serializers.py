@@ -2,7 +2,17 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from rest_framework import serializers
 
-from .models import LoginLog, ReportImport
+from .models import (
+    Client,
+    LoginLog,
+    PaymentMethod,
+    PricingOption,
+    ReportImport,
+    ServiceCategory,
+    Site,
+    StaffMember,
+    Studio,
+)
 
 
 User = get_user_model()
@@ -51,6 +61,61 @@ class GroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
         fields = ["id", "name"]
+
+
+class SiteSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Site
+        fields = "__all__"
+
+
+class StudioSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+
+    class Meta:
+        model = Studio
+        fields = "__all__"
+
+
+class ClientSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+
+    class Meta:
+        model = Client
+        fields = "__all__"
+
+
+class StaffMemberSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+
+    class Meta:
+        model = StaffMember
+        fields = "__all__"
+
+
+class ServiceCategorySerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+
+    class Meta:
+        model = ServiceCategory
+        fields = "__all__"
+
+
+class PricingOptionSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    service_category_name = serializers.CharField(source="service_category.name", read_only=True)
+
+    class Meta:
+        model = PricingOption
+        fields = "__all__"
+
+
+class PaymentMethodSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+
+    class Meta:
+        model = PaymentMethod
+        fields = "__all__"
 
 
 class ReportImportSerializer(serializers.ModelSerializer):

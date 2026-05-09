@@ -6,6 +6,13 @@ from . import views
 
 router = DefaultRouter()
 router.register(r"users", views.UserViewSet, basename="user")
+router.register(r"sites", views.SiteViewSet, basename="site")
+router.register(r"studios", views.StudioViewSet, basename="studio")
+router.register(r"clients", views.ClientViewSet, basename="client")
+router.register(r"staff-members", views.StaffMemberViewSet, basename="staff-member")
+router.register(r"service-categories", views.ServiceCategoryViewSet, basename="service-category")
+router.register(r"pricing-options", views.PricingOptionViewSet, basename="pricing-option")
+router.register(r"payment-methods", views.PaymentMethodViewSet, basename="payment-method")
 router.register(r"report-imports", views.ReportImportViewSet, basename="report-import")
 router.register(r"login-logs", views.LoginLogViewSet, basename="login-log")
 
