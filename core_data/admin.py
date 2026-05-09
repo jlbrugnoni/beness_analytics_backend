@@ -11,7 +11,13 @@ from .models import (
     PaymentMethod,
     PricingOption,
     ReportImport,
+    SaleLine,
+    SaleLineVersion,
+    SaleRawRow,
     ServiceCategory,
+    ServicePurchase,
+    ServicePurchaseRawRow,
+    ServicePurchaseVersion,
     Site,
     StaffMember,
     Studio,
@@ -67,3 +73,9 @@ admin.site.register(PaymentMethod)
 admin.site.register(AttendanceRawRow)
 admin.site.register(AttendanceVisit)
 admin.site.register(AttendanceVisitVersion)
+admin.site.register(SaleRawRow)
+admin.site.register(SaleLine)
+admin.site.register(SaleLineVersion)
+admin.site.register(ServicePurchaseRawRow)
+admin.site.register(ServicePurchase)
+admin.site.register(ServicePurchaseVersion)

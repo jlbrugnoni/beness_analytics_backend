@@ -9,7 +9,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .importers import ATTENDANCE_REPORT_TYPE, import_attendance_report, preview_attendance_report
+from .importers import SUPPORTED_REPORT_TYPES, import_report, preview_report
 from .models import Client, LoginLog, PaymentMethod, PricingOption, ReportImport, ServiceCategory, Site, StaffMember, Studio
 from .serializers import (
     ChangePasswordSerializer,
@@ -174,9 +174,9 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             return Response({"error": "File is required."}, status=status.HTTP_400_BAD_REQUEST)
         if not site_id:
             return Response({"error": "Site is required."}, status=status.HTTP_400_BAD_REQUEST)
-        if report_type != ATTENDANCE_REPORT_TYPE:
+        if report_type not in SUPPORTED_REPORT_TYPES:
             return Response(
-                {"error": f"Unsupported report_type. Currently supported: {ATTENDANCE_REPORT_TYPE}."},
+                {"error": f"Unsupported report_type. Supported: {', '.join(SUPPORTED_REPORT_TYPES)}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -186,7 +186,7 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             return Response({"error": "Site not found."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            preview = preview_attendance_report(uploaded_file, site)
+            preview = preview_report(uploaded_file, site, report_type)
         except Exception as exc:
             return Response({"error": f"Could not parse file: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -202,9 +202,9 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             return Response({"error": "File is required."}, status=status.HTTP_400_BAD_REQUEST)
         if not site_id:
             return Response({"error": "Site is required."}, status=status.HTTP_400_BAD_REQUEST)
-        if report_type != ATTENDANCE_REPORT_TYPE:
+        if report_type not in SUPPORTED_REPORT_TYPES:
             return Response(
-                {"error": f"Unsupported report_type. Currently supported: {ATTENDANCE_REPORT_TYPE}."},
+                {"error": f"Unsupported report_type. Supported: {', '.join(SUPPORTED_REPORT_TYPES)}."},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
@@ -214,7 +214,7 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             return Response({"error": "Site not found."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            result = import_attendance_report(uploaded_file, site, uploaded_by=request.user)
+            result = import_report(uploaded_file, site, report_type, uploaded_by=request.user)
         except Exception as exc:
             return Response({"error": f"Could not import file: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
 

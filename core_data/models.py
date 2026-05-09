@@ -306,6 +306,192 @@ class AttendanceVisitVersion(models.Model):
         return f"{self.attendance_visit_id} @ {self.report_import_id}"
 
 
+class SaleRawRow(models.Model):
+    report_import = models.ForeignKey(ReportImport, on_delete=models.CASCADE, related_name="sale_raw_rows")
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="sale_raw_rows")
+    row_number = models.PositiveIntegerField()
+    row_hash = models.CharField(max_length=64, db_index=True)
+    raw_payload = models.JSONField()
+    normalized_payload = models.JSONField(default=dict)
+    is_valid = models.BooleanField(default=True)
+    validation_errors = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("report_import", "row_number")
+        ordering = ["report_import_id", "row_number"]
+
+    def __str__(self):
+        return f"{self.report_import_id} row {self.row_number}"
+
+
+class SaleLine(models.Model):
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="sale_lines")
+    natural_key = models.CharField(max_length=64, unique=True, db_index=True)
+    current_row_hash = models.CharField(max_length=64, db_index=True)
+    client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name="sale_lines")
+    studio = models.ForeignKey(Studio, on_delete=models.SET_NULL, null=True, blank=True, related_name="sale_lines")
+    payment_method = models.ForeignKey(
+        PaymentMethod,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sale_lines",
+    )
+    sale_date = models.DateField()
+    sale_number = models.CharField(max_length=100, db_index=True)
+    item_name = models.CharField(max_length=255)
+    computation_number = models.CharField(max_length=100, blank=True, null=True)
+    sale_notes = models.TextField(blank=True, null=True)
+    item_notes = models.TextField(blank=True, null=True)
+    color = models.CharField(max_length=100, blank=True, null=True)
+    size = models.CharField(max_length=100, blank=True, null=True)
+    item_price = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    subtotal = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    discount_percent = models.DecimalField(max_digits=7, decimal_places=2, default=0)
+    discount_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    tax = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    item_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    paid_total = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    first_seen_import = models.ForeignKey(
+        ReportImport,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="first_seen_sale_lines",
+    )
+    last_seen_import = models.ForeignKey(
+        ReportImport,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="last_seen_sale_lines",
+    )
+    source_raw_row = models.ForeignKey(
+        SaleRawRow,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="current_sale_lines",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-sale_date", "sale_number", "item_name"]
+
+    def __str__(self):
+        return f"{self.sale_number} - {self.item_name}"
+
+
+class SaleLineVersion(models.Model):
+    sale_line = models.ForeignKey(SaleLine, on_delete=models.CASCADE, related_name="versions")
+    report_import = models.ForeignKey(ReportImport, on_delete=models.CASCADE, related_name="sale_line_versions")
+    raw_row = models.ForeignKey(SaleRawRow, on_delete=models.CASCADE, related_name="sale_line_versions")
+    row_hash = models.CharField(max_length=64, db_index=True)
+    changed_fields = models.JSONField(default=list, blank=True)
+    snapshot = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.sale_line_id} @ {self.report_import_id}"
+
+
+class ServicePurchaseRawRow(models.Model):
+    report_import = models.ForeignKey(ReportImport, on_delete=models.CASCADE, related_name="service_purchase_raw_rows")
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="service_purchase_raw_rows")
+    row_number = models.PositiveIntegerField()
+    row_hash = models.CharField(max_length=64, db_index=True)
+    raw_payload = models.JSONField()
+    normalized_payload = models.JSONField(default=dict)
+    is_valid = models.BooleanField(default=True)
+    validation_errors = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("report_import", "row_number")
+        ordering = ["report_import_id", "row_number"]
+
+    def __str__(self):
+        return f"{self.report_import_id} row {self.row_number}"
+
+
+class ServicePurchase(models.Model):
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="service_purchases")
+    natural_key = models.CharField(max_length=64, unique=True, db_index=True)
+    current_row_hash = models.CharField(max_length=64, db_index=True)
+    client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name="service_purchases")
+    service_category = models.ForeignKey(
+        ServiceCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="service_purchases",
+    )
+    pricing_option = models.ForeignKey(
+        PricingOption,
+        on_delete=models.PROTECT,
+        related_name="service_purchases",
+    )
+    sale_date = models.DateField()
+    activation_date = models.DateField(blank=True, null=True)
+    expiration_date = models.DateField(blank=True, null=True)
+    activation_offset_days = models.IntegerField(blank=True, null=True)
+    total_amount = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    cash_equivalent = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    non_cash_equivalent = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    quantity = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    first_seen_import = models.ForeignKey(
+        ReportImport,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="first_seen_service_purchases",
+    )
+    last_seen_import = models.ForeignKey(
+        ReportImport,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="last_seen_service_purchases",
+    )
+    source_raw_row = models.ForeignKey(
+        ServicePurchaseRawRow,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="current_service_purchases",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-sale_date", "client__name", "pricing_option__name"]
+
+    def __str__(self):
+        return f"{self.client.name} - {self.pricing_option.name}"
+
+
+class ServicePurchaseVersion(models.Model):
+    service_purchase = models.ForeignKey(ServicePurchase, on_delete=models.CASCADE, related_name="versions")
+    report_import = models.ForeignKey(ReportImport, on_delete=models.CASCADE, related_name="service_purchase_versions")
+    raw_row = models.ForeignKey(ServicePurchaseRawRow, on_delete=models.CASCADE, related_name="service_purchase_versions")
+    row_hash = models.CharField(max_length=64, db_index=True)
+    changed_fields = models.JSONField(default=list, blank=True)
+    snapshot = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.service_purchase_id} @ {self.report_import_id}"
+
+
 class LoginLog(models.Model):
     LOGIN_TYPE_CHOICES = [
         ("main", "Login Principal"),

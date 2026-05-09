@@ -18,7 +18,13 @@ from .models import (
     PaymentMethod,
     PricingOption,
     ReportImport,
+    SaleLine,
+    SaleLineVersion,
+    SaleRawRow,
     ServiceCategory,
+    ServicePurchase,
+    ServicePurchaseRawRow,
+    ServicePurchaseVersion,
     StaffMember,
     Studio,
 )
@@ -28,6 +34,9 @@ SPREADSHEET_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
 RELATIONSHIP_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}"
 
 ATTENDANCE_REPORT_TYPE = "attendance_with_revenue"
+SALES_REPORT_TYPE = "sales"
+SALES_BY_SERVICE_REPORT_TYPE = "sales_by_service"
+SUPPORTED_REPORT_TYPES = [ATTENDANCE_REPORT_TYPE, SALES_REPORT_TYPE, SALES_BY_SERVICE_REPORT_TYPE]
 
 ATTENDANCE_REQUIRED_HEADERS = [
     "Fecha",
@@ -51,6 +60,46 @@ ATTENDANCE_REQUIRED_HEADERS = [
     "Método de pago",
     "Ingresos por visita",
     "Pago de categoría de servicio",
+]
+
+SALES_REQUIRED_HEADERS = [
+    "Fecha de Venta",
+    "ID del Cliente",
+    "Cliente",
+    "No. de Venta",
+    "Nombre del artículo",
+    "Notas de Venta",
+    "Localidad",
+    "Notas",
+    "Color",
+    "Tamaño",
+    "Precio del artículo (excluyendo impuestos)",
+    "Cantidad",
+    "Sub-total (excluyendo impuestos)",
+    "Descuento en %",
+    "Cantidad de descuento",
+    "Impuesto",
+    "Total de artículos",
+    "Total Pagado con Método de Pago",
+    "Forma de Pago",
+]
+
+SALES_OPTIONAL_HEADERS = ["Computación #"]
+
+SALES_BY_SERVICE_REQUIRED_HEADERS = [
+    "Nombre",
+    "ID del Cliente",
+    "Cliente",
+    "Categoría",
+    "Teléfono particular",
+    "Fecha de Venta",
+    "Fecha de activación",
+    "Días de activación de compensación",
+    "Fecha de Expiración",
+    "Cantidad total",
+    "Equivalente en efectivo",
+    "No equivalente de efectivo",
+    "Cantidad",
 ]
 
 
@@ -414,6 +463,120 @@ def parse_int(value):
     return int(number)
 
 
+def money(value):
+    return Decimal(str(value or 0)).quantize(Decimal("0.01"))
+
+
+def decimal_string(value):
+    return str(money(value))
+
+
+def build_sales_lookup_preview(site, valid_rows):
+    client_ids = {
+        clean_value(row["payload"].get("ID del Cliente"))
+        for row in valid_rows
+        if clean_value(row["payload"].get("ID del Cliente"))
+    }
+    studio_names = {
+        clean_value(row["payload"].get("Localidad"))
+        for row in valid_rows
+        if clean_value(row["payload"].get("Localidad")) not in ("", "N/A")
+    }
+    payment_method_names = {
+        clean_value(row["payload"].get("Forma de Pago"))
+        for row in valid_rows
+        if clean_value(row["payload"].get("Forma de Pago")) not in ("", "N/A")
+    }
+
+    existing_client_ids = set(
+        Client.objects.filter(site=site, mindbody_id__in=client_ids).values_list("mindbody_id", flat=True)
+    )
+
+    def existing_normalized(model, names):
+        normalized_values = [name.casefold() for name in names]
+        return set(
+            model.objects.filter(site=site, normalized_name__in=normalized_values)
+            .values_list("normalized_name", flat=True)
+        )
+
+    existing_studios = existing_normalized(Studio, studio_names)
+    existing_payment_methods = existing_normalized(PaymentMethod, payment_method_names)
+
+    def new_names(names, existing):
+        return sorted(name for name in names if name.casefold() not in existing)
+
+    return {
+        "clients": {
+            "total": len(client_ids),
+            "new": len(client_ids - existing_client_ids),
+            "sample_new": sorted(client_ids - existing_client_ids)[:10],
+        },
+        "studios": {
+            "total": len(studio_names),
+            "new": len(new_names(studio_names, existing_studios)),
+            "sample_new": new_names(studio_names, existing_studios)[:10],
+        },
+        "payment_methods": {
+            "total": len(payment_method_names),
+            "new": len(new_names(payment_method_names, existing_payment_methods)),
+            "sample_new": new_names(payment_method_names, existing_payment_methods)[:10],
+        },
+    }
+
+
+def build_service_purchase_lookup_preview(site, valid_rows):
+    client_ids = {
+        clean_value(row["payload"].get("ID del Cliente"))
+        for row in valid_rows
+        if clean_value(row["payload"].get("ID del Cliente"))
+    }
+    service_category_names = {
+        clean_value(row["payload"].get("Categoría"))
+        for row in valid_rows
+        if clean_value(row["payload"].get("Categoría")) not in ("", "N/A")
+    }
+    pricing_option_names = {
+        clean_value(row["payload"].get("Nombre"))
+        for row in valid_rows
+        if clean_value(row["payload"].get("Nombre")) not in ("", "N/A")
+    }
+
+    existing_client_ids = set(
+        Client.objects.filter(site=site, mindbody_id__in=client_ids).values_list("mindbody_id", flat=True)
+    )
+
+    def existing_normalized(model, names):
+        normalized_values = [name.casefold() for name in names]
+        return set(
+            model.objects.filter(site=site, normalized_name__in=normalized_values)
+            .values_list("normalized_name", flat=True)
+        )
+
+    existing_categories = existing_normalized(ServiceCategory, service_category_names)
+    existing_pricing_options = existing_normalized(PricingOption, pricing_option_names)
+
+    def new_names(names, existing):
+        return sorted(name for name in names if name.casefold() not in existing)
+
+    return {
+        "clients": {
+            "total": len(client_ids),
+            "new": len(client_ids - existing_client_ids),
+            "sample_new": sorted(client_ids - existing_client_ids)[:10],
+        },
+        "service_categories": {
+            "total": len(service_category_names),
+            "new": len(new_names(service_category_names, existing_categories)),
+            "sample_new": new_names(service_category_names, existing_categories)[:10],
+        },
+        "pricing_options": {
+            "total": len(pricing_option_names),
+            "new": len(new_names(pricing_option_names, existing_pricing_options)),
+            "sample_new": new_names(pricing_option_names, existing_pricing_options)[:10],
+        },
+    }
+
+
 def attendance_natural_key(site, payload):
     return hash_parts([
         site.id,
@@ -730,3 +893,655 @@ def preview_attendance_rows(uploaded_file):
         "invalid_rows": invalid_rows,
         "footer_rows": footer_rows,
     }
+
+
+def validate_sales_rows(uploaded_file):
+    uploaded_file.seek(0)
+    sheet_name, parsed_rows = load_first_sheet_rows(uploaded_file)
+    headers, rows = table_from_rows(parsed_rows)
+
+    valid_rows = []
+    invalid_rows = []
+    footer_rows = []
+    for row in rows:
+        if clean_value(row["payload"].get("Fecha de Venta")).casefold() in ("total", "totales"):
+            footer_rows.append(row)
+            continue
+
+        raw_payload = dict(row["payload"])
+        payload = {key: clean_value(value) for key, value in row["payload"].items()}
+        errors = []
+        sale_date = parse_excel_date(payload.get("Fecha de Venta"))
+        item_price = parse_number(payload.get("Precio del artículo (excluyendo impuestos)"))
+        quantity = parse_number(payload.get("Cantidad"))
+        subtotal = parse_number(payload.get("Sub-total (excluyendo impuestos)"))
+        discount_percent = parse_number(payload.get("Descuento en %"))
+        discount_amount = parse_number(payload.get("Cantidad de descuento"))
+        tax = parse_number(payload.get("Impuesto"))
+        item_total = parse_number(payload.get("Total de artículos"))
+        paid_total = parse_number(payload.get("Total Pagado con Método de Pago"))
+
+        if not sale_date:
+            errors.append("Invalid Fecha de Venta")
+        if not payload.get("ID del Cliente"):
+            errors.append("Missing ID del Cliente")
+        if not payload.get("Cliente"):
+            errors.append("Missing Cliente")
+        if not payload.get("No. de Venta"):
+            errors.append("Missing No. de Venta")
+        if not payload.get("Nombre del artículo"):
+            errors.append("Missing Nombre del artículo")
+        for label, value in (
+            ("Precio del artículo (excluyendo impuestos)", item_price),
+            ("Cantidad", quantity),
+            ("Sub-total (excluyendo impuestos)", subtotal),
+            ("Descuento en %", discount_percent),
+            ("Cantidad de descuento", discount_amount),
+            ("Impuesto", tax),
+            ("Total de artículos", item_total),
+            ("Total Pagado con Método de Pago", paid_total),
+        ):
+            if value is None:
+                errors.append(f"Invalid {label}")
+
+        payload["_sale_date"] = sale_date.isoformat() if sale_date else None
+        payload["_item_price"] = item_price
+        payload["_quantity"] = quantity
+        payload["_subtotal"] = subtotal
+        payload["_discount_percent"] = discount_percent
+        payload["_discount_amount"] = discount_amount
+        payload["_tax"] = tax
+        payload["_item_total"] = item_total
+        payload["_paid_total"] = paid_total
+
+        enriched = {
+            "row_number": row["row_number"],
+            "hash": row_hash(payload),
+            "payload": payload,
+            "raw_payload": raw_payload,
+            "errors": errors,
+        }
+        if errors:
+            invalid_rows.append(enriched)
+        else:
+            valid_rows.append(enriched)
+
+    return {
+        "sheet_name": sheet_name,
+        "headers": headers,
+        "valid_rows": valid_rows,
+        "invalid_rows": invalid_rows,
+        "footer_rows": footer_rows,
+    }
+
+
+def preview_sales_report(uploaded_file, site):
+    rows = validate_sales_rows(uploaded_file)
+    allowed_headers = SALES_REQUIRED_HEADERS + SALES_OPTIONAL_HEADERS
+    missing_headers = [header for header in SALES_REQUIRED_HEADERS if header not in rows["headers"]]
+    extra_headers = [header for header in rows["headers"] if header not in allowed_headers]
+    hash_counts = Counter(row["hash"] for row in rows["valid_rows"])
+    duplicate_groups = sum(1 for count in hash_counts.values() if count > 1)
+    duplicate_extra_rows = sum(count - 1 for count in hash_counts.values() if count > 1)
+    date_values = [
+        parse_excel_date(row["payload"].get("Fecha de Venta"))
+        for row in rows["valid_rows"]
+        if parse_excel_date(row["payload"].get("Fecha de Venta"))
+    ]
+
+    return {
+        "report_type": SALES_REPORT_TYPE,
+        "sheet_name": rows["sheet_name"],
+        "headers": rows["headers"],
+        "missing_headers": missing_headers,
+        "extra_headers": extra_headers,
+        "is_valid_schema": not missing_headers,
+        "row_counts": {
+            "raw_rows": len(rows["valid_rows"]) + len(rows["invalid_rows"]) + len(rows["footer_rows"]),
+            "data_rows": len(rows["valid_rows"]) + len(rows["invalid_rows"]),
+            "footer_rows": len(rows["footer_rows"]),
+            "valid_rows": len(rows["valid_rows"]),
+            "invalid_rows": len(rows["invalid_rows"]),
+            "duplicate_groups": duplicate_groups,
+            "duplicate_extra_rows": duplicate_extra_rows,
+        },
+        "date_range": {
+            "from": min(date_values).isoformat() if date_values else None,
+            "to": max(date_values).isoformat() if date_values else None,
+        },
+        "sales": {
+            "gross_item_total": round(sum(row["payload"]["_item_total"] for row in rows["valid_rows"]), 2),
+            "paid_total": round(sum(row["payload"]["_paid_total"] for row in rows["valid_rows"]), 2),
+            "discount_total": round(sum(row["payload"]["_discount_amount"] for row in rows["valid_rows"]), 2),
+            "tax_total": round(sum(row["payload"]["_tax"] for row in rows["valid_rows"]), 2),
+            "sale_count": len({row["payload"].get("No. de Venta") for row in rows["valid_rows"]}),
+        },
+        "revenue": {
+            "total": round(sum(row["payload"]["_paid_total"] for row in rows["valid_rows"]), 2),
+            "zero_revenue_rows": sum(row["payload"]["_paid_total"] == 0 for row in rows["valid_rows"]),
+        },
+        "lookup_preview": build_sales_lookup_preview(site, rows["valid_rows"]),
+        "invalid_row_samples": rows["invalid_rows"][:10],
+        "sample_rows": rows["valid_rows"][:5],
+    }
+
+
+def sale_natural_key(site, payload):
+    return hash_parts([
+        site.id,
+        payload.get("ID del Cliente"),
+        payload.get("_sale_date"),
+        payload.get("No. de Venta"),
+        payload.get("Nombre del artículo"),
+        payload.get("Computación #"),
+        payload.get("Forma de Pago"),
+        payload.get("_item_total"),
+        payload.get("_paid_total"),
+    ])
+
+
+def sale_snapshot(payload, related):
+    return {
+        "site_id": related["site"].id,
+        "client_id": related["client"].id,
+        "studio_id": related["studio"].id if related["studio"] else None,
+        "payment_method_id": related["payment_method"].id if related["payment_method"] else None,
+        "sale_date": payload.get("_sale_date"),
+        "sale_number": payload.get("No. de Venta"),
+        "item_name": payload.get("Nombre del artículo"),
+        "computation_number": payload.get("Computación #"),
+        "sale_notes": payload.get("Notas de Venta"),
+        "item_notes": payload.get("Notas"),
+        "color": payload.get("Color"),
+        "size": payload.get("Tamaño"),
+        "item_price": decimal_string(payload.get("_item_price")),
+        "quantity": decimal_string(payload.get("_quantity")),
+        "subtotal": decimal_string(payload.get("_subtotal")),
+        "discount_percent": decimal_string(payload.get("_discount_percent")),
+        "discount_amount": decimal_string(payload.get("_discount_amount")),
+        "tax": decimal_string(payload.get("_tax")),
+        "item_total": decimal_string(payload.get("_item_total")),
+        "paid_total": decimal_string(payload.get("_paid_total")),
+    }
+
+
+@transaction.atomic
+def import_sales_report(uploaded_file, site, uploaded_by=None):
+    preview = preview_sales_report(uploaded_file, site)
+    if not preview["is_valid_schema"]:
+        raise ValueError(f"Missing required headers: {', '.join(preview['missing_headers'])}")
+
+    report_import = ReportImport.objects.create(
+        report_type=SALES_REPORT_TYPE,
+        source_system="mindbody",
+        file_name=getattr(uploaded_file, "name", "uploaded.xlsx"),
+        status=ReportImport.STATUS_PROCESSING,
+        total_rows=preview["row_counts"]["data_rows"],
+        valid_rows=preview["row_counts"]["valid_rows"],
+        error_rows=preview["row_counts"]["invalid_rows"],
+        uploaded_by=uploaded_by,
+    )
+    stats = {
+        "report_import_id": report_import.id,
+        "raw_rows_created": 0,
+        "sale_lines_created": 0,
+        "sale_lines_changed": 0,
+        "sale_lines_identical": 0,
+        "natural_key_collisions": 0,
+        "versions_created": 0,
+        "new_lookups": {"clients": 0, "studios": 0, "payment_methods": 0},
+    }
+    rows_to_import = validate_sales_rows(uploaded_file)
+    current_candidates = {}
+
+    for row in rows_to_import["valid_rows"]:
+        payload = row["payload"]
+        client, created = get_or_create_scoped(Client, site, payload.get("Cliente"), mindbody_id=payload.get("ID del Cliente"))
+        stats["new_lookups"]["clients"] += int(created)
+        studio, created = get_or_create_scoped(Studio, site, payload.get("Localidad"))
+        stats["new_lookups"]["studios"] += int(created)
+        payment_method, created = get_or_create_scoped(PaymentMethod, site, payload.get("Forma de Pago"))
+        stats["new_lookups"]["payment_methods"] += int(created)
+
+        raw_row = SaleRawRow.objects.create(
+            report_import=report_import,
+            site=site,
+            row_number=row["row_number"],
+            row_hash=row["hash"],
+            raw_payload=row["raw_payload"],
+            normalized_payload=payload,
+            is_valid=True,
+            validation_errors=[],
+        )
+        stats["raw_rows_created"] += 1
+        related = {"site": site, "client": client, "studio": studio, "payment_method": payment_method}
+        current_candidates[sale_natural_key(site, payload)] = {
+            "row": row,
+            "payload": payload,
+            "raw_row": raw_row,
+            "related": related,
+        }
+
+    for natural_key, candidate in current_candidates.items():
+        row = candidate["row"]
+        payload = candidate["payload"]
+        raw_row = candidate["raw_row"]
+        related = candidate["related"]
+        snapshot = sale_snapshot(payload, related)
+        sale_line = SaleLine.objects.filter(natural_key=natural_key).first()
+        previous_snapshot = None
+        if sale_line:
+            previous_version = sale_line.versions.order_by("-created_at").first()
+            previous_snapshot = previous_version.snapshot if previous_version else None
+
+        changes = changed_fields(previous_snapshot, snapshot)
+        values = {
+            "site": site,
+            "current_row_hash": row["hash"],
+            "client": related["client"],
+            "studio": related["studio"],
+            "payment_method": related["payment_method"],
+            "sale_date": payload["_sale_date"],
+            "sale_number": payload.get("No. de Venta") or "",
+            "item_name": payload.get("Nombre del artículo") or "",
+            "computation_number": payload.get("Computación #"),
+            "sale_notes": payload.get("Notas de Venta"),
+            "item_notes": payload.get("Notas"),
+            "color": payload.get("Color"),
+            "size": payload.get("Tamaño"),
+            "item_price": money(payload.get("_item_price")),
+            "quantity": money(payload.get("_quantity")),
+            "subtotal": money(payload.get("_subtotal")),
+            "discount_percent": money(payload.get("_discount_percent")),
+            "discount_amount": money(payload.get("_discount_amount")),
+            "tax": money(payload.get("_tax")),
+            "item_total": money(payload.get("_item_total")),
+            "paid_total": money(payload.get("_paid_total")),
+            "last_seen_import": report_import,
+            "source_raw_row": raw_row,
+        }
+
+        if not sale_line:
+            sale_line = SaleLine.objects.create(
+                natural_key=natural_key,
+                first_seen_import=report_import,
+                **values,
+            )
+            stats["sale_lines_created"] += 1
+            changes = list(snapshot.keys())
+        elif sale_line.current_row_hash == row["hash"]:
+            sale_line.last_seen_import = report_import
+            sale_line.source_raw_row = raw_row
+            sale_line.save(update_fields=["last_seen_import", "source_raw_row", "updated_at"])
+            stats["sale_lines_identical"] += 1
+        else:
+            for field, value in values.items():
+                setattr(sale_line, field, value)
+            sale_line.save()
+            stats["sale_lines_changed"] += 1
+
+        if changes or not previous_snapshot:
+            SaleLineVersion.objects.create(
+                sale_line=sale_line,
+                report_import=report_import,
+                raw_row=raw_row,
+                row_hash=row["hash"],
+                changed_fields=changes,
+                snapshot=snapshot,
+            )
+            stats["versions_created"] += 1
+
+    stats["natural_key_collisions"] = len(rows_to_import["valid_rows"]) - len(current_candidates)
+
+    for row in rows_to_import["invalid_rows"]:
+        SaleRawRow.objects.create(
+            report_import=report_import,
+            site=site,
+            row_number=row["row_number"],
+            row_hash=row["hash"],
+            raw_payload=row["raw_payload"],
+            normalized_payload=row["payload"],
+            is_valid=False,
+            validation_errors=row["errors"],
+        )
+        stats["raw_rows_created"] += 1
+
+    report_import.status = ReportImport.STATUS_COMPLETED
+    report_import.processed_at = timezone.now()
+    report_import.save(update_fields=["status", "processed_at"])
+    return {"preview": preview, "import": stats}
+
+
+def validate_sales_by_service_rows(uploaded_file):
+    uploaded_file.seek(0)
+    sheet_name, parsed_rows = load_first_sheet_rows(uploaded_file)
+    headers, rows = table_from_rows(parsed_rows)
+
+    valid_rows = []
+    invalid_rows = []
+    footer_rows = []
+    for row in rows:
+        if clean_value(row["payload"].get("Nombre")).casefold() in ("total", "totales"):
+            footer_rows.append(row)
+            continue
+
+        raw_payload = dict(row["payload"])
+        payload = {key: clean_value(value) for key, value in row["payload"].items()}
+        errors = []
+        sale_date = parse_excel_date(payload.get("Fecha de Venta"))
+        activation_date = parse_excel_date(payload.get("Fecha de activación"))
+        expiration_date = parse_excel_date(payload.get("Fecha de Expiración"))
+        activation_offset = parse_int(payload.get("Días de activación de compensación"))
+        total_amount = parse_number(payload.get("Cantidad total"))
+        cash_equivalent = parse_number(payload.get("Equivalente en efectivo"))
+        non_cash_equivalent = parse_number(payload.get("No equivalente de efectivo"))
+        quantity = parse_number(payload.get("Cantidad"))
+
+        if not payload.get("Nombre"):
+            errors.append("Missing Nombre")
+        if not payload.get("ID del Cliente"):
+            errors.append("Missing ID del Cliente")
+        if not payload.get("Cliente"):
+            errors.append("Missing Cliente")
+        if not sale_date:
+            errors.append("Invalid Fecha de Venta")
+        for label, value in (
+            ("Cantidad total", total_amount),
+            ("Equivalente en efectivo", cash_equivalent),
+            ("No equivalente de efectivo", non_cash_equivalent),
+            ("Cantidad", quantity),
+        ):
+            if value is None:
+                errors.append(f"Invalid {label}")
+
+        payload["_sale_date"] = sale_date.isoformat() if sale_date else None
+        payload["_activation_date"] = activation_date.isoformat() if activation_date else None
+        payload["_expiration_date"] = expiration_date.isoformat() if expiration_date else None
+        payload["_activation_offset_days"] = activation_offset
+        payload["_total_amount"] = total_amount
+        payload["_cash_equivalent"] = cash_equivalent
+        payload["_non_cash_equivalent"] = non_cash_equivalent
+        payload["_quantity"] = quantity
+
+        enriched = {
+            "row_number": row["row_number"],
+            "hash": row_hash(payload),
+            "payload": payload,
+            "raw_payload": raw_payload,
+            "errors": errors,
+        }
+        if errors:
+            invalid_rows.append(enriched)
+        else:
+            valid_rows.append(enriched)
+
+    return {
+        "sheet_name": sheet_name,
+        "headers": headers,
+        "valid_rows": valid_rows,
+        "invalid_rows": invalid_rows,
+        "footer_rows": footer_rows,
+    }
+
+
+def preview_sales_by_service_report(uploaded_file, site):
+    rows = validate_sales_by_service_rows(uploaded_file)
+    missing_headers = [header for header in SALES_BY_SERVICE_REQUIRED_HEADERS if header not in rows["headers"]]
+    extra_headers = [header for header in rows["headers"] if header not in SALES_BY_SERVICE_REQUIRED_HEADERS]
+    hash_counts = Counter(row["hash"] for row in rows["valid_rows"])
+    duplicate_groups = sum(1 for count in hash_counts.values() if count > 1)
+    duplicate_extra_rows = sum(count - 1 for count in hash_counts.values() if count > 1)
+    sale_dates = [
+        parse_excel_date(row["payload"].get("Fecha de Venta"))
+        for row in rows["valid_rows"]
+        if parse_excel_date(row["payload"].get("Fecha de Venta"))
+    ]
+    expiration_dates = [
+        parse_excel_date(row["payload"].get("Fecha de Expiración"))
+        for row in rows["valid_rows"]
+        if parse_excel_date(row["payload"].get("Fecha de Expiración"))
+    ]
+
+    return {
+        "report_type": SALES_BY_SERVICE_REPORT_TYPE,
+        "sheet_name": rows["sheet_name"],
+        "headers": rows["headers"],
+        "missing_headers": missing_headers,
+        "extra_headers": extra_headers,
+        "is_valid_schema": not missing_headers,
+        "row_counts": {
+            "raw_rows": len(rows["valid_rows"]) + len(rows["invalid_rows"]) + len(rows["footer_rows"]),
+            "data_rows": len(rows["valid_rows"]) + len(rows["invalid_rows"]),
+            "footer_rows": len(rows["footer_rows"]),
+            "valid_rows": len(rows["valid_rows"]),
+            "invalid_rows": len(rows["invalid_rows"]),
+            "duplicate_groups": duplicate_groups,
+            "duplicate_extra_rows": duplicate_extra_rows,
+        },
+        "date_range": {
+            "from": min(sale_dates).isoformat() if sale_dates else None,
+            "to": max(sale_dates).isoformat() if sale_dates else None,
+        },
+        "service_expiration_range": {
+            "from": min(expiration_dates).isoformat() if expiration_dates else None,
+            "to": max(expiration_dates).isoformat() if expiration_dates else None,
+        },
+        "services": {
+            "purchase_count": len(rows["valid_rows"]),
+            "total_amount": round(sum(row["payload"]["_total_amount"] for row in rows["valid_rows"]), 2),
+            "cash_equivalent": round(sum(row["payload"]["_cash_equivalent"] for row in rows["valid_rows"]), 2),
+            "non_cash_equivalent": round(sum(row["payload"]["_non_cash_equivalent"] for row in rows["valid_rows"]), 2),
+            "quantity": round(sum(row["payload"]["_quantity"] for row in rows["valid_rows"]), 2),
+        },
+        "revenue": {
+            "total": round(sum(row["payload"]["_total_amount"] for row in rows["valid_rows"]), 2),
+            "zero_revenue_rows": sum(row["payload"]["_total_amount"] == 0 for row in rows["valid_rows"]),
+        },
+        "lookup_preview": build_service_purchase_lookup_preview(site, rows["valid_rows"]),
+        "invalid_row_samples": rows["invalid_rows"][:10],
+        "sample_rows": rows["valid_rows"][:5],
+    }
+
+
+def service_purchase_natural_key(site, payload):
+    return hash_parts([
+        site.id,
+        payload.get("ID del Cliente"),
+        payload.get("Nombre"),
+        payload.get("_sale_date"),
+        payload.get("_activation_date"),
+        payload.get("_expiration_date"),
+        payload.get("_total_amount"),
+        payload.get("_quantity"),
+    ])
+
+
+def service_purchase_snapshot(payload, related):
+    return {
+        "site_id": related["site"].id,
+        "client_id": related["client"].id,
+        "service_category_id": related["service_category"].id if related["service_category"] else None,
+        "pricing_option_id": related["pricing_option"].id,
+        "sale_date": payload.get("_sale_date"),
+        "activation_date": payload.get("_activation_date"),
+        "expiration_date": payload.get("_expiration_date"),
+        "activation_offset_days": payload.get("_activation_offset_days"),
+        "total_amount": decimal_string(payload.get("_total_amount")),
+        "cash_equivalent": decimal_string(payload.get("_cash_equivalent")),
+        "non_cash_equivalent": decimal_string(payload.get("_non_cash_equivalent")),
+        "quantity": decimal_string(payload.get("_quantity")),
+    }
+
+
+@transaction.atomic
+def import_sales_by_service_report(uploaded_file, site, uploaded_by=None):
+    preview = preview_sales_by_service_report(uploaded_file, site)
+    if not preview["is_valid_schema"]:
+        raise ValueError(f"Missing required headers: {', '.join(preview['missing_headers'])}")
+
+    report_import = ReportImport.objects.create(
+        report_type=SALES_BY_SERVICE_REPORT_TYPE,
+        source_system="mindbody",
+        file_name=getattr(uploaded_file, "name", "uploaded.xlsx"),
+        status=ReportImport.STATUS_PROCESSING,
+        total_rows=preview["row_counts"]["data_rows"],
+        valid_rows=preview["row_counts"]["valid_rows"],
+        error_rows=preview["row_counts"]["invalid_rows"],
+        uploaded_by=uploaded_by,
+    )
+    stats = {
+        "report_import_id": report_import.id,
+        "raw_rows_created": 0,
+        "service_purchases_created": 0,
+        "service_purchases_changed": 0,
+        "service_purchases_identical": 0,
+        "natural_key_collisions": 0,
+        "versions_created": 0,
+        "new_lookups": {"clients": 0, "service_categories": 0, "pricing_options": 0},
+    }
+    rows_to_import = validate_sales_by_service_rows(uploaded_file)
+    current_candidates = {}
+
+    for row in rows_to_import["valid_rows"]:
+        payload = row["payload"]
+        client, created = get_or_create_scoped(
+            Client,
+            site,
+            payload.get("Cliente"),
+            mindbody_id=payload.get("ID del Cliente"),
+            phone=payload.get("Teléfono particular"),
+        )
+        stats["new_lookups"]["clients"] += int(created)
+        service_category, created = get_or_create_scoped(ServiceCategory, site, payload.get("Categoría"))
+        stats["new_lookups"]["service_categories"] += int(created)
+        pricing_option, created = get_or_create_scoped(
+            PricingOption,
+            site,
+            payload.get("Nombre"),
+            service_category=service_category,
+        )
+        stats["new_lookups"]["pricing_options"] += int(created)
+
+        raw_row = ServicePurchaseRawRow.objects.create(
+            report_import=report_import,
+            site=site,
+            row_number=row["row_number"],
+            row_hash=row["hash"],
+            raw_payload=row["raw_payload"],
+            normalized_payload=payload,
+            is_valid=True,
+            validation_errors=[],
+        )
+        stats["raw_rows_created"] += 1
+        related = {
+            "site": site,
+            "client": client,
+            "service_category": service_category,
+            "pricing_option": pricing_option,
+        }
+        current_candidates[service_purchase_natural_key(site, payload)] = {
+            "row": row,
+            "payload": payload,
+            "raw_row": raw_row,
+            "related": related,
+        }
+
+    for natural_key, candidate in current_candidates.items():
+        row = candidate["row"]
+        payload = candidate["payload"]
+        raw_row = candidate["raw_row"]
+        related = candidate["related"]
+        snapshot = service_purchase_snapshot(payload, related)
+        service_purchase = ServicePurchase.objects.filter(natural_key=natural_key).first()
+        previous_snapshot = None
+        if service_purchase:
+            previous_version = service_purchase.versions.order_by("-created_at").first()
+            previous_snapshot = previous_version.snapshot if previous_version else None
+
+        changes = changed_fields(previous_snapshot, snapshot)
+        values = {
+            "site": site,
+            "current_row_hash": row["hash"],
+            "client": related["client"],
+            "service_category": related["service_category"],
+            "pricing_option": related["pricing_option"],
+            "sale_date": payload["_sale_date"],
+            "activation_date": payload.get("_activation_date"),
+            "expiration_date": payload.get("_expiration_date"),
+            "activation_offset_days": payload.get("_activation_offset_days"),
+            "total_amount": money(payload.get("_total_amount")),
+            "cash_equivalent": money(payload.get("_cash_equivalent")),
+            "non_cash_equivalent": money(payload.get("_non_cash_equivalent")),
+            "quantity": money(payload.get("_quantity")),
+            "last_seen_import": report_import,
+            "source_raw_row": raw_row,
+        }
+        if not service_purchase:
+            service_purchase = ServicePurchase.objects.create(
+                natural_key=natural_key,
+                first_seen_import=report_import,
+                **values,
+            )
+            stats["service_purchases_created"] += 1
+            changes = list(snapshot.keys())
+        elif service_purchase.current_row_hash == row["hash"]:
+            service_purchase.last_seen_import = report_import
+            service_purchase.source_raw_row = raw_row
+            service_purchase.save(update_fields=["last_seen_import", "source_raw_row", "updated_at"])
+            stats["service_purchases_identical"] += 1
+        else:
+            for field, value in values.items():
+                setattr(service_purchase, field, value)
+            service_purchase.save()
+            stats["service_purchases_changed"] += 1
+
+        if changes or not previous_snapshot:
+            ServicePurchaseVersion.objects.create(
+                service_purchase=service_purchase,
+                report_import=report_import,
+                raw_row=raw_row,
+                row_hash=row["hash"],
+                changed_fields=changes,
+                snapshot=snapshot,
+            )
+            stats["versions_created"] += 1
+
+    stats["natural_key_collisions"] = len(rows_to_import["valid_rows"]) - len(current_candidates)
+
+    for row in rows_to_import["invalid_rows"]:
+        ServicePurchaseRawRow.objects.create(
+            report_import=report_import,
+            site=site,
+            row_number=row["row_number"],
+            row_hash=row["hash"],
+            raw_payload=row["raw_payload"],
+            normalized_payload=row["payload"],
+            is_valid=False,
+            validation_errors=row["errors"],
+        )
+        stats["raw_rows_created"] += 1
+
+    report_import.status = ReportImport.STATUS_COMPLETED
+    report_import.processed_at = timezone.now()
+    report_import.save(update_fields=["status", "processed_at"])
+    return {"preview": preview, "import": stats}
+
+
+def preview_report(uploaded_file, site, report_type):
+    if report_type == ATTENDANCE_REPORT_TYPE:
+        return preview_attendance_report(uploaded_file, site)
+    if report_type == SALES_REPORT_TYPE:
+        return preview_sales_report(uploaded_file, site)
+    if report_type == SALES_BY_SERVICE_REPORT_TYPE:
+        return preview_sales_by_service_report(uploaded_file, site)
+    raise ValueError(f"Unsupported report_type. Supported: {', '.join(SUPPORTED_REPORT_TYPES)}.")
+
+
+def import_report(uploaded_file, site, report_type, uploaded_by=None):
+    if report_type == ATTENDANCE_REPORT_TYPE:
+        return import_attendance_report(uploaded_file, site, uploaded_by=uploaded_by)
+    if report_type == SALES_REPORT_TYPE:
+        return import_sales_report(uploaded_file, site, uploaded_by=uploaded_by)
+    if report_type == SALES_BY_SERVICE_REPORT_TYPE:
+        return import_sales_by_service_report(uploaded_file, site, uploaded_by=uploaded_by)
+    raise ValueError(f"Unsupported report_type. Supported: {', '.join(SUPPORTED_REPORT_TYPES)}.")
