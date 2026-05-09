@@ -187,6 +187,125 @@ class ReportImport(models.Model):
         return f"{self.report_type} - {self.file_name}"
 
 
+class AttendanceRawRow(models.Model):
+    report_import = models.ForeignKey(ReportImport, on_delete=models.CASCADE, related_name="attendance_raw_rows")
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="attendance_raw_rows")
+    row_number = models.PositiveIntegerField()
+    row_hash = models.CharField(max_length=64, db_index=True)
+    raw_payload = models.JSONField()
+    normalized_payload = models.JSONField(default=dict)
+    is_valid = models.BooleanField(default=True)
+    validation_errors = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("report_import", "row_number")
+        ordering = ["report_import_id", "row_number"]
+
+    def __str__(self):
+        return f"{self.report_import_id} row {self.row_number}"
+
+
+class AttendanceVisit(models.Model):
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="attendance_visits")
+    natural_key = models.CharField(max_length=64, unique=True, db_index=True)
+    current_row_hash = models.CharField(max_length=64, db_index=True)
+    client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name="attendance_visits")
+    staff_member = models.ForeignKey(
+        StaffMember,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="attendance_visits",
+    )
+    visit_studio = models.ForeignKey(Studio, on_delete=models.PROTECT, related_name="visit_attendance_visits")
+    sale_studio = models.ForeignKey(
+        Studio,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="sale_attendance_visits",
+    )
+    service_category = models.ForeignKey(
+        ServiceCategory,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="attendance_visits",
+    )
+    pricing_option = models.ForeignKey(
+        PricingOption,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="attendance_visits",
+    )
+    payment_method = models.ForeignKey(
+        PaymentMethod,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="attendance_visits",
+    )
+    visit_date = models.DateField()
+    visit_time_raw = models.CharField(max_length=50)
+    weekday_raw = models.CharField(max_length=50, blank=True, null=True)
+    visit_type = models.CharField(max_length=255, blank=True, null=True)
+    type_name = models.CharField(max_length=255, blank=True, null=True)
+    expiration_date = models.DateField(blank=True, null=True)
+    remaining_visits = models.IntegerField(blank=True, null=True)
+    staff_paid = models.BooleanField(blank=True, null=True)
+    late_cancel = models.BooleanField(default=False)
+    no_show = models.BooleanField(default=False)
+    scheduling_method = models.CharField(max_length=255, blank=True, null=True)
+    revenue = models.DecimalField(max_digits=12, decimal_places=2, default=0)
+    first_seen_import = models.ForeignKey(
+        ReportImport,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="first_seen_attendance_visits",
+    )
+    last_seen_import = models.ForeignKey(
+        ReportImport,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="last_seen_attendance_visits",
+    )
+    source_raw_row = models.ForeignKey(
+        AttendanceRawRow,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="current_attendance_visits",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-visit_date", "visit_time_raw", "client__name"]
+
+    def __str__(self):
+        return f"{self.visit_date} {self.visit_time_raw} - {self.client.name}"
+
+
+class AttendanceVisitVersion(models.Model):
+    attendance_visit = models.ForeignKey(AttendanceVisit, on_delete=models.CASCADE, related_name="versions")
+    report_import = models.ForeignKey(ReportImport, on_delete=models.CASCADE, related_name="attendance_versions")
+    raw_row = models.ForeignKey(AttendanceRawRow, on_delete=models.CASCADE, related_name="attendance_versions")
+    row_hash = models.CharField(max_length=64, db_index=True)
+    changed_fields = models.JSONField(default=list, blank=True)
+    snapshot = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.attendance_visit_id} @ {self.report_import_id}"
+
+
 class LoginLog(models.Model):
     LOGIN_TYPE_CHOICES = [
         ("main", "Login Principal"),

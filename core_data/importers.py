@@ -5,8 +5,23 @@ import re
 import zipfile
 import xml.etree.ElementTree as ET
 from collections import Counter
+from decimal import Decimal
 
-from .models import Client, PaymentMethod, PricingOption, ServiceCategory, StaffMember, Studio
+from django.db import transaction
+from django.utils import timezone
+
+from .models import (
+    AttendanceRawRow,
+    AttendanceVisit,
+    AttendanceVisitVersion,
+    Client,
+    PaymentMethod,
+    PricingOption,
+    ReportImport,
+    ServiceCategory,
+    StaffMember,
+    Studio,
+)
 
 
 SPREADSHEET_NS = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
@@ -132,6 +147,11 @@ def load_first_sheet_rows(uploaded_file):
 
 def row_hash(payload):
     serialized = json.dumps(payload, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def hash_parts(parts):
+    serialized = json.dumps([clean_value(part) for part in parts], ensure_ascii=False)
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
@@ -353,4 +373,360 @@ def preview_attendance_report(uploaded_file, site):
         "lookup_preview": build_lookup_preview(site, valid_rows),
         "invalid_row_samples": invalid_rows[:10],
         "sample_rows": valid_rows[:5],
+    }
+
+
+def get_or_create_scoped(model, site, name, mindbody_id=None, **extra_defaults):
+    cleaned_name = clean_value(name)
+    if not cleaned_name or cleaned_name == "N/A":
+        return None, False
+
+    if mindbody_id:
+        obj, created = model.objects.get_or_create(
+            site=site,
+            mindbody_id=clean_value(mindbody_id),
+            defaults={
+                "name": cleaned_name,
+                "mindbody_name": cleaned_name,
+                "normalized_name": normalize_name(cleaned_name),
+                **extra_defaults,
+            },
+        )
+        return obj, created
+
+    obj = model.objects.filter(site=site, normalized_name=normalize_name(cleaned_name)).first()
+    if obj:
+        return obj, False
+
+    return model.objects.create(
+        site=site,
+        name=cleaned_name,
+        mindbody_name=cleaned_name,
+        normalized_name=normalize_name(cleaned_name),
+        **extra_defaults,
+    ), True
+
+
+def parse_int(value):
+    number = parse_number(value)
+    if number is None:
+        return None
+    return int(number)
+
+
+def attendance_natural_key(site, payload):
+    return hash_parts([
+        site.id,
+        payload.get("ID del cliente"),
+        payload.get("_visit_date"),
+        payload.get("Tiempo"),
+        payload.get("Ubicación de visita"),
+        payload.get("Personal"),
+        payload.get("Visita por categoría de servicio"),
+        payload.get("Tipo de Visita"),
+    ])
+
+
+def attendance_snapshot(payload, related):
+    return {
+        "site_id": related["site"].id,
+        "client_id": related["client"].id,
+        "staff_member_id": related["staff_member"].id if related["staff_member"] else None,
+        "visit_studio_id": related["visit_studio"].id,
+        "sale_studio_id": related["sale_studio"].id if related["sale_studio"] else None,
+        "service_category_id": related["service_category"].id if related["service_category"] else None,
+        "pricing_option_id": related["pricing_option"].id if related["pricing_option"] else None,
+        "payment_method_id": related["payment_method"].id if related["payment_method"] else None,
+        "visit_date": payload.get("_visit_date"),
+        "visit_time_raw": payload.get("Tiempo"),
+        "weekday_raw": payload.get("Día de la semana"),
+        "visit_type": payload.get("Tipo de Visita"),
+        "type_name": payload.get("Tipo"),
+        "expiration_date": payload.get("_expiration_date"),
+        "remaining_visits": parse_int(payload.get("Visitas Rest.")),
+        "staff_paid": payload.get("_staff_paid"),
+        "late_cancel": payload.get("_late_cancel") is True,
+        "no_show": payload.get("_no_show") is True,
+        "scheduling_method": payload.get("Metodo de programación"),
+        "revenue": str(Decimal(str(payload.get("_revenue") or 0)).quantize(Decimal("0.01"))),
+    }
+
+
+def changed_fields(previous, current):
+    if not previous:
+        return []
+    return sorted(key for key, value in current.items() if previous.get(key) != value)
+
+
+@transaction.atomic
+def import_attendance_report(uploaded_file, site, uploaded_by=None):
+    preview = preview_attendance_report(uploaded_file, site)
+    if not preview["is_valid_schema"]:
+        raise ValueError(f"Missing required headers: {', '.join(preview['missing_headers'])}")
+
+    report_import = ReportImport.objects.create(
+        report_type=ATTENDANCE_REPORT_TYPE,
+        source_system="mindbody",
+        file_name=getattr(uploaded_file, "name", "uploaded.xlsx"),
+        status=ReportImport.STATUS_PROCESSING,
+        total_rows=preview["row_counts"]["data_rows"],
+        valid_rows=preview["row_counts"]["valid_rows"],
+        error_rows=preview["row_counts"]["invalid_rows"],
+        uploaded_by=uploaded_by,
+    )
+
+    stats = {
+        "report_import_id": report_import.id,
+        "raw_rows_created": 0,
+        "attendance_created": 0,
+        "attendance_changed": 0,
+        "attendance_identical": 0,
+        "natural_key_collisions": 0,
+        "versions_created": 0,
+        "new_lookups": {
+            "clients": 0,
+            "studios": 0,
+            "staff_members": 0,
+            "service_categories": 0,
+            "pricing_options": 0,
+            "payment_methods": 0,
+        },
+    }
+
+    rows_to_import = preview_attendance_rows(uploaded_file)
+    current_visit_candidates = {}
+
+    for row in rows_to_import["valid_rows"]:
+        payload = row["payload"]
+
+        client, created = get_or_create_scoped(
+            Client,
+            site,
+            payload.get("Cliente"),
+            mindbody_id=payload.get("ID del cliente"),
+        )
+        stats["new_lookups"]["clients"] += int(created)
+
+        visit_studio, created = get_or_create_scoped(Studio, site, payload.get("Ubicación de visita"))
+        stats["new_lookups"]["studios"] += int(created)
+
+        sale_studio, created = get_or_create_scoped(Studio, site, payload.get("Ubicación de venta"))
+        stats["new_lookups"]["studios"] += int(created)
+
+        staff_member, created = get_or_create_scoped(StaffMember, site, payload.get("Personal"))
+        stats["new_lookups"]["staff_members"] += int(created)
+
+        service_category, created = get_or_create_scoped(
+            ServiceCategory,
+            site,
+            payload.get("Visita por categoría de servicio"),
+        )
+        stats["new_lookups"]["service_categories"] += int(created)
+
+        pricing_option, created = get_or_create_scoped(
+            PricingOption,
+            site,
+            payload.get("Opción de precio"),
+            service_category=service_category,
+        )
+        stats["new_lookups"]["pricing_options"] += int(created)
+
+        payment_method, created = get_or_create_scoped(PaymentMethod, site, payload.get("Método de pago"))
+        stats["new_lookups"]["payment_methods"] += int(created)
+
+        raw_row = AttendanceRawRow.objects.create(
+            report_import=report_import,
+            site=site,
+            row_number=row["row_number"],
+            row_hash=row["hash"],
+            raw_payload=row["raw_payload"],
+            normalized_payload=payload,
+            is_valid=True,
+            validation_errors=[],
+        )
+        stats["raw_rows_created"] += 1
+
+        related = {
+            "site": site,
+            "client": client,
+            "staff_member": staff_member,
+            "visit_studio": visit_studio,
+            "sale_studio": sale_studio,
+            "service_category": service_category,
+            "pricing_option": pricing_option,
+            "payment_method": payment_method,
+        }
+        natural_key = attendance_natural_key(site, payload)
+        current_visit_candidates[natural_key] = {
+            "row": row,
+            "payload": payload,
+            "raw_row": raw_row,
+            "related": related,
+        }
+
+    for natural_key, candidate in current_visit_candidates.items():
+        row = candidate["row"]
+        payload = candidate["payload"]
+        raw_row = candidate["raw_row"]
+        related = candidate["related"]
+        snapshot = attendance_snapshot(payload, related)
+
+        visit = AttendanceVisit.objects.filter(natural_key=natural_key).first()
+        previous_snapshot = None
+        if visit:
+            previous_version = visit.versions.order_by("-created_at").first()
+            previous_snapshot = previous_version.snapshot if previous_version else None
+
+        changes = changed_fields(previous_snapshot, snapshot)
+
+        if not visit:
+            visit = AttendanceVisit.objects.create(
+                site=site,
+                natural_key=natural_key,
+                current_row_hash=row["hash"],
+                client=related["client"],
+                staff_member=related["staff_member"],
+                visit_studio=related["visit_studio"],
+                sale_studio=related["sale_studio"],
+                service_category=related["service_category"],
+                pricing_option=related["pricing_option"],
+                payment_method=related["payment_method"],
+                visit_date=payload["_visit_date"],
+                visit_time_raw=payload.get("Tiempo") or "",
+                weekday_raw=payload.get("Día de la semana"),
+                visit_type=payload.get("Tipo de Visita"),
+                type_name=payload.get("Tipo"),
+                expiration_date=payload.get("_expiration_date"),
+                remaining_visits=parse_int(payload.get("Visitas Rest.")),
+                staff_paid=payload.get("_staff_paid"),
+                late_cancel=payload.get("_late_cancel") is True,
+                no_show=payload.get("_no_show") is True,
+                scheduling_method=payload.get("Metodo de programación"),
+                revenue=Decimal(str(payload.get("_revenue") or 0)).quantize(Decimal("0.01")),
+                first_seen_import=report_import,
+                last_seen_import=report_import,
+                source_raw_row=raw_row,
+            )
+            stats["attendance_created"] += 1
+            changes = list(snapshot.keys())
+        elif visit.current_row_hash == row["hash"]:
+            visit.last_seen_import = report_import
+            visit.source_raw_row = raw_row
+            visit.save(update_fields=["last_seen_import", "source_raw_row", "updated_at"])
+            stats["attendance_identical"] += 1
+        else:
+            visit.current_row_hash = row["hash"]
+            visit.client = related["client"]
+            visit.staff_member = related["staff_member"]
+            visit.visit_studio = related["visit_studio"]
+            visit.sale_studio = related["sale_studio"]
+            visit.service_category = related["service_category"]
+            visit.pricing_option = related["pricing_option"]
+            visit.payment_method = related["payment_method"]
+            visit.visit_date = payload["_visit_date"]
+            visit.visit_time_raw = payload.get("Tiempo") or ""
+            visit.weekday_raw = payload.get("Día de la semana")
+            visit.visit_type = payload.get("Tipo de Visita")
+            visit.type_name = payload.get("Tipo")
+            visit.expiration_date = payload.get("_expiration_date")
+            visit.remaining_visits = parse_int(payload.get("Visitas Rest."))
+            visit.staff_paid = payload.get("_staff_paid")
+            visit.late_cancel = payload.get("_late_cancel") is True
+            visit.no_show = payload.get("_no_show") is True
+            visit.scheduling_method = payload.get("Metodo de programación")
+            visit.revenue = Decimal(str(payload.get("_revenue") or 0)).quantize(Decimal("0.01"))
+            visit.last_seen_import = report_import
+            visit.source_raw_row = raw_row
+            visit.save()
+            stats["attendance_changed"] += 1
+
+        if changes or not previous_snapshot:
+            AttendanceVisitVersion.objects.create(
+                attendance_visit=visit,
+                report_import=report_import,
+                raw_row=raw_row,
+                row_hash=row["hash"],
+                changed_fields=changes,
+                snapshot=snapshot,
+            )
+            stats["versions_created"] += 1
+
+    stats["natural_key_collisions"] = len(rows_to_import["valid_rows"]) - len(current_visit_candidates)
+
+    for row in rows_to_import["invalid_rows"]:
+        AttendanceRawRow.objects.create(
+            report_import=report_import,
+            site=site,
+            row_number=row["row_number"],
+            row_hash=row["hash"],
+            raw_payload=row["raw_payload"],
+            normalized_payload=row["payload"],
+            is_valid=False,
+            validation_errors=row["errors"],
+        )
+        stats["raw_rows_created"] += 1
+
+    report_import.status = ReportImport.STATUS_COMPLETED
+    report_import.processed_at = timezone.now()
+    report_import.save(update_fields=["status", "processed_at"])
+
+    return {"preview": preview, "import": stats}
+
+
+def preview_attendance_rows(uploaded_file):
+    uploaded_file.seek(0)
+    sheet_name, parsed_rows = load_first_sheet_rows(uploaded_file)
+    headers, rows = table_from_rows(parsed_rows)
+
+    valid_rows = []
+    invalid_rows = []
+    footer_rows = []
+    for row in rows:
+        if clean_value(row["payload"].get("Fecha")).casefold() in ("total", "totales"):
+            footer_rows.append(row)
+            continue
+
+        raw_payload = dict(row["payload"])
+        payload = {key: clean_value(value) for key, value in row["payload"].items()}
+        errors = []
+        visit_date = parse_excel_date(payload.get("Fecha"))
+        expiration_date = parse_excel_date(payload.get("Fecha de Exp."))
+        revenue = parse_number(payload.get("Ingresos por visita"))
+
+        if not visit_date:
+            errors.append("Invalid Fecha")
+        if not payload.get("ID del cliente"):
+            errors.append("Missing ID del cliente")
+        if not payload.get("Cliente"):
+            errors.append("Missing Cliente")
+        if not payload.get("Ubicación de visita"):
+            errors.append("Missing Ubicación de visita")
+        if revenue is None:
+            errors.append("Invalid Ingresos por visita")
+
+        payload["_visit_date"] = visit_date.isoformat() if visit_date else None
+        payload["_expiration_date"] = expiration_date.isoformat() if expiration_date else None
+        payload["_staff_paid"] = parse_yes_no(payload.get("Personal pagado"))
+        payload["_late_cancel"] = parse_yes_no(payload.get("Cancelación tardíá"))
+        payload["_no_show"] = parse_yes_no(payload.get("No presentado"))
+        payload["_revenue"] = revenue
+
+        enriched = {
+            "row_number": row["row_number"],
+            "hash": row_hash(payload),
+            "payload": payload,
+            "raw_payload": raw_payload,
+            "errors": errors,
+        }
+        if errors:
+            invalid_rows.append(enriched)
+        else:
+            valid_rows.append(enriched)
+
+    return {
+        "sheet_name": sheet_name,
+        "headers": headers,
+        "valid_rows": valid_rows,
+        "invalid_rows": invalid_rows,
+        "footer_rows": footer_rows,
     }

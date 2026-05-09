@@ -9,7 +9,7 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .importers import ATTENDANCE_REPORT_TYPE, preview_attendance_report
+from .importers import ATTENDANCE_REPORT_TYPE, import_attendance_report, preview_attendance_report
 from .models import Client, LoginLog, PaymentMethod, PricingOption, ReportImport, ServiceCategory, Site, StaffMember, Studio
 from .serializers import (
     ChangePasswordSerializer,
@@ -191,6 +191,34 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             return Response({"error": f"Could not parse file: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(preview)
+
+    @action(detail=False, methods=["post"], url_path="import-file")
+    def import_file(self, request):
+        uploaded_file = request.FILES.get("file")
+        site_id = request.data.get("site")
+        report_type = request.data.get("report_type")
+
+        if not uploaded_file:
+            return Response({"error": "File is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not site_id:
+            return Response({"error": "Site is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if report_type != ATTENDANCE_REPORT_TYPE:
+            return Response(
+                {"error": f"Unsupported report_type. Currently supported: {ATTENDANCE_REPORT_TYPE}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            site = Site.objects.get(pk=site_id)
+        except Site.DoesNotExist:
+            return Response({"error": "Site not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            result = import_attendance_report(uploaded_file, site, uploaded_by=request.user)
+        except Exception as exc:
+            return Response({"error": f"Could not import file: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(result, status=status.HTTP_201_CREATED)
 
 
 class LoginLogViewSet(viewsets.ReadOnlyModelViewSet):

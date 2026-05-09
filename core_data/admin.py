@@ -2,6 +2,9 @@ from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
 
 from .models import (
+    AttendanceRawRow,
+    AttendanceVisit,
+    AttendanceVisitVersion,
     Client,
     CustomUser,
     LoginLog,
@@ -61,3 +64,6 @@ admin.site.register(StaffMember)
 admin.site.register(ServiceCategory)
 admin.site.register(PricingOption)
 admin.site.register(PaymentMethod)
+admin.site.register(AttendanceRawRow)
+admin.site.register(AttendanceVisit)
+admin.site.register(AttendanceVisitVersion)
