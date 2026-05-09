@@ -204,6 +204,16 @@ def hash_parts(parts):
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
+def assign_occurrence_indexes(rows, base_key_builder):
+    occurrence_counts = Counter()
+    for row in rows:
+        base_key = base_key_builder(row["payload"])
+        occurrence_counts[base_key] += 1
+        row["payload"]["_occurrence_index"] = occurrence_counts[base_key]
+        row["hash"] = row_hash(row["payload"])
+    return rows
+
+
 def table_from_rows(parsed_rows):
     header_index = None
     for index, (_, row_values) in enumerate(parsed_rows):
@@ -580,6 +590,7 @@ def build_service_purchase_lookup_preview(site, valid_rows):
 def attendance_natural_key(site, payload):
     return hash_parts([
         site.id,
+        payload.get("_occurrence_index"),
         payload.get("ID del cliente"),
         payload.get("_visit_date"),
         payload.get("Tiempo"),
@@ -600,6 +611,7 @@ def attendance_snapshot(payload, related):
         "service_category_id": related["service_category"].id if related["service_category"] else None,
         "pricing_option_id": related["pricing_option"].id if related["pricing_option"] else None,
         "payment_method_id": related["payment_method"].id if related["payment_method"] else None,
+        "occurrence_index": payload.get("_occurrence_index"),
         "visit_date": payload.get("_visit_date"),
         "visit_time_raw": payload.get("Tiempo"),
         "weekday_raw": payload.get("Día de la semana"),
@@ -657,6 +669,7 @@ def import_attendance_report(uploaded_file, site, uploaded_by=None):
     }
 
     rows_to_import = preview_attendance_rows(uploaded_file)
+    assign_occurrence_indexes(rows_to_import["valid_rows"], lambda payload: attendance_natural_key(site, payload))
     current_visit_candidates = {}
 
     for row in rows_to_import["valid_rows"]:
@@ -1029,6 +1042,7 @@ def preview_sales_report(uploaded_file, site):
 def sale_natural_key(site, payload):
     return hash_parts([
         site.id,
+        payload.get("_occurrence_index"),
         payload.get("ID del Cliente"),
         payload.get("_sale_date"),
         payload.get("No. de Venta"),
@@ -1046,6 +1060,7 @@ def sale_snapshot(payload, related):
         "client_id": related["client"].id,
         "studio_id": related["studio"].id if related["studio"] else None,
         "payment_method_id": related["payment_method"].id if related["payment_method"] else None,
+        "occurrence_index": payload.get("_occurrence_index"),
         "sale_date": payload.get("_sale_date"),
         "sale_number": payload.get("No. de Venta"),
         "item_name": payload.get("Nombre del artículo"),
@@ -1092,6 +1107,7 @@ def import_sales_report(uploaded_file, site, uploaded_by=None):
         "new_lookups": {"clients": 0, "studios": 0, "payment_methods": 0},
     }
     rows_to_import = validate_sales_rows(uploaded_file)
+    assign_occurrence_indexes(rows_to_import["valid_rows"], lambda payload: sale_natural_key(site, payload))
     current_candidates = {}
 
     for row in rows_to_import["valid_rows"]:
@@ -1346,6 +1362,7 @@ def preview_sales_by_service_report(uploaded_file, site):
 def service_purchase_natural_key(site, payload):
     return hash_parts([
         site.id,
+        payload.get("_occurrence_index"),
         payload.get("ID del Cliente"),
         payload.get("Nombre"),
         payload.get("_sale_date"),
@@ -1362,6 +1379,7 @@ def service_purchase_snapshot(payload, related):
         "client_id": related["client"].id,
         "service_category_id": related["service_category"].id if related["service_category"] else None,
         "pricing_option_id": related["pricing_option"].id,
+        "occurrence_index": payload.get("_occurrence_index"),
         "sale_date": payload.get("_sale_date"),
         "activation_date": payload.get("_activation_date"),
         "expiration_date": payload.get("_expiration_date"),
@@ -1400,6 +1418,10 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None):
         "new_lookups": {"clients": 0, "service_categories": 0, "pricing_options": 0},
     }
     rows_to_import = validate_sales_by_service_rows(uploaded_file)
+    assign_occurrence_indexes(
+        rows_to_import["valid_rows"],
+        lambda payload: service_purchase_natural_key(site, payload),
+    )
     current_candidates = {}
 
     for row in rows_to_import["valid_rows"]:

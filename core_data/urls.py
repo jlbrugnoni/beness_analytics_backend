@@ -14,6 +14,12 @@ router.register(r"service-categories", views.ServiceCategoryViewSet, basename="s
 router.register(r"pricing-options", views.PricingOptionViewSet, basename="pricing-option")
 router.register(r"payment-methods", views.PaymentMethodViewSet, basename="payment-method")
 router.register(r"report-imports", views.ReportImportViewSet, basename="report-import")
+router.register(r"attendance-visits", views.AttendanceVisitViewSet, basename="attendance-visit")
+router.register(r"sale-lines", views.SaleLineViewSet, basename="sale-line")
+router.register(r"service-purchases", views.ServicePurchaseViewSet, basename="service-purchase")
+router.register(r"attendance-raw-rows", views.AttendanceRawRowViewSet, basename="attendance-raw-row")
+router.register(r"sale-raw-rows", views.SaleRawRowViewSet, basename="sale-raw-row")
+router.register(r"service-purchase-raw-rows", views.ServicePurchaseRawRowViewSet, basename="service-purchase-raw-row")
 router.register(r"login-logs", views.LoginLogViewSet, basename="login-log")
 
 

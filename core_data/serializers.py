@@ -3,12 +3,18 @@ from django.contrib.auth.models import Group
 from rest_framework import serializers
 
 from .models import (
+    AttendanceRawRow,
+    AttendanceVisit,
     Client,
     LoginLog,
     PaymentMethod,
     PricingOption,
     ReportImport,
+    SaleLine,
+    SaleRawRow,
     ServiceCategory,
+    ServicePurchase,
+    ServicePurchaseRawRow,
     Site,
     StaffMember,
     Studio,
@@ -130,6 +136,102 @@ class ReportImportSerializer(serializers.ModelSerializer):
         if not obj.uploaded_by:
             return None
         return f"{obj.uploaded_by.first_name} {obj.uploaded_by.last_name}".strip() or obj.uploaded_by.email
+
+
+class AttendanceVisitSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    client_name = serializers.CharField(source="client.name", read_only=True)
+    client_mindbody_id = serializers.CharField(source="client.mindbody_id", read_only=True)
+    staff_member_name = serializers.CharField(source="staff_member.name", read_only=True)
+    visit_studio_name = serializers.CharField(source="visit_studio.name", read_only=True)
+    sale_studio_name = serializers.CharField(source="sale_studio.name", read_only=True)
+    service_category_name = serializers.CharField(source="service_category.name", read_only=True)
+    pricing_option_name = serializers.CharField(source="pricing_option.name", read_only=True)
+    payment_method_name = serializers.CharField(source="payment_method.name", read_only=True)
+
+    class Meta:
+        model = AttendanceVisit
+        fields = "__all__"
+
+
+class SaleLineSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    client_name = serializers.CharField(source="client.name", read_only=True)
+    client_mindbody_id = serializers.CharField(source="client.mindbody_id", read_only=True)
+    studio_name = serializers.CharField(source="studio.name", read_only=True)
+    payment_method_name = serializers.CharField(source="payment_method.name", read_only=True)
+
+    class Meta:
+        model = SaleLine
+        fields = "__all__"
+
+
+class ServicePurchaseSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    client_name = serializers.CharField(source="client.name", read_only=True)
+    client_mindbody_id = serializers.CharField(source="client.mindbody_id", read_only=True)
+    service_category_name = serializers.CharField(source="service_category.name", read_only=True)
+    pricing_option_name = serializers.CharField(source="pricing_option.name", read_only=True)
+
+    class Meta:
+        model = ServicePurchase
+        fields = "__all__"
+
+
+def payload_summary(payload):
+    if not payload:
+        return ""
+    parts = []
+    for key, value in payload.items():
+        if key.startswith("_"):
+            continue
+        if value not in ("", None):
+            parts.append(f"{key}: {value}")
+        if len(parts) == 4:
+            break
+    return " | ".join(parts)
+
+
+class AttendanceRawRowSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    report_type = serializers.CharField(source="report_import.report_type", read_only=True)
+    file_name = serializers.CharField(source="report_import.file_name", read_only=True)
+    payload_summary = serializers.SerializerMethodField()
+
+    class Meta:
+        model = AttendanceRawRow
+        fields = "__all__"
+
+    def get_payload_summary(self, obj):
+        return payload_summary(obj.normalized_payload)
+
+
+class SaleRawRowSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    report_type = serializers.CharField(source="report_import.report_type", read_only=True)
+    file_name = serializers.CharField(source="report_import.file_name", read_only=True)
+    payload_summary = serializers.SerializerMethodField()
+
+    class Meta:
+        model = SaleRawRow
+        fields = "__all__"
+
+    def get_payload_summary(self, obj):
+        return payload_summary(obj.normalized_payload)
+
+
+class ServicePurchaseRawRowSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    report_type = serializers.CharField(source="report_import.report_type", read_only=True)
+    file_name = serializers.CharField(source="report_import.file_name", read_only=True)
+    payload_summary = serializers.SerializerMethodField()
+
+    class Meta:
+        model = ServicePurchaseRawRow
+        fields = "__all__"
+
+    def get_payload_summary(self, obj):
+        return payload_summary(obj.normalized_payload)
 
 
 class LoginLogSerializer(serializers.ModelSerializer):

@@ -10,8 +10,26 @@ from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
 from .importers import SUPPORTED_REPORT_TYPES, import_report, preview_report
-from .models import Client, LoginLog, PaymentMethod, PricingOption, ReportImport, ServiceCategory, Site, StaffMember, Studio
+from .models import (
+    AttendanceRawRow,
+    AttendanceVisit,
+    Client,
+    LoginLog,
+    PaymentMethod,
+    PricingOption,
+    ReportImport,
+    SaleLine,
+    SaleRawRow,
+    ServiceCategory,
+    ServicePurchase,
+    ServicePurchaseRawRow,
+    Site,
+    StaffMember,
+    Studio,
+)
 from .serializers import (
+    AttendanceRawRowSerializer,
+    AttendanceVisitSerializer,
     ChangePasswordSerializer,
     ClientSerializer,
     GroupSerializer,
@@ -19,7 +37,11 @@ from .serializers import (
     PaymentMethodSerializer,
     PricingOptionSerializer,
     ReportImportSerializer,
+    SaleLineSerializer,
+    SaleRawRowSerializer,
     ServiceCategorySerializer,
+    ServicePurchaseRawRowSerializer,
+    ServicePurchaseSerializer,
     SiteSerializer,
     StaffMemberSerializer,
     StudioSerializer,
@@ -161,6 +183,19 @@ class ReportImportViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
+    def get_queryset(self):
+        queryset = ReportImport.objects.select_related("uploaded_by").all()
+        report_type = self.request.query_params.get("report_type")
+        status_value = self.request.query_params.get("status")
+        search = self.request.query_params.get("search")
+        if report_type:
+            queryset = queryset.filter(report_type=report_type)
+        if status_value:
+            queryset = queryset.filter(status=status_value)
+        if search:
+            queryset = queryset.filter(file_name__icontains=search)
+        return queryset
+
     def perform_create(self, serializer):
         serializer.save(uploaded_by=self.request.user)
 
@@ -219,6 +254,126 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             return Response({"error": f"Could not import file: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
 
         return Response(result, status=status.HTTP_201_CREATED)
+
+
+class ImportedDataFilterMixin:
+    search_fields = []
+    date_field = None
+
+    def filter_queryset(self, queryset):
+        site = self.request.query_params.get("site")
+        client = self.request.query_params.get("client")
+        date_from = self.request.query_params.get("date_from")
+        date_to = self.request.query_params.get("date_to")
+        search = self.request.query_params.get("search")
+
+        if site:
+            queryset = queryset.filter(site_id=site)
+        if client:
+            queryset = queryset.filter(client_id=client)
+        if self.date_field and date_from:
+            queryset = queryset.filter(**{f"{self.date_field}__gte": date_from})
+        if self.date_field and date_to:
+            queryset = queryset.filter(**{f"{self.date_field}__lte": date_to})
+        if search:
+            query = None
+            for field in self.search_fields:
+                condition = {f"{field}__icontains": search}
+                if query is None:
+                    from django.db.models import Q
+
+                    query = Q(**condition)
+                else:
+                    query |= Q(**condition)
+            if query is not None:
+                queryset = queryset.filter(query)
+        return queryset
+
+
+class AttendanceVisitViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelViewSet):
+    serializer_class = AttendanceVisitSerializer
+    permission_classes = [IsAuthenticated]
+    date_field = "visit_date"
+    search_fields = ["client__name", "client__mindbody_id", "staff_member__name", "pricing_option__name"]
+
+    def get_queryset(self):
+        return self.filter_queryset(
+            AttendanceVisit.objects.select_related(
+                "site",
+                "client",
+                "staff_member",
+                "visit_studio",
+                "sale_studio",
+                "service_category",
+                "pricing_option",
+                "payment_method",
+            ).all()
+        )
+
+
+class SaleLineViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelViewSet):
+    serializer_class = SaleLineSerializer
+    permission_classes = [IsAuthenticated]
+    date_field = "sale_date"
+    search_fields = ["client__name", "client__mindbody_id", "sale_number", "item_name", "payment_method__name"]
+
+    def get_queryset(self):
+        return self.filter_queryset(
+            SaleLine.objects.select_related("site", "client", "studio", "payment_method").all()
+        )
+
+
+class ServicePurchaseViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelViewSet):
+    serializer_class = ServicePurchaseSerializer
+    permission_classes = [IsAuthenticated]
+    date_field = "sale_date"
+    search_fields = ["client__name", "client__mindbody_id", "pricing_option__name", "service_category__name"]
+
+    def get_queryset(self):
+        return self.filter_queryset(
+            ServicePurchase.objects.select_related("site", "client", "service_category", "pricing_option").all()
+        )
+
+
+class RawRowFilterMixin:
+    def filter_queryset(self, queryset):
+        site = self.request.query_params.get("site")
+        report_import = self.request.query_params.get("report_import")
+        is_valid = self.request.query_params.get("is_valid")
+        search = self.request.query_params.get("search")
+        if site:
+            queryset = queryset.filter(site_id=site)
+        if report_import:
+            queryset = queryset.filter(report_import_id=report_import)
+        if is_valid in ("true", "false"):
+            queryset = queryset.filter(is_valid=is_valid == "true")
+        if search:
+            queryset = queryset.filter(normalized_payload__icontains=search)
+        return queryset
+
+
+class AttendanceRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
+    serializer_class = AttendanceRawRowSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return self.filter_queryset(AttendanceRawRow.objects.select_related("site", "report_import").all())
+
+
+class SaleRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
+    serializer_class = SaleRawRowSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return self.filter_queryset(SaleRawRow.objects.select_related("site", "report_import").all())
+
+
+class ServicePurchaseRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
+    serializer_class = ServicePurchaseRawRowSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return self.filter_queryset(ServicePurchaseRawRow.objects.select_related("site", "report_import").all())
 
 
 class LoginLogViewSet(viewsets.ReadOnlyModelViewSet):
