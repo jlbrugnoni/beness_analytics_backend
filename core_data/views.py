@@ -5,9 +5,11 @@ from django.core.exceptions import ValidationError
 from rest_framework import status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action, api_view, permission_classes
+from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
+from .importers import ATTENDANCE_REPORT_TYPE, preview_attendance_report
 from .models import Client, LoginLog, PaymentMethod, PricingOption, ReportImport, ServiceCategory, Site, StaffMember, Studio
 from .serializers import (
     ChangePasswordSerializer,
@@ -157,9 +159,38 @@ class ReportImportViewSet(viewsets.ModelViewSet):
     queryset = ReportImport.objects.select_related("uploaded_by").all()
     serializer_class = ReportImportSerializer
     permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def perform_create(self, serializer):
         serializer.save(uploaded_by=self.request.user)
+
+    @action(detail=False, methods=["post"], url_path="preview")
+    def preview(self, request):
+        uploaded_file = request.FILES.get("file")
+        site_id = request.data.get("site")
+        report_type = request.data.get("report_type")
+
+        if not uploaded_file:
+            return Response({"error": "File is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not site_id:
+            return Response({"error": "Site is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if report_type != ATTENDANCE_REPORT_TYPE:
+            return Response(
+                {"error": f"Unsupported report_type. Currently supported: {ATTENDANCE_REPORT_TYPE}."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        try:
+            site = Site.objects.get(pk=site_id)
+        except Site.DoesNotExist:
+            return Response({"error": "Site not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        try:
+            preview = preview_attendance_report(uploaded_file, site)
+        except Exception as exc:
+            return Response({"error": f"Could not parse file: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
+
+        return Response(preview)
 
 
 class LoginLogViewSet(viewsets.ReadOnlyModelViewSet):
