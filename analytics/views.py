@@ -1,8 +1,8 @@
 from datetime import date, timedelta
 from decimal import Decimal
 
-from django.db.models import Count, DecimalField, Q, Sum
-from django.db.models.functions import Coalesce
+from django.db.models import Count, DecimalField, Sum
+from django.db.models.functions import Coalesce, TruncDate
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -41,6 +41,71 @@ def money_sum(queryset, field):
 
 def decimal_value(value):
     return float(value or Decimal("0.00"))
+
+
+def money_annotation(field):
+    return Coalesce(Sum(field), Decimal("0.00"), output_field=DecimalField(max_digits=14, decimal_places=2))
+
+
+def money_rows(queryset, group_field, amount_field, label="name", limit=20):
+    rows = (
+        queryset.values(group_field)
+        .annotate(total=money_annotation(amount_field), count=Count("id"))
+        .order_by("-total")[:limit]
+    )
+    return [
+        {
+            label: row[group_field] or "N/A",
+            "total": decimal_value(row["total"]),
+            "count": row["count"],
+        }
+        for row in rows
+    ]
+
+
+def count_rows(queryset, group_field, label="name", limit=20):
+    rows = queryset.values(group_field).annotate(total=Count("id")).order_by("-total")[:limit]
+    return [{label: row[group_field] or "N/A", "total": row["total"]} for row in rows]
+
+
+def date_money_rows(queryset, date_field, amount_field):
+    rows = (
+        queryset.annotate(day=TruncDate(date_field))
+        .values("day")
+        .annotate(total=money_annotation(amount_field), count=Count("id"))
+        .order_by("day")
+    )
+    return [
+        {
+            "date": row["day"].isoformat() if row["day"] else None,
+            "total": decimal_value(row["total"]),
+            "count": row["count"],
+        }
+        for row in rows
+    ]
+
+
+def date_count_rows(queryset, date_field):
+    rows = (
+        queryset.annotate(day=TruncDate(date_field))
+        .values("day")
+        .annotate(total=Count("id"))
+        .order_by("day")
+    )
+    return [{"date": row["day"].isoformat() if row["day"] else None, "total": row["total"]} for row in rows]
+
+
+def attendance_hour_rows(queryset):
+    counts = {}
+    for value in queryset.values_list("visit_time_raw", flat=True):
+        raw = str(value or "").strip()
+        if not raw:
+            continue
+        hour = raw.split(":")[0].strip()
+        if hour.isdigit():
+            hour_number = int(hour)
+            counts[hour_number] = counts.get(hour_number, 0) + 1
+    return [{"hour": hour, "total": counts[hour]} for hour in sorted(counts)]
 
 
 def base_querysets(request):
@@ -90,16 +155,12 @@ def revenue_view(request):
         "sales_revenue": decimal_value(money_sum(sales, "paid_total")),
         "service_revenue": decimal_value(money_sum(services, "total_amount")),
         "visit_revenue": decimal_value(money_sum(attendance, "revenue")),
-        "by_payment_method": list(
-            sales.values("payment_method__name")
-            .annotate(total=Coalesce(Sum("paid_total"), Decimal("0.00"), output_field=DecimalField(max_digits=14, decimal_places=2)))
-            .order_by("-total")[:20]
-        ),
-        "by_studio": list(
-            sales.values("studio__name")
-            .annotate(total=Coalesce(Sum("paid_total"), Decimal("0.00"), output_field=DecimalField(max_digits=14, decimal_places=2)))
-            .order_by("-total")[:20]
-        ),
+        "sales_by_date": date_money_rows(sales, "sale_date", "paid_total"),
+        "services_by_date": date_money_rows(services, "sale_date", "total_amount"),
+        "visits_by_date": date_money_rows(attendance, "visit_date", "revenue"),
+        "by_payment_method": money_rows(sales, "payment_method__name", "paid_total"),
+        "by_studio": money_rows(sales, "studio__name", "paid_total"),
+        "by_service": money_rows(services, "pricing_option__name", "total_amount"),
     })
 
 
@@ -113,21 +174,11 @@ def attendance_view(request):
         "no_shows": attendance.filter(no_show=True).count(),
         "late_cancels": attendance.filter(late_cancel=True).count(),
         "zero_revenue": attendance.filter(revenue=0).count(),
-        "by_studio": list(
-            attendance.values("visit_studio__name")
-            .annotate(total=Count("id"))
-            .order_by("-total")[:20]
-        ),
-        "by_instructor": list(
-            attendance.values("staff_member__name")
-            .annotate(total=Count("id"))
-            .order_by("-total")[:20]
-        ),
-        "by_service": list(
-            attendance.values("pricing_option__name")
-            .annotate(total=Count("id"))
-            .order_by("-total")[:20]
-        ),
+        "by_date": date_count_rows(attendance, "visit_date"),
+        "by_studio": count_rows(attendance, "visit_studio__name"),
+        "by_instructor": count_rows(attendance, "staff_member__name"),
+        "by_service": count_rows(attendance, "pricing_option__name"),
+        "by_hour": attendance_hour_rows(attendance),
     })
 
 
