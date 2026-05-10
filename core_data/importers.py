@@ -531,6 +531,26 @@ def get_or_create_scoped(model, site, name, mindbody_id=None, **extra_defaults):
     ), True
 
 
+def get_or_create_scoped_cached(cache, model, site, name, mindbody_id=None, **extra_defaults):
+    cleaned_name = clean_value(name)
+    if not cleaned_name or cleaned_name == "N/A":
+        return None, False
+
+    cache_key = (
+        model.__name__,
+        site.id,
+        clean_value(mindbody_id) if mindbody_id else "",
+        normalize_name(cleaned_name),
+        tuple(sorted((key, clean_value(value)) for key, value in extra_defaults.items())),
+    )
+    if cache_key in cache:
+        return cache[cache_key], False
+
+    obj, created = get_or_create_scoped(model, site, cleaned_name, mindbody_id=mindbody_id, **extra_defaults)
+    cache[cache_key] = obj
+    return obj, created
+
+
 def parse_int(value):
     number = parse_number(value)
     if number is None:
@@ -807,11 +827,13 @@ def import_attendance_report(uploaded_file, site, uploaded_by=None):
 
     rows_to_import = preview_attendance_rows(uploaded_file)
     current_visit_candidates = {}
+    lookup_cache = {}
 
     for row in rows_to_import["valid_rows"]:
         payload = row["payload"]
 
-        client, created = get_or_create_scoped(
+        client, created = get_or_create_scoped_cached(
+            lookup_cache,
             Client,
             site,
             payload.get("Cliente"),
@@ -819,23 +841,40 @@ def import_attendance_report(uploaded_file, site, uploaded_by=None):
         )
         stats["new_lookups"]["clients"] += int(created)
 
-        visit_studio, created = get_or_create_scoped(Studio, site, payload.get("Ubicación de visita"))
+        visit_studio, created = get_or_create_scoped_cached(
+            lookup_cache,
+            Studio,
+            site,
+            payload.get("Ubicación de visita"),
+        )
         stats["new_lookups"]["studios"] += int(created)
 
-        sale_studio, created = get_or_create_scoped(Studio, site, payload.get("Ubicación de venta"))
+        sale_studio, created = get_or_create_scoped_cached(
+            lookup_cache,
+            Studio,
+            site,
+            payload.get("Ubicación de venta"),
+        )
         stats["new_lookups"]["studios"] += int(created)
 
-        staff_member, created = get_or_create_scoped(StaffMember, site, payload.get("Personal"))
+        staff_member, created = get_or_create_scoped_cached(
+            lookup_cache,
+            StaffMember,
+            site,
+            payload.get("Personal"),
+        )
         stats["new_lookups"]["staff_members"] += int(created)
 
-        service_category, created = get_or_create_scoped(
+        service_category, created = get_or_create_scoped_cached(
+            lookup_cache,
             ServiceCategory,
             site,
             payload.get("Visita por categoría de servicio"),
         )
         stats["new_lookups"]["service_categories"] += int(created)
 
-        pricing_option, created = get_or_create_scoped(
+        pricing_option, created = get_or_create_scoped_cached(
+            lookup_cache,
             PricingOption,
             site,
             payload.get("Opción de precio"),
@@ -843,7 +882,12 @@ def import_attendance_report(uploaded_file, site, uploaded_by=None):
         )
         stats["new_lookups"]["pricing_options"] += int(created)
 
-        payment_method, created = get_or_create_scoped(PaymentMethod, site, payload.get("Método de pago"))
+        payment_method, created = get_or_create_scoped_cached(
+            lookup_cache,
+            PaymentMethod,
+            site,
+            payload.get("Método de pago"),
+        )
         stats["new_lookups"]["payment_methods"] += int(created)
 
         raw_row = AttendanceRawRow.objects.create(
@@ -1271,14 +1315,26 @@ def import_sales_report(uploaded_file, site, uploaded_by=None):
     rows_to_import = validate_sales_rows(uploaded_file)
     assign_occurrence_indexes(rows_to_import["valid_rows"], lambda payload: sale_natural_key(site, payload))
     current_candidates = {}
+    lookup_cache = {}
 
     for row in rows_to_import["valid_rows"]:
         payload = row["payload"]
-        client, created = get_or_create_scoped(Client, site, payload.get("Cliente"), mindbody_id=payload.get("ID del Cliente"))
+        client, created = get_or_create_scoped_cached(
+            lookup_cache,
+            Client,
+            site,
+            payload.get("Cliente"),
+            mindbody_id=payload.get("ID del Cliente"),
+        )
         stats["new_lookups"]["clients"] += int(created)
-        studio, created = get_or_create_scoped(Studio, site, payload.get("Localidad"))
+        studio, created = get_or_create_scoped_cached(lookup_cache, Studio, site, payload.get("Localidad"))
         stats["new_lookups"]["studios"] += int(created)
-        payment_method, created = get_or_create_scoped(PaymentMethod, site, payload.get("Forma de Pago"))
+        payment_method, created = get_or_create_scoped_cached(
+            lookup_cache,
+            PaymentMethod,
+            site,
+            payload.get("Forma de Pago"),
+        )
         stats["new_lookups"]["payment_methods"] += int(created)
 
         raw_row = SaleRawRow.objects.create(
@@ -1614,10 +1670,12 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None):
         lambda payload: service_purchase_natural_key(site, payload),
     )
     current_candidates = {}
+    lookup_cache = {}
 
     for row in rows_to_import["valid_rows"]:
         payload = row["payload"]
-        client, created = get_or_create_scoped(
+        client, created = get_or_create_scoped_cached(
+            lookup_cache,
             Client,
             site,
             payload.get("Cliente"),
@@ -1625,9 +1683,15 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None):
             phone=payload.get("Teléfono particular"),
         )
         stats["new_lookups"]["clients"] += int(created)
-        service_category, created = get_or_create_scoped(ServiceCategory, site, payload.get("Categoría"))
+        service_category, created = get_or_create_scoped_cached(
+            lookup_cache,
+            ServiceCategory,
+            site,
+            payload.get("Categoría"),
+        )
         stats["new_lookups"]["service_categories"] += int(created)
-        pricing_option, created = get_or_create_scoped(
+        pricing_option, created = get_or_create_scoped_cached(
+            lookup_cache,
             PricingOption,
             site,
             payload.get("Nombre"),
