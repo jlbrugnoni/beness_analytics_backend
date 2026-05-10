@@ -111,6 +111,52 @@ def normalize_name(value):
     return clean_value(value).casefold()
 
 
+def display_name_part(value):
+    raw = clean_value(value)
+    if not raw:
+        return ""
+    small_words = {"de", "del", "de la", "la", "las", "los", "y", "da", "do", "dos"}
+    words = []
+    for word in raw.lower().split():
+        words.append(word if word in small_words else word[:1].upper() + word[1:])
+    return " ".join(words)
+
+
+def split_client_name(mindbody_name):
+    raw = clean_value(mindbody_name)
+    if "," in raw:
+        last_name, first_name = [part.strip() for part in raw.split(",", 1)]
+        return display_name_part(first_name), display_name_part(last_name)
+    parts = display_name_part(raw).split()
+    if len(parts) <= 1:
+        return display_name_part(raw), ""
+    return " ".join(parts[:-1]), parts[-1]
+
+
+def split_staff_name(mindbody_name):
+    raw = clean_value(mindbody_name)
+    if "," in raw:
+        return split_client_name(raw)
+    parts = display_name_part(raw).split()
+    if len(parts) <= 1:
+        return display_name_part(raw), ""
+    return parts[0], " ".join(parts[1:])
+
+
+def person_defaults(model, name, extra_defaults):
+    if model not in (Client, StaffMember):
+        return {"name": clean_value(name), **extra_defaults}
+
+    first_name, last_name = split_client_name(name) if model is Client else split_staff_name(name)
+    display_name = " ".join(part for part in (first_name, last_name) if part).strip() or display_name_part(name)
+    return {
+        "name": display_name,
+        "first_name": first_name,
+        "last_name": last_name,
+        **extra_defaults,
+    }
+
+
 def parse_number(value):
     raw = clean_value(value)
     if raw in ("", "N/A", "---"):
@@ -399,6 +445,16 @@ def preview_attendance_report(uploaded_file, site):
         row["payload"]["_late_cancel"] is not True and row["payload"]["_no_show"] is not True
         for row in valid_rows
     )
+    sample_fields = [
+        "Fecha",
+        "Tiempo",
+        "ID del cliente",
+        "Cliente",
+        "Personal",
+        "Ubicación de visita",
+        "Tipo de Visita",
+        "Opción de precio",
+    ]
 
     return {
         "report_type": ATTENDANCE_REPORT_TYPE,
@@ -430,6 +486,20 @@ def preview_attendance_report(uploaded_file, site):
             "zero_revenue_rows": sum(value == 0 for value in revenue_values),
         },
         "lookup_preview": build_lookup_preview(site, valid_rows),
+        "data_quality": {
+            "requires_review": duplicate_extra_rows > 0,
+            "repeated_row_samples": repeated_row_samples(valid_rows, sample_fields),
+            "natural_key_collision_samples": natural_key_collision_samples(
+                valid_rows,
+                lambda payload: attendance_natural_key(site, payload),
+                sample_fields,
+            ),
+            "import_impact": current_record_impact(
+                valid_rows,
+                AttendanceVisit,
+                lambda payload: attendance_natural_key(site, payload),
+            ),
+        },
         "invalid_row_samples": invalid_rows[:10],
         "sample_rows": valid_rows[:5],
     }
@@ -439,30 +509,25 @@ def get_or_create_scoped(model, site, name, mindbody_id=None, **extra_defaults):
     cleaned_name = clean_value(name)
     if not cleaned_name or cleaned_name == "N/A":
         return None, False
+    defaults = person_defaults(model, cleaned_name, extra_defaults)
+    defaults["mindbody_name"] = cleaned_name
+    defaults["normalized_name"] = normalize_name(defaults["name"])
 
     if mindbody_id:
         obj, created = model.objects.get_or_create(
             site=site,
             mindbody_id=clean_value(mindbody_id),
-            defaults={
-                "name": cleaned_name,
-                "mindbody_name": cleaned_name,
-                "normalized_name": normalize_name(cleaned_name),
-                **extra_defaults,
-            },
+            defaults=defaults,
         )
         return obj, created
 
-    obj = model.objects.filter(site=site, normalized_name=normalize_name(cleaned_name)).first()
+    obj = model.objects.filter(site=site, normalized_name=defaults["normalized_name"]).first()
     if obj:
         return obj, False
 
     return model.objects.create(
         site=site,
-        name=cleaned_name,
-        mindbody_name=cleaned_name,
-        normalized_name=normalize_name(cleaned_name),
-        **extra_defaults,
+        **defaults,
     ), True
 
 
@@ -629,6 +694,80 @@ def changed_fields(previous, current):
     if not previous:
         return []
     return sorted(key for key, value in current.items() if previous.get(key) != value)
+
+
+def compact_payload(payload, fields):
+    return {field: payload.get(field) for field in fields if payload.get(field) not in ("", None)}
+
+
+def repeated_row_samples(valid_rows, sample_fields, max_samples=50):
+    grouped = {}
+    for row in valid_rows:
+        grouped.setdefault(row["hash"], []).append(row)
+
+    samples = []
+    for rows in grouped.values():
+        if len(rows) <= 1:
+            continue
+        samples.append({
+            "count": len(rows),
+            "row_numbers": [row["row_number"] for row in rows[:10]],
+            "payload": compact_payload(rows[0]["payload"], sample_fields),
+        })
+        if len(samples) == max_samples:
+            break
+    return samples
+
+
+def current_record_impact(valid_rows, model, natural_key_builder):
+    current_candidates = {}
+    for row in valid_rows:
+        current_candidates[natural_key_builder(row["payload"])] = row
+
+    existing = {
+        item.natural_key: item.current_row_hash
+        for item in model.objects.filter(natural_key__in=current_candidates.keys())
+    }
+    to_create = 0
+    to_update = 0
+    unchanged = 0
+
+    for natural_key, row in current_candidates.items():
+        current_hash = existing.get(natural_key)
+        if current_hash is None:
+            to_create += 1
+        elif current_hash == row["hash"]:
+            unchanged += 1
+        else:
+            to_update += 1
+
+    return {
+        "raw_rows_to_save": len(valid_rows),
+        "current_records_to_create": to_create,
+        "current_records_to_update": to_update,
+        "current_records_unchanged": unchanged,
+        "current_records_in_file": len(current_candidates),
+        "natural_key_collisions": len(valid_rows) - len(current_candidates),
+    }
+
+
+def natural_key_collision_samples(valid_rows, natural_key_builder, sample_fields, max_samples=50):
+    grouped = {}
+    for row in valid_rows:
+        grouped.setdefault(natural_key_builder(row["payload"]), []).append(row)
+
+    samples = []
+    for rows in grouped.values():
+        if len(rows) <= 1:
+            continue
+        samples.append({
+            "count": len(rows),
+            "row_numbers": [row["row_number"] for row in rows[:10]],
+            "payload": compact_payload(rows[0]["payload"], sample_fields),
+        })
+        if len(samples) == max_samples:
+            break
+    return samples
 
 
 @transaction.atomic
@@ -998,6 +1137,18 @@ def preview_sales_report(uploaded_file, site):
         for row in rows["valid_rows"]
         if parse_excel_date(row["payload"].get("Fecha de Venta"))
     ]
+    sample_fields = [
+        "Fecha de Venta",
+        "ID del Cliente",
+        "Cliente",
+        "No. de Venta",
+        "Nombre del artículo",
+        "Localidad",
+        "Forma de Pago",
+        "Total de artículos",
+    ]
+    repeated_samples = repeated_row_samples(rows["valid_rows"], sample_fields)
+    assign_occurrence_indexes(rows["valid_rows"], lambda payload: sale_natural_key(site, payload))
 
     return {
         "report_type": SALES_REPORT_TYPE,
@@ -1031,6 +1182,20 @@ def preview_sales_report(uploaded_file, site):
             "zero_revenue_rows": sum(row["payload"]["_paid_total"] == 0 for row in rows["valid_rows"]),
         },
         "lookup_preview": build_sales_lookup_preview(site, rows["valid_rows"]),
+        "data_quality": {
+            "requires_review": False,
+            "repeated_row_samples": repeated_samples,
+            "natural_key_collision_samples": natural_key_collision_samples(
+                rows["valid_rows"],
+                lambda payload: sale_natural_key(site, payload),
+                sample_fields,
+            ),
+            "import_impact": current_record_impact(
+                rows["valid_rows"],
+                SaleLine,
+                lambda payload: sale_natural_key(site, payload),
+            ),
+        },
         "invalid_row_samples": rows["invalid_rows"][:10],
         "sample_rows": rows["valid_rows"][:5],
     }
@@ -1314,6 +1479,21 @@ def preview_sales_by_service_report(uploaded_file, site):
         for row in rows["valid_rows"]
         if parse_excel_date(row["payload"].get("Fecha de Expiración"))
     ]
+    sample_fields = [
+        "Nombre",
+        "ID del Cliente",
+        "Cliente",
+        "Categoría",
+        "Fecha de Venta",
+        "Fecha de activación",
+        "Fecha de Expiración",
+        "Cantidad total",
+    ]
+    repeated_samples = repeated_row_samples(rows["valid_rows"], sample_fields)
+    assign_occurrence_indexes(
+        rows["valid_rows"],
+        lambda payload: service_purchase_natural_key(site, payload),
+    )
 
     return {
         "report_type": SALES_BY_SERVICE_REPORT_TYPE,
@@ -1351,6 +1531,20 @@ def preview_sales_by_service_report(uploaded_file, site):
             "zero_revenue_rows": sum(row["payload"]["_total_amount"] == 0 for row in rows["valid_rows"]),
         },
         "lookup_preview": build_service_purchase_lookup_preview(site, rows["valid_rows"]),
+        "data_quality": {
+            "requires_review": False,
+            "repeated_row_samples": repeated_samples,
+            "natural_key_collision_samples": natural_key_collision_samples(
+                rows["valid_rows"],
+                lambda payload: service_purchase_natural_key(site, payload),
+                sample_fields,
+            ),
+            "import_impact": current_record_impact(
+                rows["valid_rows"],
+                ServicePurchase,
+                lambda payload: service_purchase_natural_key(site, payload),
+            ),
+        },
         "invalid_row_samples": rows["invalid_rows"][:10],
         "sample_rows": rows["valid_rows"][:5],
     }

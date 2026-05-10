@@ -1,7 +1,9 @@
+from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from rest_framework import status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action, api_view, permission_classes
@@ -13,16 +15,19 @@ from .importers import SUPPORTED_REPORT_TYPES, import_report, preview_report
 from .models import (
     AttendanceRawRow,
     AttendanceVisit,
+    AttendanceVisitVersion,
     Client,
     LoginLog,
     PaymentMethod,
     PricingOption,
     ReportImport,
     SaleLine,
+    SaleLineVersion,
     SaleRawRow,
     ServiceCategory,
     ServicePurchase,
     ServicePurchaseRawRow,
+    ServicePurchaseVersion,
     Site,
     StaffMember,
     Studio,
@@ -198,6 +203,55 @@ class ReportImportViewSet(viewsets.ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(uploaded_by=self.request.user)
+
+    @action(detail=False, methods=["post"], url_path="reset-analytics-data")
+    def reset_analytics_data(self, request):
+        if not settings.ENABLE_ANALYTICS_RESET:
+            return Response(
+                {"error": "Analytics reset is disabled for this environment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response(
+                {"error": "Only staff users can reset analytics data."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if request.data.get("confirmation") != "RESET ANALYTICS DATA":
+            return Response(
+                {"error": "Invalid confirmation phrase."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        models_to_clear = [
+            AttendanceVisitVersion,
+            SaleLineVersion,
+            ServicePurchaseVersion,
+            AttendanceVisit,
+            SaleLine,
+            ServicePurchase,
+            AttendanceRawRow,
+            SaleRawRow,
+            ServicePurchaseRawRow,
+            ReportImport,
+            PricingOption,
+            PaymentMethod,
+            StaffMember,
+            ServiceCategory,
+            Client,
+            Studio,
+        ]
+
+        deleted_counts = {}
+        with transaction.atomic():
+            for model in models_to_clear:
+                deleted_counts[model.__name__] = model.objects.count()
+                model.objects.all().delete()
+
+        return Response({
+            "message": "Analytics data reset completed.",
+            "deleted_counts": deleted_counts,
+            "preserved": ["users", "groups", "permissions", "sites"],
+        })
 
     @action(detail=False, methods=["post"], url_path="preview")
     def preview(self, request):

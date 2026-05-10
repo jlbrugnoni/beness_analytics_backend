@@ -120,6 +120,8 @@ class Studio(SiteScopedModel):
 
 
 class Client(SiteScopedModel):
+    first_name = models.CharField(max_length=150, blank=True, null=True)
+    last_name = models.CharField(max_length=150, blank=True, null=True)
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=50, blank=True, null=True)
 
@@ -128,7 +130,8 @@ class Client(SiteScopedModel):
 
 
 class StaffMember(SiteScopedModel):
-    pass
+    first_name = models.CharField(max_length=150, blank=True, null=True)
+    last_name = models.CharField(max_length=150, blank=True, null=True)
 
 
 class ServiceCategory(SiteScopedModel):
