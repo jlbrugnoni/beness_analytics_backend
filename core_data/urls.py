@@ -25,6 +25,7 @@ router.register(r"login-logs", views.LoginLogViewSet, basename="login-log")
 
 urlpatterns = [
     path("", include(router.urls)),
+    path("analytics/", include("analytics.urls")),
     path("login", views.login_view, name="login"),
     path("validate-token", views.validate_token_view, name="validate-token"),
     path("logout", views.logout_view, name="logout"),
