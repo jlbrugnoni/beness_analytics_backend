@@ -197,6 +197,8 @@ def serialize_purchase(purchase, today=None, renewal=None):
     payload = {
         "client": purchase.client.name,
         "client_mindbody_id": purchase.client.mindbody_id,
+        "client_email": purchase.client.email,
+        "client_phone": purchase.client.phone,
         "client_id": purchase.client_id,
         "service": service_label(purchase),
         "sale_date": purchase.sale_date.isoformat() if purchase.sale_date else None,
@@ -241,6 +243,36 @@ def find_next_purchase(purchase, client_purchases):
             continue
         return candidate
     return None
+
+
+def retention_groups(request):
+    start, end, _, _, services = base_querysets(request)
+    services = services.filter(pricing_option__track_retention=True)
+    site_filtered_purchases = filtered_by_site(
+        ServicePurchase.objects.filter(pricing_option__track_retention=True),
+        request,
+    )
+    expired = (
+        site_filtered_purchases.select_related("client", "pricing_option")
+        .filter(expiration_date__range=(start, end))
+        .order_by("expiration_date", "client__name")
+    )
+    expired_client_ids = list(expired.values_list("client_id", flat=True).distinct())
+    purchase_history = build_purchase_history(
+        site_filtered_purchases.select_related("client", "pricing_option").filter(client_id__in=expired_client_ids)
+    )
+    renewed = []
+    not_renewed = []
+    renewal_day_values = []
+    for purchase in expired:
+        renewal = find_next_purchase(purchase, purchase_history.get(purchase.client_id, []))
+        if renewal:
+            renewed.append((purchase, renewal))
+            if renewal.sale_date and purchase.expiration_date:
+                renewal_day_values.append((renewal.sale_date - purchase.expiration_date).days)
+        else:
+            not_renewed.append(purchase)
+    return start, end, services, expired, renewed, not_renewed, renewal_day_values
 
 
 def average(values):
@@ -351,41 +383,18 @@ def attendance_view(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def retention_view(request):
-    start, end, _, _, services = base_querysets(request)
+    start, end, services, expired, renewed, not_renewed, renewal_day_values = retention_groups(request)
     today = date.today()
-    services = services.filter(pricing_option__track_retention=True)
+    future_window = today + timedelta(days=30)
     site_filtered_purchases = filtered_by_site(
         ServicePurchase.objects.filter(pricing_option__track_retention=True),
         request,
     )
-    expired = (
-        site_filtered_purchases.select_related("client", "pricing_option")
-        .filter(expiration_date__range=(start, end))
-        .order_by("expiration_date", "client__name")
-    )
-    future_window = today + timedelta(days=30)
     upcoming = (
         site_filtered_purchases.select_related("client", "pricing_option")
         .filter(expiration_date__gte=today, expiration_date__lte=future_window)
         .order_by("expiration_date", "client__name")
     )
-
-    expired_client_ids = list(expired.values_list("client_id", flat=True).distinct())
-    purchase_history = build_purchase_history(
-        site_filtered_purchases.select_related("client", "pricing_option").filter(client_id__in=expired_client_ids)
-    )
-    renewed = []
-    not_renewed = []
-    renewal_day_values = []
-
-    for purchase in expired:
-        renewal = find_next_purchase(purchase, purchase_history.get(purchase.client_id, []))
-        if renewal:
-            renewed.append((purchase, renewal))
-            if renewal.sale_date and purchase.expiration_date:
-                renewal_day_values.append((renewal.sale_date - purchase.expiration_date).days)
-        else:
-            not_renewed.append(purchase)
 
     expired_count = expired.count()
     renewed_count = len(renewed)
@@ -414,6 +423,38 @@ def retention_view(request):
             "renovado/reactivado si el mismo cliente tiene una compra posterior a la venta original que "
             "extiende o mantiene una expiracion igual o posterior."
         ),
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def retention_followup_view(request):
+    _, _, _, _, renewed, not_renewed, _ = retention_groups(request)
+    today = date.today()
+    status_value = request.query_params.get("status", "not_renewed")
+    search = str(request.query_params.get("search") or "").strip().casefold()
+
+    if status_value == "renewed":
+        rows = [
+            serialize_purchase(purchase, today=today, renewal=renewal)
+            for purchase, renewal in renewed
+        ]
+    else:
+        rows = [serialize_purchase(purchase, today=today) for purchase in not_renewed]
+
+    if search:
+        rows = [
+            row for row in rows
+            if search in str(row.get("client") or "").casefold()
+            or search in str(row.get("client_mindbody_id") or "").casefold()
+            or search in str(row.get("service") or "").casefold()
+        ]
+
+    rows.sort(key=lambda row: (row.get("expiration_date") or "", row.get("client") or ""))
+    return Response({
+        "status": status_value,
+        "count": len(rows),
+        "rows": rows,
     })
 
 
