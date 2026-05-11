@@ -21,15 +21,18 @@ from .models import (
     PaymentMethod,
     PricingOption,
     ReportImport,
+    Room,
     SaleLine,
     SaleLineVersion,
     SaleRawRow,
+    ScheduledClass,
     ServiceCategory,
     ServicePurchase,
     ServicePurchaseRawRow,
     ServicePurchaseVersion,
     Site,
     StaffMember,
+    StudioClosure,
     Studio,
 )
 from .serializers import (
@@ -42,13 +45,16 @@ from .serializers import (
     PaymentMethodSerializer,
     PricingOptionSerializer,
     ReportImportSerializer,
+    RoomSerializer,
     SaleLineSerializer,
     SaleRawRowSerializer,
+    ScheduledClassSerializer,
     ServiceCategorySerializer,
     ServicePurchaseRawRowSerializer,
     ServicePurchaseSerializer,
     SiteSerializer,
     StaffMemberSerializer,
+    StudioClosureSerializer,
     StudioSerializer,
     UserSerializer,
 )
@@ -152,6 +158,12 @@ class StudioViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
 
+class RoomViewSet(viewsets.ModelViewSet):
+    queryset = Room.objects.select_related("site", "studio").all()
+    serializer_class = RoomSerializer
+    permission_classes = [IsAuthenticated]
+
+
 class ClientViewSet(viewsets.ModelViewSet):
     queryset = Client.objects.select_related("site").all()
     serializer_class = ClientSerializer
@@ -180,6 +192,60 @@ class PaymentMethodViewSet(viewsets.ModelViewSet):
     queryset = PaymentMethod.objects.select_related("site").all()
     serializer_class = PaymentMethodSerializer
     permission_classes = [IsAuthenticated]
+
+
+class ScheduledClassViewSet(viewsets.ModelViewSet):
+    serializer_class = ScheduledClassSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = ScheduledClass.objects.select_related(
+            "site",
+            "studio",
+            "room",
+            "staff_member",
+            "pricing_option",
+        ).all()
+        site = self.request.query_params.get("site")
+        studio = self.request.query_params.get("studio")
+        room = self.request.query_params.get("room")
+        date_from = self.request.query_params.get("date_from")
+        date_to = self.request.query_params.get("date_to")
+        if site:
+            queryset = queryset.filter(site_id=site)
+        if studio:
+            queryset = queryset.filter(studio_id=studio)
+        if room:
+            queryset = queryset.filter(room_id=room)
+        if date_from:
+            queryset = queryset.filter(class_date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(class_date__lte=date_to)
+        return queryset
+
+
+class StudioClosureViewSet(viewsets.ModelViewSet):
+    serializer_class = StudioClosureSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = StudioClosure.objects.select_related("site", "studio", "room").all()
+        site = self.request.query_params.get("site")
+        studio = self.request.query_params.get("studio")
+        room = self.request.query_params.get("room")
+        date_from = self.request.query_params.get("date_from")
+        date_to = self.request.query_params.get("date_to")
+        if site:
+            queryset = queryset.filter(site_id=site)
+        if studio:
+            queryset = queryset.filter(studio_id=studio)
+        if room:
+            queryset = queryset.filter(room_id=room)
+        if date_from:
+            queryset = queryset.filter(closure_date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(closure_date__lte=date_to)
+        return queryset
 
 
 class ReportImportViewSet(viewsets.ModelViewSet):

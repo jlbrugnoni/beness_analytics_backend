@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 
 from django.db.models import Count, DecimalField, Sum
@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core_data.models import AttendanceVisit, PricingOption, SaleLine, ServicePurchase, Site
+from core_data.models import AttendanceVisit, PricingOption, SaleLine, ScheduledClass, ServicePurchase, Site, StudioClosure
 
 
 def parse_date(value):
@@ -108,6 +108,24 @@ def attendance_hour_rows(queryset):
     return [{"hour": hour, "total": counts[hour]} for hour in sorted(counts)]
 
 
+def parse_time_value(value):
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    for fmt in ("%H:%M:%S", "%H:%M", "%I:%M %p", "%I %p"):
+        try:
+            return datetime.strptime(raw.upper(), fmt).time().replace(second=0, microsecond=0)
+        except ValueError:
+            continue
+    return None
+
+
+def time_overlaps(start_a, end_a, start_b, end_b):
+    if not all([start_a, end_a, start_b, end_b]):
+        return False
+    return start_a < end_b and start_b < end_a
+
+
 def service_label(purchase):
     return purchase.pricing_option.name if purchase.pricing_option else "N/A"
 
@@ -165,6 +183,10 @@ def find_next_purchase(purchase, client_purchases):
 
 def average(values):
     return round(sum(values) / len(values), 2) if values else None
+
+
+def percentage(numerator, denominator):
+    return round(numerator / denominator * 100, 2) if denominator else 0
 
 
 def base_querysets(request):
@@ -313,14 +335,138 @@ def retention_view(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def occupation_view(request):
+    start, end, attendance, _, _ = base_querysets(request)
+    scheduled_classes = filtered_by_site(
+        ScheduledClass.objects.select_related("site", "studio", "room").filter(class_date__range=(start, end)),
+        request,
+    )
+    closures = list(
+        filtered_by_site(
+            StudioClosure.objects.select_related("site", "studio", "room").filter(
+                active=True,
+                closure_date__range=(start, end),
+            ),
+            request,
+        )
+    )
+
+    def is_closed(scheduled_class):
+        for closure in closures:
+            if closure.closure_date != scheduled_class.class_date:
+                continue
+            if closure.studio_id and closure.studio_id != scheduled_class.studio_id:
+                continue
+            if closure.room_id and closure.room_id != scheduled_class.room_id:
+                continue
+            if closure.all_day:
+                return True
+            if time_overlaps(closure.start_time, closure.end_time, scheduled_class.start_time, scheduled_class.end_time):
+                return True
+        return False
+
+    available_classes = [
+        scheduled_class
+        for scheduled_class in scheduled_classes
+        if scheduled_class.status == ScheduledClass.STATUS_SCHEDULED and not is_closed(scheduled_class)
+    ]
+    attended_visits = attendance.filter(no_show=False, late_cancel=False)
+
+    attended_by_slot = {}
+    for visit in attended_visits.values("site_id", "visit_studio_id", "visit_date", "visit_time_raw"):
+        visit_time = parse_time_value(visit["visit_time_raw"])
+        if not visit_time:
+            continue
+        key = (visit["site_id"], visit["visit_studio_id"], visit["visit_date"], visit_time)
+        attended_by_slot[key] = attended_by_slot.get(key, 0) + 1
+
+    slots = {}
+    by_studio = {}
+    by_day = {}
+    by_room = {}
+
+    for scheduled_class in available_classes:
+        key = (
+            scheduled_class.site_id,
+            scheduled_class.studio_id,
+            scheduled_class.class_date,
+            scheduled_class.start_time.replace(second=0, microsecond=0),
+        )
+        slot = slots.setdefault(key, {
+            "site": scheduled_class.site.name,
+            "studio": scheduled_class.studio.name,
+            "date": scheduled_class.class_date.isoformat(),
+            "start_time": scheduled_class.start_time.strftime("%H:%M"),
+            "capacity": 0,
+            "scheduled_classes": 0,
+            "attended": attended_by_slot.get(key, 0),
+        })
+        slot["capacity"] += scheduled_class.capacity
+        slot["scheduled_classes"] += 1
+
+        studio_row = by_studio.setdefault(scheduled_class.studio_id, {
+            "name": scheduled_class.studio.name,
+            "capacity": 0,
+            "attended": 0,
+            "scheduled_classes": 0,
+        })
+        studio_row["capacity"] += scheduled_class.capacity
+        studio_row["scheduled_classes"] += 1
+
+        day_key = scheduled_class.class_date.isoformat()
+        day_row = by_day.setdefault(day_key, {"date": day_key, "capacity": 0, "attended": 0, "scheduled_classes": 0})
+        day_row["capacity"] += scheduled_class.capacity
+        day_row["scheduled_classes"] += 1
+
+        room_name = scheduled_class.room.name if scheduled_class.room else "N/A"
+        room_key = scheduled_class.room_id or f"none-{scheduled_class.studio_id}"
+        room_row = by_room.setdefault(room_key, {
+            "name": room_name,
+            "studio": scheduled_class.studio.name,
+            "capacity": 0,
+            "scheduled_classes": 0,
+        })
+        room_row["capacity"] += scheduled_class.capacity
+        room_row["scheduled_classes"] += 1
+
+    total_capacity = 0
+    matched_attended = 0
+    for key, slot in slots.items():
+        total_capacity += slot["capacity"]
+        matched_attended += slot["attended"]
+        slot["occupation_rate"] = percentage(slot["attended"], slot["capacity"])
+        _, studio_id, class_date, _ = key
+        by_studio[studio_id]["attended"] += slot["attended"]
+        by_day[class_date.isoformat()]["attended"] += slot["attended"]
+
+    for row in by_studio.values():
+        row["occupation_rate"] = percentage(row["attended"], row["capacity"])
+    for row in by_day.values():
+        row["occupation_rate"] = percentage(row["attended"], row["capacity"])
+
+    scheduled_slot_keys = set(slots.keys())
+    unscheduled_attended = sum(
+        count for key, count in attended_by_slot.items()
+        if key not in scheduled_slot_keys
+    )
+
     return Response({
-        "status": "pending_capacity_model",
         "formula": "ocupacion = asistencias reales / capacidad programada",
-        "missing_data": [
-            "salas por estudio",
-            "tipo de sala",
-            "capacidad de reformers o cupos",
-            "horarios programados",
-            "duracion de sesiones",
-        ],
+        "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+        "scheduled_classes": scheduled_classes.count(),
+        "available_classes": len(available_classes),
+        "closed_or_unavailable_classes": scheduled_classes.count() - len(available_classes),
+        "closures": len(closures),
+        "scheduled_capacity": total_capacity,
+        "matched_attended_visits": matched_attended,
+        "unscheduled_attended_visits": unscheduled_attended,
+        "occupation_rate": percentage(matched_attended, total_capacity),
+        "by_studio": sorted(by_studio.values(), key=lambda row: row["name"]),
+        "by_day": sorted(by_day.values(), key=lambda row: row["date"]),
+        "by_room_capacity": sorted(by_room.values(), key=lambda row: (row["studio"], row["name"])),
+        "by_slot": sorted(slots.values(), key=lambda row: (row["date"], row["start_time"], row["studio"]))[:100],
+        "note": (
+            "La asistencia se empareja por site, estudio, fecha y hora de inicio. Si dos salas del mismo estudio "
+            "funcionan a la misma hora, la ocupacion es mas confiable a nivel estudio/franja que a nivel sala "
+            "hasta que tengamos una fuente con sala exacta por visita."
+        ),
     })
