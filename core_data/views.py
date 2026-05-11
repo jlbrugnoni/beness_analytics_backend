@@ -270,6 +270,99 @@ class ReportImportViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(uploaded_by=self.request.user)
 
+    def import_models(self, report_import):
+        if report_import.report_type == "attendance_with_revenue":
+            return {
+                "raw_model": AttendanceRawRow,
+                "current_model": AttendanceVisit,
+                "version_model": AttendanceVisitVersion,
+                "raw_relation": "raw_row",
+                "created_label": "attendance_created",
+                "changed_label": "attendance_changed",
+                "identical_label": "attendance_identical",
+            }
+        if report_import.report_type == "sales":
+            return {
+                "raw_model": SaleRawRow,
+                "current_model": SaleLine,
+                "version_model": SaleLineVersion,
+                "raw_relation": "raw_row",
+                "created_label": "sale_lines_created",
+                "changed_label": "sale_lines_changed",
+                "identical_label": "sale_lines_identical",
+            }
+        if report_import.report_type == "sales_by_service":
+            return {
+                "raw_model": ServicePurchaseRawRow,
+                "current_model": ServicePurchase,
+                "version_model": ServicePurchaseVersion,
+                "raw_relation": "raw_row",
+                "created_label": "service_purchases_created",
+                "changed_label": "service_purchases_changed",
+                "identical_label": "service_purchases_identical",
+            }
+        return None
+
+    @action(detail=True, methods=["get"], url_path="detail-summary")
+    def detail_summary(self, request, pk=None):
+        report_import = self.get_object()
+        model_config = self.import_models(report_import)
+        if not model_config:
+            return Response({"error": "Unsupported report type."}, status=status.HTTP_400_BAD_REQUEST)
+
+        raw_queryset = model_config["raw_model"].objects.filter(report_import=report_import)
+        current_queryset = model_config["current_model"].objects.filter(last_seen_import=report_import)
+        created_count = current_queryset.filter(first_seen_import=report_import).count()
+        versions = model_config["version_model"].objects.filter(report_import=report_import)
+        changed_count = max(versions.count() - created_count, 0)
+        identical_count = max(current_queryset.count() - versions.count(), 0)
+        invalid_rows = raw_queryset.filter(is_valid=False)
+
+        changed_samples = []
+        for version in versions.exclude(changed_fields=[]).select_related(model_config["raw_relation"])[:15]:
+            raw_row = getattr(version, model_config["raw_relation"])
+            changed_samples.append({
+                "row_number": raw_row.row_number if raw_row else None,
+                "changed_fields": version.changed_fields,
+            })
+
+        invalid_samples = [
+            {
+                "row_number": raw.row_number,
+                "errors": raw.validation_errors,
+                "summary": " | ".join(
+                    f"{key}: {value}"
+                    for key, value in raw.normalized_payload.items()
+                    if not key.startswith("_") and value not in ("", None)
+                )[:500],
+            }
+            for raw in invalid_rows.order_by("row_number")[:15]
+        ]
+
+        return Response({
+            "id": report_import.id,
+            "file_name": report_import.file_name,
+            "report_type": report_import.report_type,
+            "status": report_import.status,
+            "uploaded_at": report_import.uploaded_at,
+            "processed_at": report_import.processed_at,
+            "total_rows": report_import.total_rows,
+            "valid_rows": report_import.valid_rows,
+            "error_rows": report_import.error_rows,
+            "counts": {
+                "raw_rows": raw_queryset.count(),
+                "valid_raw_rows": raw_queryset.filter(is_valid=True).count(),
+                "invalid_raw_rows": invalid_rows.count(),
+                "current_records_seen": current_queryset.count(),
+                model_config["created_label"]: created_count,
+                model_config["changed_label"]: changed_count,
+                model_config["identical_label"]: identical_count,
+                "versions_created": versions.count(),
+            },
+            "changed_samples": changed_samples,
+            "invalid_samples": invalid_samples,
+        })
+
     @action(detail=False, methods=["post"], url_path="reset-analytics-data")
     def reset_analytics_data(self, request):
         if not settings.ENABLE_ANALYTICS_RESET:
