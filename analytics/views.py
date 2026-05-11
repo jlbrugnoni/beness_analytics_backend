@@ -1,3 +1,4 @@
+from calendar import monthrange
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
@@ -21,8 +22,10 @@ def parse_date(value):
 
 def date_bounds(request):
     today = date.today()
-    start = parse_date(request.query_params.get("date_from")) or today - timedelta(days=30)
-    end = parse_date(request.query_params.get("date_to")) or today
+    default_start = today.replace(day=1)
+    default_end = today.replace(day=monthrange(today.year, today.month)[1])
+    start = parse_date(request.query_params.get("date_from")) or default_start
+    end = parse_date(request.query_params.get("date_to")) or default_end
     return start, end
 
 
@@ -30,6 +33,38 @@ def filtered_by_site(queryset, request):
     site_id = request.query_params.get("site")
     if site_id:
         queryset = queryset.filter(site_id=site_id)
+    return queryset
+
+
+def filtered_attendance(queryset, request):
+    queryset = filtered_by_site(queryset, request)
+    studio_id = request.query_params.get("studio")
+    if studio_id:
+        queryset = queryset.filter(visit_studio_id=studio_id)
+    return queryset
+
+
+def filtered_sales(queryset, request):
+    queryset = filtered_by_site(queryset, request)
+    studio_id = request.query_params.get("studio")
+    if studio_id:
+        queryset = queryset.filter(studio_id=studio_id)
+    return queryset
+
+
+def filtered_schedule(queryset, request):
+    queryset = filtered_by_site(queryset, request)
+    studio_id = request.query_params.get("studio")
+    if studio_id:
+        queryset = queryset.filter(studio_id=studio_id)
+    return queryset
+
+
+def filtered_closures(queryset, request):
+    queryset = filtered_by_site(queryset, request)
+    studio_id = request.query_params.get("studio")
+    if studio_id:
+        queryset = queryset.filter(Q(studio_id=studio_id) | Q(studio__isnull=True))
     return queryset
 
 
@@ -285,8 +320,8 @@ def percentage(numerator, denominator):
 
 def base_querysets(request):
     start, end = date_bounds(request)
-    attendance = filtered_by_site(AttendanceVisit.objects.filter(visit_date__range=(start, end)), request)
-    sales = filtered_by_site(SaleLine.objects.filter(sale_date__range=(start, end)), request)
+    attendance = filtered_attendance(AttendanceVisit.objects.filter(visit_date__range=(start, end)), request)
+    sales = filtered_sales(SaleLine.objects.filter(sale_date__range=(start, end)), request)
     services = filtered_by_site(ServicePurchase.objects.filter(sale_date__range=(start, end)), request)
     return start, end, attendance, sales, services
 
@@ -307,6 +342,7 @@ def summary_view(request):
 
     return Response({
         "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+        "studio_filter_limited": bool(request.query_params.get("studio")),
         "totals": {
             "attendance_visits": attendance_count,
             "attended_visits": attended,
@@ -335,6 +371,7 @@ def revenue_view(request):
     sales_revenue = money_sum(sales, "paid_total")
     sale_count = sales.values("sale_number").distinct().count()
     return Response({
+        "studio_filter_limited": bool(request.query_params.get("studio")),
         "sales_revenue": decimal_value(sales_revenue),
         "service_revenue": decimal_value(money_sum(services, "total_amount")),
         "visit_revenue": decimal_value(money_sum(attendance, "revenue")),
@@ -401,6 +438,7 @@ def retention_view(request):
     not_renewed_count = len(not_renewed)
 
     return Response({
+        "studio_filter_limited": bool(request.query_params.get("studio")),
         "tracked_pricing_options": filtered_by_site(PricingOption.objects.filter(track_retention=True), request).count(),
         "services_sold": services.count(),
         "expired_services": expired_count,
@@ -462,12 +500,12 @@ def retention_followup_view(request):
 @permission_classes([IsAuthenticated])
 def occupation_view(request):
     start, end, attendance, _, _ = base_querysets(request)
-    scheduled_classes = filtered_by_site(
+    scheduled_classes = filtered_schedule(
         ScheduledClass.objects.select_related("site", "studio", "room").filter(class_date__range=(start, end)),
         request,
     )
     closures = list(
-        filtered_by_site(
+        filtered_closures(
             StudioClosure.objects.select_related("site", "studio", "room").filter(
                 active=True,
                 closure_date__range=(start, end),
