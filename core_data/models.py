@@ -146,6 +146,7 @@ class PricingOption(SiteScopedModel):
         blank=True,
         related_name="pricing_options",
     )
+    track_retention = models.BooleanField(default=False)
 
 
 class PaymentMethod(SiteScopedModel):

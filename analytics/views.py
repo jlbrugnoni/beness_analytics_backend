@@ -7,7 +7,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from core_data.models import AttendanceVisit, SaleLine, ServicePurchase, Site
+from core_data.models import AttendanceVisit, PricingOption, SaleLine, ServicePurchase, Site
 
 
 def parse_date(value):
@@ -246,7 +246,11 @@ def attendance_view(request):
 def retention_view(request):
     start, end, _, _, services = base_querysets(request)
     today = date.today()
-    site_filtered_purchases = filtered_by_site(ServicePurchase.objects.all(), request)
+    services = services.filter(pricing_option__track_retention=True)
+    site_filtered_purchases = filtered_by_site(
+        ServicePurchase.objects.filter(pricing_option__track_retention=True),
+        request,
+    )
     expired = (
         site_filtered_purchases.select_related("client", "pricing_option")
         .filter(expiration_date__range=(start, end))
@@ -281,6 +285,7 @@ def retention_view(request):
     not_renewed_count = len(not_renewed)
 
     return Response({
+        "tracked_pricing_options": filtered_by_site(PricingOption.objects.filter(track_retention=True), request).count(),
         "services_sold": services.count(),
         "expired_services": expired_count,
         "renewed_or_reactivated_services": renewed_count,
@@ -298,8 +303,9 @@ def retention_view(request):
             for purchase, renewal in renewed[:25]
         ],
         "definition": (
-            "Un servicio se considera renovado/reactivado si el mismo cliente tiene una compra posterior "
-            "a la venta original que extiende o mantiene una expiracion igual o posterior."
+            "La retencion solo analiza productos marcados con track_retention. Un servicio se considera "
+            "renovado/reactivado si el mismo cliente tiene una compra posterior a la venta original que "
+            "extiende o mantiene una expiracion igual o posterior."
         ),
     })
 
