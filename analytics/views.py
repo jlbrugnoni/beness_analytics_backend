@@ -108,6 +108,65 @@ def attendance_hour_rows(queryset):
     return [{"hour": hour, "total": counts[hour]} for hour in sorted(counts)]
 
 
+def service_label(purchase):
+    return purchase.pricing_option.name if purchase.pricing_option else "N/A"
+
+
+def serialize_purchase(purchase, today=None, renewal=None):
+    today = today or date.today()
+    payload = {
+        "client": purchase.client.name,
+        "client_mindbody_id": purchase.client.mindbody_id,
+        "client_id": purchase.client_id,
+        "service": service_label(purchase),
+        "sale_date": purchase.sale_date.isoformat() if purchase.sale_date else None,
+        "activation_date": purchase.activation_date.isoformat() if purchase.activation_date else None,
+        "expiration_date": purchase.expiration_date.isoformat() if purchase.expiration_date else None,
+        "days_until_expiration": (purchase.expiration_date - today).days if purchase.expiration_date else None,
+        "days_expired": (today - purchase.expiration_date).days if purchase.expiration_date and purchase.expiration_date < today else 0,
+        "total_amount": decimal_value(purchase.total_amount),
+    }
+    if renewal:
+        payload.update({
+            "renewal_service": service_label(renewal),
+            "renewal_sale_date": renewal.sale_date.isoformat() if renewal.sale_date else None,
+            "renewal_expiration_date": renewal.expiration_date.isoformat() if renewal.expiration_date else None,
+            "days_from_expiration_to_renewal": (
+                renewal.sale_date - purchase.expiration_date
+            ).days if renewal.sale_date and purchase.expiration_date else None,
+        })
+    return payload
+
+
+def build_purchase_history(purchases):
+    history = {}
+    for purchase in purchases:
+        history.setdefault(purchase.client_id, []).append(purchase)
+    for client_purchases in history.values():
+        client_purchases.sort(key=lambda item: (item.sale_date or date.min, item.id))
+    return history
+
+
+def find_next_purchase(purchase, client_purchases):
+    for candidate in client_purchases:
+        if candidate.id == purchase.id:
+            continue
+        if not candidate.sale_date or not purchase.sale_date:
+            continue
+        if candidate.sale_date < purchase.sale_date:
+            continue
+        if candidate.sale_date == purchase.sale_date and candidate.id <= purchase.id:
+            continue
+        if purchase.expiration_date and candidate.expiration_date and candidate.expiration_date < purchase.expiration_date:
+            continue
+        return candidate
+    return None
+
+
+def average(values):
+    return round(sum(values) / len(values), 2) if values else None
+
+
 def base_querysets(request):
     start, end = date_bounds(request)
     attendance = filtered_by_site(AttendanceVisit.objects.filter(visit_date__range=(start, end)), request)
@@ -186,18 +245,62 @@ def attendance_view(request):
 @permission_classes([IsAuthenticated])
 def retention_view(request):
     start, end, _, _, services = base_querysets(request)
-    expired = filtered_by_site(ServicePurchase.objects.filter(expiration_date__range=(start, end)), request)
-    future_window = date.today() + timedelta(days=30)
-    upcoming = filtered_by_site(
-        ServicePurchase.objects.filter(expiration_date__gte=date.today(), expiration_date__lte=future_window),
-        request,
+    today = date.today()
+    site_filtered_purchases = filtered_by_site(ServicePurchase.objects.all(), request)
+    expired = (
+        site_filtered_purchases.select_related("client", "pricing_option")
+        .filter(expiration_date__range=(start, end))
+        .order_by("expiration_date", "client__name")
     )
+    future_window = today + timedelta(days=30)
+    upcoming = (
+        site_filtered_purchases.select_related("client", "pricing_option")
+        .filter(expiration_date__gte=today, expiration_date__lte=future_window)
+        .order_by("expiration_date", "client__name")
+    )
+
+    expired_client_ids = list(expired.values_list("client_id", flat=True).distinct())
+    purchase_history = build_purchase_history(
+        site_filtered_purchases.select_related("client", "pricing_option").filter(client_id__in=expired_client_ids)
+    )
+    renewed = []
+    not_renewed = []
+    renewal_day_values = []
+
+    for purchase in expired:
+        renewal = find_next_purchase(purchase, purchase_history.get(purchase.client_id, []))
+        if renewal:
+            renewed.append((purchase, renewal))
+            if renewal.sale_date and purchase.expiration_date:
+                renewal_day_values.append((renewal.sale_date - purchase.expiration_date).days)
+        else:
+            not_renewed.append(purchase)
+
+    expired_count = expired.count()
+    renewed_count = len(renewed)
+    not_renewed_count = len(not_renewed)
+
     return Response({
         "services_sold": services.count(),
-        "expired_services": expired.count(),
+        "expired_services": expired_count,
+        "renewed_or_reactivated_services": renewed_count,
+        "not_renewed_services": not_renewed_count,
+        "renewal_rate": round(renewed_count / expired_count * 100, 2) if expired_count else 0,
+        "average_days_from_expiration_to_renewal": average(renewal_day_values),
         "upcoming_expirations_30_days": upcoming.count(),
         "revenue_from_services_sold": decimal_value(money_sum(services, "total_amount")),
-        "note": "La reactivacion requiere comparar compras futuras del mismo cliente despues de la fecha de expiracion. Se implementara en la siguiente fase.",
+        "expired_value": decimal_value(money_sum(expired, "total_amount")),
+        "not_renewed_value": decimal_value(sum((purchase.total_amount or Decimal("0.00")) for purchase in not_renewed)),
+        "not_renewed_clients": [serialize_purchase(purchase, today=today) for purchase in not_renewed[:25]],
+        "upcoming_expirations": [serialize_purchase(purchase, today=today) for purchase in upcoming[:25]],
+        "renewed_samples": [
+            serialize_purchase(purchase, today=today, renewal=renewal)
+            for purchase, renewal in renewed[:25]
+        ],
+        "definition": (
+            "Un servicio se considera renovado/reactivado si el mismo cliente tiene una compra posterior "
+            "a la venta original que extiende o mantiene una expiracion igual o posterior."
+        ),
     })
 
 
