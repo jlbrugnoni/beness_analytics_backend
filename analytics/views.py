@@ -1,7 +1,7 @@
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 
-from django.db.models import Count, DecimalField, Sum
+from django.db.models import Count, DecimalField, Q, Sum
 from django.db.models.functions import Coalesce, TruncDate
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -41,6 +41,10 @@ def money_sum(queryset, field):
 
 def decimal_value(value):
     return float(value or Decimal("0.00"))
+
+
+def ratio_money(numerator, denominator):
+    return decimal_value(numerator / denominator) if denominator else 0
 
 
 def money_annotation(field):
@@ -106,6 +110,64 @@ def attendance_hour_rows(queryset):
             hour_number = int(hour)
             counts[hour_number] = counts.get(hour_number, 0) + 1
     return [{"hour": hour, "total": counts[hour]} for hour in sorted(counts)]
+
+
+def weekday_name(value):
+    names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    return names[value.weekday()]
+
+
+def weekday_money_rows(queryset, date_field, amount_field):
+    rows = {}
+    for item_date, amount in queryset.values_list(date_field, amount_field):
+        if not item_date:
+            continue
+        weekday = item_date.weekday()
+        row = rows.setdefault(weekday, {"weekday": weekday_name(item_date), "total": Decimal("0.00"), "count": 0})
+        row["total"] += amount or Decimal("0.00")
+        row["count"] += 1
+    return [
+        {"weekday": row["weekday"], "total": decimal_value(row["total"]), "count": row["count"]}
+        for _, row in sorted(rows.items())
+    ]
+
+
+def weekday_count_rows(queryset, date_field):
+    rows = {}
+    for item_date in queryset.values_list(date_field, flat=True):
+        if not item_date:
+            continue
+        weekday = item_date.weekday()
+        row = rows.setdefault(weekday, {"weekday": weekday_name(item_date), "total": 0})
+        row["total"] += 1
+    return [row for _, row in sorted(rows.items())]
+
+
+def instructor_quality_rows(queryset, limit=20):
+    rows = (
+        queryset.values("staff_member__name")
+        .annotate(
+            total=Count("id"),
+            attended=Count("id", filter=Q(no_show=False, late_cancel=False)),
+            no_shows=Count("id", filter=Q(no_show=True)),
+            late_cancels=Count("id", filter=Q(late_cancel=True)),
+            revenue=money_annotation("revenue"),
+        )
+        .order_by("-total")[:limit]
+    )
+    return [
+        {
+            "name": row["staff_member__name"] or "N/A",
+            "total": row["total"],
+            "attended": row["attended"],
+            "no_shows": row["no_shows"],
+            "late_cancels": row["late_cancels"],
+            "no_show_rate": percentage(row["no_shows"], row["total"]),
+            "late_cancel_rate": percentage(row["late_cancels"], row["total"]),
+            "revenue": decimal_value(row["revenue"]),
+        }
+        for row in rows
+    ]
 
 
 def parse_time_value(value):
@@ -208,6 +270,8 @@ def summary_view(request):
     active_clients = attendance.values("client_id").distinct().count()
     sales_revenue = money_sum(sales, "paid_total")
     service_revenue = money_sum(services, "total_amount")
+    visit_revenue = money_sum(attendance, "revenue")
+    sale_count = sales.values("sale_number").distinct().count()
 
     return Response({
         "date_range": {"from": start.isoformat(), "to": end.isoformat()},
@@ -221,6 +285,10 @@ def summary_view(request):
             "active_clients": active_clients,
             "sales_revenue": decimal_value(sales_revenue),
             "service_revenue": decimal_value(service_revenue),
+            "visit_revenue": decimal_value(visit_revenue),
+            "average_ticket": ratio_money(sales_revenue, sale_count),
+            "average_revenue_per_attended_visit": ratio_money(visit_revenue, attended),
+            "sales_count": sale_count,
             "sale_lines": sales.count(),
             "service_purchases": services.count(),
         },
@@ -232,15 +300,25 @@ def summary_view(request):
 @permission_classes([IsAuthenticated])
 def revenue_view(request):
     _, _, attendance, sales, services = base_querysets(request)
+    sales_revenue = money_sum(sales, "paid_total")
+    sale_count = sales.values("sale_number").distinct().count()
     return Response({
-        "sales_revenue": decimal_value(money_sum(sales, "paid_total")),
+        "sales_revenue": decimal_value(sales_revenue),
         "service_revenue": decimal_value(money_sum(services, "total_amount")),
         "visit_revenue": decimal_value(money_sum(attendance, "revenue")),
+        "discounts": decimal_value(money_sum(sales, "discount_amount")),
+        "taxes": decimal_value(money_sum(sales, "tax")),
+        "sale_count": sale_count,
+        "average_ticket": ratio_money(sales_revenue, sale_count),
         "sales_by_date": date_money_rows(sales, "sale_date", "paid_total"),
+        "sales_by_weekday": weekday_money_rows(sales, "sale_date", "paid_total"),
         "services_by_date": date_money_rows(services, "sale_date", "total_amount"),
+        "services_by_weekday": weekday_money_rows(services, "sale_date", "total_amount"),
         "visits_by_date": date_money_rows(attendance, "visit_date", "revenue"),
+        "visits_by_weekday": weekday_money_rows(attendance, "visit_date", "revenue"),
         "by_payment_method": money_rows(sales, "payment_method__name", "paid_total"),
         "by_studio": money_rows(sales, "studio__name", "paid_total"),
+        "by_item": money_rows(sales, "item_name", "paid_total"),
         "by_service": money_rows(services, "pricing_option__name", "total_amount"),
     })
 
@@ -249,15 +327,22 @@ def revenue_view(request):
 @permission_classes([IsAuthenticated])
 def attendance_view(request):
     _, _, attendance, _, _ = base_querysets(request)
+    total = attendance.count()
+    attended = attendance.filter(no_show=False, late_cancel=False).count()
+    visit_revenue = money_sum(attendance, "revenue")
     return Response({
-        "total": attendance.count(),
-        "attended": attendance.filter(no_show=False, late_cancel=False).count(),
+        "total": total,
+        "attended": attended,
         "no_shows": attendance.filter(no_show=True).count(),
         "late_cancels": attendance.filter(late_cancel=True).count(),
         "zero_revenue": attendance.filter(revenue=0).count(),
+        "visit_revenue": decimal_value(visit_revenue),
+        "average_revenue_per_attended_visit": ratio_money(visit_revenue, attended),
         "by_date": date_count_rows(attendance, "visit_date"),
+        "by_weekday": weekday_count_rows(attendance, "visit_date"),
         "by_studio": count_rows(attendance, "visit_studio__name"),
         "by_instructor": count_rows(attendance, "staff_member__name"),
+        "instructor_quality": instructor_quality_rows(attendance),
         "by_service": count_rows(attendance, "pricing_option__name"),
         "by_hour": attendance_hour_rows(attendance),
     })
