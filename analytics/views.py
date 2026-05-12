@@ -1,6 +1,7 @@
 from calendar import monthrange
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+import re
 
 from django.db import transaction
 from django.db.models import Count, DecimalField, Q, Sum
@@ -139,14 +140,11 @@ def date_count_rows(queryset, date_field):
 def attendance_hour_rows(queryset):
     counts = {}
     for value in queryset.values_list("visit_time_raw", flat=True):
-        raw = str(value or "").strip()
-        if not raw:
+        parsed_time = parse_time_value(value)
+        if not parsed_time:
             continue
-        hour = raw.split(":")[0].strip()
-        if hour.isdigit():
-            hour_number = int(hour)
-            counts[hour_number] = counts.get(hour_number, 0) + 1
-    return [{"hour": hour, "total": counts[hour]} for hour in sorted(counts)]
+        counts[parsed_time.hour] = counts.get(parsed_time.hour, 0) + 1
+    return [{"hour": f"{hour:02d}:00", "total": counts[hour]} for hour in sorted(counts)]
 
 
 def weekday_name(value):
@@ -211,9 +209,14 @@ def parse_time_value(value):
     raw = str(value or "").strip()
     if not raw:
         return None
+    normalized = raw.casefold()
+    normalized = normalized.replace("a. m.", "am").replace("p. m.", "pm")
+    normalized = normalized.replace("a.m.", "am").replace("p.m.", "pm")
+    normalized = normalized.replace("a m", "am").replace("p m", "pm")
+    normalized = re.sub(r"\s+", " ", normalized).strip().upper()
     for fmt in ("%H:%M:%S", "%H:%M", "%I:%M %p", "%I %p"):
         try:
-            return datetime.strptime(raw.upper(), fmt).time().replace(second=0, microsecond=0)
+            return datetime.strptime(normalized, fmt).time().replace(second=0, microsecond=0)
         except ValueError:
             continue
     return None
