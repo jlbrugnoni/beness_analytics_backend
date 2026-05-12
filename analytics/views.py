@@ -4,7 +4,7 @@ from decimal import Decimal
 import re
 
 from django.db import transaction
-from django.db.models import Count, DecimalField, Q, Sum
+from django.db.models import Count, DecimalField, Max, Min, Q, Sum
 from django.db.models.functions import Coalesce, TruncDate
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
@@ -499,8 +499,39 @@ def membership_status_queryset(request):
     return start, end, months, queryset
 
 
-def serialize_membership_status(status):
+def membership_history_for_statuses(statuses):
+    status_rows = list(statuses)
+    site_ids = {status.site_id for status in status_rows}
+    client_ids = {status.client_id for status in status_rows}
+    if not site_ids or not client_ids:
+        return status_rows, {}
+
+    rows = (
+        ServicePurchase.objects.filter(
+            site_id__in=site_ids,
+            client_id__in=client_ids,
+            pricing_option__track_retention=True,
+        )
+        .values("site_id", "client_id")
+        .annotate(
+            purchase_count=Count("id"),
+            first_sale_date=Min("sale_date"),
+            last_sale_date=Max("sale_date"),
+            lifetime_value=money_annotation("total_amount"),
+        )
+    )
+    history = {
+        (row["site_id"], row["client_id"]): row
+        for row in rows
+    }
+    return status_rows, history
+
+
+def serialize_membership_status(status, membership_history=None):
     purchase = status.source_purchase
+    history = (membership_history or {}).get((status.site_id, status.client_id), {})
+    first_sale_date = history.get("first_sale_date")
+    last_sale_date = history.get("last_sale_date")
     return {
         "id": status.id,
         "month": status.month.isoformat(),
@@ -520,7 +551,19 @@ def serialize_membership_status(status):
         "membership_days": status.membership_days,
         "previous_membership_days": status.previous_membership_days,
         "total_amount": decimal_value(status.membership_value),
+        "tracked_membership_purchase_count": history.get("purchase_count", 0),
+        "first_membership_purchase_date": first_sale_date.isoformat() if first_sale_date else None,
+        "last_membership_purchase_date": last_sale_date.isoformat() if last_sale_date else None,
+        "lifetime_membership_value": decimal_value(history.get("lifetime_value")),
     }
+
+
+def serialize_membership_status_rows(statuses):
+    status_rows, membership_history = membership_history_for_statuses(statuses)
+    return [
+        serialize_membership_status(row, membership_history)
+        for row in status_rows
+    ]
 
 
 def retention_groups(request):
@@ -684,25 +727,20 @@ def retention_view(request):
         "new_members": new_members,
         "reactivated_members": reactivated,
         "not_renewed_services": not_renewed_count,
+        "not_renewed_members": not_renewed_count,
         "renewal_rate": percentage(retained, previous_members),
         "churn_rate": percentage(not_renewed_count, previous_members),
         "not_renewed_value": decimal_value(money_sum(not_renewed, "membership_value")),
-        "not_renewed_clients": [
-            serialize_membership_status(row)
-            for row in not_renewed.order_by("month", "client__name")[:25]
-        ],
-        "retained_samples": [
-            serialize_membership_status(row)
-            for row in statuses.filter(status=MembershipMonthStatus.STATUS_RETAINED).order_by("month", "client__name")[:25]
-        ],
-        "new_member_samples": [
-            serialize_membership_status(row)
-            for row in statuses.filter(status=MembershipMonthStatus.STATUS_NEW).order_by("month", "client__name")[:25]
-        ],
-        "reactivated_samples": [
-            serialize_membership_status(row)
-            for row in statuses.filter(status=MembershipMonthStatus.STATUS_REACTIVATED).order_by("month", "client__name")[:25]
-        ],
+        "not_renewed_clients": serialize_membership_status_rows(not_renewed.order_by("month", "client__name")[:25]),
+        "retained_samples": serialize_membership_status_rows(
+            statuses.filter(status=MembershipMonthStatus.STATUS_RETAINED).order_by("month", "client__name")[:25]
+        ),
+        "new_member_samples": serialize_membership_status_rows(
+            statuses.filter(status=MembershipMonthStatus.STATUS_NEW).order_by("month", "client__name")[:25]
+        ),
+        "reactivated_samples": serialize_membership_status_rows(
+            statuses.filter(status=MembershipMonthStatus.STATUS_REACTIVATED).order_by("month", "client__name")[:25]
+        ),
         "definition": (
             "La retencion mensual usa snapshots. Un cliente cuenta como miembro de un mes si tuvo al menos "
             "15 dias cubiertos por productos marcados con track_retention. Not renewed se cuenta en el mes "
@@ -725,7 +763,7 @@ def retention_followup_view(request):
         "not_renewed": MembershipMonthStatus.STATUS_NOT_RENEWED,
     }
     queryset = statuses.filter(status=status_map.get(status_value, MembershipMonthStatus.STATUS_NOT_RENEWED))
-    rows = [serialize_membership_status(row) for row in queryset.order_by("month", "client__name")]
+    rows = serialize_membership_status_rows(queryset.order_by("month", "client__name"))
 
     if search:
         rows = [
