@@ -527,9 +527,101 @@ def membership_history_for_statuses(statuses):
     return status_rows, history
 
 
-def serialize_membership_status(status, membership_history=None):
+def not_renewed_activity_for_statuses(status_rows):
+    eligible = [
+        status for status in status_rows
+        if status.status == MembershipMonthStatus.STATUS_NOT_RENEWED
+        and status.source_purchase
+        and status.source_purchase.expiration_date
+    ]
+    if not eligible:
+        return {}
+
+    min_date = min(status.source_purchase.expiration_date + timedelta(days=1) for status in eligible)
+    max_date = max(month_end(status.month) for status in eligible)
+    site_ids = {status.site_id for status in eligible}
+    client_ids = {status.client_id for status in eligible}
+
+    attendance_rows = (
+        AttendanceVisit.objects.filter(
+            site_id__in=site_ids,
+            client_id__in=client_ids,
+            visit_date__range=(min_date, max_date),
+            no_show=False,
+            late_cancel=False,
+        )
+        .select_related("pricing_option")
+        .order_by("visit_date")
+    )
+    attendance_by_client = {}
+    for visit in attendance_rows:
+        attendance_by_client.setdefault((visit.site_id, visit.client_id), []).append(visit)
+
+    activity = {}
+    for status in eligible:
+        start = status.source_purchase.expiration_date + timedelta(days=1)
+        end = month_end(status.month)
+        visits = [
+            visit for visit in attendance_by_client.get((status.site_id, status.client_id), [])
+            if start <= visit.visit_date <= end
+        ]
+        paid_visits = [visit for visit in visits if (visit.revenue or Decimal("0.00")) > 0]
+        unpaid_visits = [visit for visit in visits if (visit.revenue or Decimal("0.00")) <= 0]
+        total_revenue = sum((visit.revenue or Decimal("0.00")) for visit in visits)
+        pricing_options = sorted({
+            visit.pricing_option.name
+            for visit in visits
+            if visit.pricing_option
+        })
+
+        if paid_visits:
+            activity_status = "attending_paid"
+        elif unpaid_visits:
+            activity_status = "attending_unpaid"
+        else:
+            activity_status = "inactive"
+
+        activity[status.id] = {
+            "not_renewed_activity_status": activity_status,
+            "post_expiration_attendance_count": len(visits),
+            "post_expiration_paid_attendance_count": len(paid_visits),
+            "post_expiration_unpaid_attendance_count": len(unpaid_visits),
+            "post_expiration_revenue": decimal_value(total_revenue),
+            "post_expiration_first_visit_date": visits[0].visit_date.isoformat() if visits else None,
+            "post_expiration_last_visit_date": visits[-1].visit_date.isoformat() if visits else None,
+            "post_expiration_pricing_options": pricing_options,
+        }
+    return activity
+
+
+def default_not_renewed_activity(status):
+    if status.status != MembershipMonthStatus.STATUS_NOT_RENEWED:
+        return {
+            "not_renewed_activity_status": None,
+            "post_expiration_attendance_count": 0,
+            "post_expiration_paid_attendance_count": 0,
+            "post_expiration_unpaid_attendance_count": 0,
+            "post_expiration_revenue": 0,
+            "post_expiration_first_visit_date": None,
+            "post_expiration_last_visit_date": None,
+            "post_expiration_pricing_options": [],
+        }
+    return {
+        "not_renewed_activity_status": "inactive",
+        "post_expiration_attendance_count": 0,
+        "post_expiration_paid_attendance_count": 0,
+        "post_expiration_unpaid_attendance_count": 0,
+        "post_expiration_revenue": 0,
+        "post_expiration_first_visit_date": None,
+        "post_expiration_last_visit_date": None,
+        "post_expiration_pricing_options": [],
+    }
+
+
+def serialize_membership_status(status, membership_history=None, not_renewed_activity=None):
     purchase = status.source_purchase
     history = (membership_history or {}).get((status.site_id, status.client_id), {})
+    activity = (not_renewed_activity or {}).get(status.id, default_not_renewed_activity(status))
     first_sale_date = history.get("first_sale_date")
     last_sale_date = history.get("last_sale_date")
     return {
@@ -555,15 +647,40 @@ def serialize_membership_status(status, membership_history=None):
         "first_membership_purchase_date": first_sale_date.isoformat() if first_sale_date else None,
         "last_membership_purchase_date": last_sale_date.isoformat() if last_sale_date else None,
         "lifetime_membership_value": decimal_value(history.get("lifetime_value")),
+        **activity,
     }
 
 
 def serialize_membership_status_rows(statuses):
     status_rows, membership_history = membership_history_for_statuses(statuses)
+    not_renewed_activity = not_renewed_activity_for_statuses(status_rows)
     return [
-        serialize_membership_status(row, membership_history)
+        serialize_membership_status(row, membership_history, not_renewed_activity)
         for row in status_rows
     ]
+
+
+def not_renewed_activity_summary(statuses):
+    status_rows = list(statuses)
+    activity = not_renewed_activity_for_statuses(status_rows)
+    summary = {
+        "inactive": 0,
+        "attending_unpaid": 0,
+        "attending_paid": 0,
+        "attendance_count": 0,
+        "unpaid_attendance_count": 0,
+        "paid_attendance_count": 0,
+        "revenue": Decimal("0.00"),
+    }
+    for status in status_rows:
+        row = activity.get(status.id, default_not_renewed_activity(status))
+        summary[row["not_renewed_activity_status"]] += 1
+        summary["attendance_count"] += row["post_expiration_attendance_count"]
+        summary["unpaid_attendance_count"] += row["post_expiration_unpaid_attendance_count"]
+        summary["paid_attendance_count"] += row["post_expiration_paid_attendance_count"]
+        summary["revenue"] += Decimal(str(row["post_expiration_revenue"] or 0))
+    summary["revenue"] = decimal_value(summary["revenue"])
+    return summary
 
 
 def retention_groups(request):
@@ -714,6 +831,7 @@ def retention_view(request):
     reactivated = statuses.filter(status=MembershipMonthStatus.STATUS_REACTIVATED).count()
     not_renewed = statuses.filter(status=MembershipMonthStatus.STATUS_NOT_RENEWED)
     not_renewed_count = not_renewed.count()
+    not_renewed_activity = not_renewed_activity_summary(not_renewed)
     tracked_products = filtered_by_site(PricingOption.objects.filter(track_retention=True), request).count()
 
     return Response({
@@ -728,6 +846,13 @@ def retention_view(request):
         "reactivated_members": reactivated,
         "not_renewed_services": not_renewed_count,
         "not_renewed_members": not_renewed_count,
+        "not_renewed_inactive": not_renewed_activity["inactive"],
+        "not_renewed_attending_unpaid": not_renewed_activity["attending_unpaid"],
+        "not_renewed_attending_paid": not_renewed_activity["attending_paid"],
+        "not_renewed_post_expiration_attendance": not_renewed_activity["attendance_count"],
+        "not_renewed_post_expiration_unpaid_attendance": not_renewed_activity["unpaid_attendance_count"],
+        "not_renewed_post_expiration_paid_attendance": not_renewed_activity["paid_attendance_count"],
+        "not_renewed_post_expiration_revenue": not_renewed_activity["revenue"],
         "renewal_rate": percentage(retained, previous_members),
         "churn_rate": percentage(not_renewed_count, previous_members),
         "not_renewed_value": decimal_value(money_sum(not_renewed, "membership_value")),
