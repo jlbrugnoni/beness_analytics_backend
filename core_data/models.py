@@ -119,6 +119,26 @@ class Studio(SiteScopedModel):
     pass
 
 
+class Room(SiteScopedModel):
+    ROOM_TYPE_GROUP = "group"
+    ROOM_TYPE_PRIVATE = "private"
+    ROOM_TYPE_MIXED = "mixed"
+
+    ROOM_TYPE_CHOICES = [
+        (ROOM_TYPE_GROUP, "Group"),
+        (ROOM_TYPE_PRIVATE, "Private"),
+        (ROOM_TYPE_MIXED, "Mixed"),
+    ]
+
+    studio = models.ForeignKey(Studio, on_delete=models.CASCADE, related_name="rooms")
+    room_type = models.CharField(max_length=20, choices=ROOM_TYPE_CHOICES, default=ROOM_TYPE_GROUP)
+    group_capacity = models.PositiveIntegerField(default=0)
+    private_capacity = models.PositiveIntegerField(default=0)
+
+    class Meta(SiteScopedModel.Meta):
+        unique_together = ("site", "studio", "name")
+
+
 class Client(SiteScopedModel):
     first_name = models.CharField(max_length=150, blank=True, null=True)
     last_name = models.CharField(max_length=150, blank=True, null=True)
@@ -146,10 +166,93 @@ class PricingOption(SiteScopedModel):
         blank=True,
         related_name="pricing_options",
     )
+    track_retention = models.BooleanField(default=False)
 
 
 class PaymentMethod(SiteScopedModel):
     pass
+
+
+class ScheduledClass(models.Model):
+    SESSION_TYPE_GROUP = "group"
+    SESSION_TYPE_PRIVATE = "private"
+
+    SESSION_TYPE_CHOICES = [
+        (SESSION_TYPE_GROUP, "Group"),
+        (SESSION_TYPE_PRIVATE, "Private"),
+    ]
+
+    STATUS_SCHEDULED = "scheduled"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_UNAVAILABLE = "unavailable"
+
+    STATUS_CHOICES = [
+        (STATUS_SCHEDULED, "Scheduled"),
+        (STATUS_CANCELLED, "Cancelled"),
+        (STATUS_UNAVAILABLE, "Unavailable"),
+    ]
+
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="scheduled_classes")
+    studio = models.ForeignKey(Studio, on_delete=models.CASCADE, related_name="scheduled_classes")
+    room = models.ForeignKey(Room, on_delete=models.SET_NULL, null=True, blank=True, related_name="scheduled_classes")
+    staff_member = models.ForeignKey(
+        StaffMember,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scheduled_classes",
+    )
+    pricing_option = models.ForeignKey(
+        PricingOption,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scheduled_classes",
+    )
+    name = models.CharField(max_length=150)
+    class_date = models.DateField()
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    session_type = models.CharField(max_length=20, choices=SESSION_TYPE_CHOICES, default=SESSION_TYPE_GROUP)
+    capacity = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_SCHEDULED)
+    reason = models.CharField(max_length=255, blank=True, null=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["class_date", "start_time", "studio__name", "room__name"]
+
+    def __str__(self):
+        return f"{self.class_date} {self.start_time} - {self.name}"
+
+
+class StudioClosure(models.Model):
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="studio_closures")
+    studio = models.ForeignKey(
+        Studio,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="studio_closures",
+    )
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, null=True, blank=True, related_name="studio_closures")
+    closure_date = models.DateField()
+    all_day = models.BooleanField(default=True)
+    start_time = models.TimeField(blank=True, null=True)
+    end_time = models.TimeField(blank=True, null=True)
+    reason = models.CharField(max_length=255)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["closure_date", "start_time", "site__name", "studio__name"]
+
+    def __str__(self):
+        scope = self.room or self.studio or self.site
+        return f"{self.closure_date} - {scope} - {self.reason}"
 
 
 class ReportImport(models.Model):

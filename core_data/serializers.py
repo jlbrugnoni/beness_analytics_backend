@@ -10,13 +10,16 @@ from .models import (
     PaymentMethod,
     PricingOption,
     ReportImport,
+    Room,
     SaleLine,
     SaleRawRow,
+    ScheduledClass,
     ServiceCategory,
     ServicePurchase,
     ServicePurchaseRawRow,
     Site,
     StaffMember,
+    StudioClosure,
     Studio,
 )
 
@@ -83,6 +86,15 @@ class StudioSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+class RoomSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    studio_name = serializers.CharField(source="studio.name", read_only=True)
+
+    class Meta:
+        model = Room
+        fields = "__all__"
+
+
 class ClientSerializer(serializers.ModelSerializer):
     site_name = serializers.CharField(source="site.name", read_only=True)
 
@@ -121,6 +133,28 @@ class PaymentMethodSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PaymentMethod
+        fields = "__all__"
+
+
+class ScheduledClassSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    studio_name = serializers.CharField(source="studio.name", read_only=True)
+    room_name = serializers.CharField(source="room.name", read_only=True)
+    staff_member_name = serializers.CharField(source="staff_member.name", read_only=True)
+    pricing_option_name = serializers.CharField(source="pricing_option.name", read_only=True)
+
+    class Meta:
+        model = ScheduledClass
+        fields = "__all__"
+
+
+class StudioClosureSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    studio_name = serializers.CharField(source="studio.name", read_only=True)
+    room_name = serializers.CharField(source="room.name", read_only=True)
+
+    class Meta:
+        model = StudioClosure
         fields = "__all__"
 
 

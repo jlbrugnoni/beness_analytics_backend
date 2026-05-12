@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "rest_framework.authtoken",
     "djoser",
     "core_data",
+    "analytics",
 ]
 
 AUTH_USER_MODEL = "core_data.CustomUser"
