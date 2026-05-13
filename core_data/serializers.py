@@ -4,20 +4,24 @@ from rest_framework import serializers
 
 from .models import (
     AttendanceRawRow,
+    AttendanceClassMatch,
     AttendanceVisit,
     Client,
     LoginLog,
     PaymentMethod,
     PricingOption,
     ReportImport,
+    Room,
     SaleLine,
     SaleRawRow,
+    ScheduledClass,
     ServiceCategory,
     ServicePurchase,
     ServicePurchaseRawRow,
     Site,
     StaffMember,
     Studio,
+    TrainerAvailabilityRawRow,
 )
 
 
@@ -83,6 +87,15 @@ class StudioSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
+class RoomSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    studio_name = serializers.CharField(source="studio.name", read_only=True)
+
+    class Meta:
+        model = Room
+        fields = "__all__"
+
+
 class ClientSerializer(serializers.ModelSerializer):
     site_name = serializers.CharField(source="site.name", read_only=True)
 
@@ -136,6 +149,22 @@ class ReportImportSerializer(serializers.ModelSerializer):
         if not obj.uploaded_by:
             return None
         return f"{obj.uploaded_by.first_name} {obj.uploaded_by.last_name}".strip() or obj.uploaded_by.email
+
+
+class ScheduledClassSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    studio_name = serializers.CharField(source="studio.name", read_only=True)
+    room_name = serializers.CharField(source="room.name", read_only=True)
+    staff_member_name = serializers.CharField(source="staff_member.name", read_only=True)
+    attendance_count = serializers.IntegerField(read_only=True)
+    attended_count = serializers.IntegerField(read_only=True)
+    no_show_count = serializers.IntegerField(read_only=True)
+    late_cancel_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = ScheduledClass
+        fields = "__all__"
+        read_only_fields = ["natural_key", "current_row_hash", "created_at", "updated_at"]
 
 
 class AttendanceVisitSerializer(serializers.ModelSerializer):
@@ -204,6 +233,31 @@ class AttendanceRawRowSerializer(serializers.ModelSerializer):
 
     def get_payload_summary(self, obj):
         return payload_summary(obj.normalized_payload)
+
+
+class TrainerAvailabilityRawRowSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    report_type = serializers.CharField(source="report_import.report_type", read_only=True)
+    file_name = serializers.CharField(source="report_import.file_name", read_only=True)
+    payload_summary = serializers.SerializerMethodField()
+
+    class Meta:
+        model = TrainerAvailabilityRawRow
+        fields = "__all__"
+
+    def get_payload_summary(self, obj):
+        return payload_summary(obj.normalized_payload)
+
+
+class AttendanceClassMatchSerializer(serializers.ModelSerializer):
+    attendance_date = serializers.DateField(source="attendance_visit.visit_date", read_only=True)
+    attendance_time = serializers.CharField(source="attendance_visit.visit_time_raw", read_only=True)
+    client_name = serializers.CharField(source="attendance_visit.client.name", read_only=True)
+    scheduled_class_name = serializers.CharField(source="scheduled_class.class_name", read_only=True)
+
+    class Meta:
+        model = AttendanceClassMatch
+        fields = "__all__"
 
 
 class SaleRawRowSerializer(serializers.ModelSerializer):

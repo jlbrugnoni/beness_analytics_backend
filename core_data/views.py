@@ -4,6 +4,7 @@ from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Count, Q
 from rest_framework import status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action, api_view, permission_classes
@@ -14,6 +15,7 @@ from rest_framework.response import Response
 from .importers import SUPPORTED_REPORT_TYPES, import_report, preview_report
 from .models import (
     AttendanceRawRow,
+    AttendanceClassMatch,
     AttendanceVisit,
     AttendanceVisitVersion,
     Client,
@@ -21,9 +23,11 @@ from .models import (
     PaymentMethod,
     PricingOption,
     ReportImport,
+    Room,
     SaleLine,
     SaleLineVersion,
     SaleRawRow,
+    ScheduledClass,
     ServiceCategory,
     ServicePurchase,
     ServicePurchaseRawRow,
@@ -31,8 +35,10 @@ from .models import (
     Site,
     StaffMember,
     Studio,
+    TrainerAvailabilityRawRow,
 )
 from .serializers import (
+    AttendanceClassMatchSerializer,
     AttendanceRawRowSerializer,
     AttendanceVisitSerializer,
     ChangePasswordSerializer,
@@ -42,14 +48,17 @@ from .serializers import (
     PaymentMethodSerializer,
     PricingOptionSerializer,
     ReportImportSerializer,
+    RoomSerializer,
     SaleLineSerializer,
     SaleRawRowSerializer,
+    ScheduledClassSerializer,
     ServiceCategorySerializer,
     ServicePurchaseRawRowSerializer,
     ServicePurchaseSerializer,
     SiteSerializer,
     StaffMemberSerializer,
     StudioSerializer,
+    TrainerAvailabilityRawRowSerializer,
     UserSerializer,
 )
 
@@ -152,6 +161,24 @@ class StudioViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
 
+class RoomViewSet(viewsets.ModelViewSet):
+    serializer_class = RoomSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = Room.objects.select_related("site", "studio").all()
+        site = self.request.query_params.get("site")
+        studio = self.request.query_params.get("studio")
+        search = self.request.query_params.get("search")
+        if site:
+            queryset = queryset.filter(site_id=site)
+        if studio:
+            queryset = queryset.filter(studio_id=studio)
+        if search:
+            queryset = queryset.filter(Q(name__icontains=search) | Q(studio__name__icontains=search))
+        return queryset
+
+
 class ClientViewSet(viewsets.ModelViewSet):
     queryset = Client.objects.select_related("site").all()
     serializer_class = ClientSerializer
@@ -226,6 +253,9 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             AttendanceVisitVersion,
             SaleLineVersion,
             ServicePurchaseVersion,
+            AttendanceClassMatch,
+            ScheduledClass,
+            TrainerAvailabilityRawRow,
             AttendanceVisit,
             SaleLine,
             ServicePurchase,
@@ -365,6 +395,53 @@ class AttendanceVisitViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelView
         )
 
 
+class ScheduledClassViewSet(ImportedDataFilterMixin, viewsets.ModelViewSet):
+    serializer_class = ScheduledClassSerializer
+    permission_classes = [IsAuthenticated]
+    date_field = "class_date"
+    search_fields = ["class_name", "studio__name", "room__name", "staff_member__name"]
+
+    def get_queryset(self):
+        queryset = (
+            ScheduledClass.objects.select_related(
+                "site",
+                "studio",
+                "room",
+                "staff_member",
+                "source_import",
+                "source_row",
+            )
+            .annotate(
+                attendance_count=Count("attendance_matches"),
+                attended_count=Count(
+                    "attendance_matches",
+                    filter=Q(
+                        attendance_matches__attendance_visit__no_show=False,
+                        attendance_matches__attendance_visit__late_cancel=False,
+                    ),
+                ),
+                no_show_count=Count(
+                    "attendance_matches",
+                    filter=Q(attendance_matches__attendance_visit__no_show=True),
+                ),
+                late_cancel_count=Count(
+                    "attendance_matches",
+                    filter=Q(attendance_matches__attendance_visit__late_cancel=True),
+                ),
+            )
+        )
+        room = self.request.query_params.get("room")
+        staff_member = self.request.query_params.get("staff_member")
+        status_value = self.request.query_params.get("status")
+        if room:
+            queryset = queryset.filter(room_id=room)
+        if staff_member:
+            queryset = queryset.filter(staff_member_id=staff_member)
+        if status_value:
+            queryset = queryset.filter(status=status_value)
+        return self.filter_queryset(queryset)
+
+
 class SaleLineViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = SaleLineSerializer
     permission_classes = [IsAuthenticated]
@@ -412,6 +489,35 @@ class AttendanceRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return self.filter_queryset(AttendanceRawRow.objects.select_related("site", "report_import").all())
+
+
+class TrainerAvailabilityRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
+    serializer_class = TrainerAvailabilityRawRowSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return self.filter_queryset(
+            TrainerAvailabilityRawRow.objects.select_related("site", "report_import").all()
+        )
+
+
+class AttendanceClassMatchViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = AttendanceClassMatchSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = AttendanceClassMatch.objects.select_related(
+            "attendance_visit",
+            "attendance_visit__client",
+            "scheduled_class",
+        ).all()
+        scheduled_class = self.request.query_params.get("scheduled_class")
+        match_method = self.request.query_params.get("match_method")
+        if scheduled_class:
+            queryset = queryset.filter(scheduled_class_id=scheduled_class)
+        if match_method:
+            queryset = queryset.filter(match_method=match_method)
+        return queryset
 
 
 class SaleRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
