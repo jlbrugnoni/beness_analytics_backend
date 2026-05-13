@@ -1,11 +1,13 @@
 import datetime
 import hashlib
+import html
 import json
 import re
 import zipfile
 import xml.etree.ElementTree as ET
 from collections import Counter
 from decimal import Decimal
+from html.parser import HTMLParser
 
 from django.db import transaction
 from django.utils import timezone
@@ -18,9 +20,11 @@ from .models import (
     PaymentMethod,
     PricingOption,
     ReportImport,
+    Room,
     SaleLine,
     SaleLineVersion,
     SaleRawRow,
+    ScheduledClass,
     ServiceCategory,
     ServicePurchase,
     ServicePurchaseRawRow,
@@ -36,7 +40,18 @@ RELATIONSHIP_NS = "{http://schemas.openxmlformats.org/officeDocument/2006/relati
 ATTENDANCE_REPORT_TYPE = "attendance_with_revenue"
 SALES_REPORT_TYPE = "sales"
 SALES_BY_SERVICE_REPORT_TYPE = "sales_by_service"
-SUPPORTED_REPORT_TYPES = [ATTENDANCE_REPORT_TYPE, SALES_REPORT_TYPE, SALES_BY_SERVICE_REPORT_TYPE]
+TRAINER_AVAILABILITY_REPORT_TYPE = "trainer_availability"
+SUPPORTED_REPORT_TYPES = [
+    ATTENDANCE_REPORT_TYPE,
+    SALES_REPORT_TYPE,
+    SALES_BY_SERVICE_REPORT_TYPE,
+    TRAINER_AVAILABILITY_REPORT_TYPE,
+]
+
+TRAINER_AVAILABILITY_CLASS_NAMES = {
+    "clases grupales de pilates",
+    "pilates",
+}
 
 ATTENDANCE_REQUIRED_HEADERS = [
     "Fecha",
@@ -178,6 +193,59 @@ def parse_excel_date(value):
         return datetime.date(1899, 12, 30) + datetime.timedelta(days=number)
     except (OverflowError, ValueError):
         return None
+
+
+SPANISH_MONTHS = {
+    "enero": 1,
+    "febrero": 2,
+    "marzo": 3,
+    "abril": 4,
+    "mayo": 5,
+    "junio": 6,
+    "julio": 7,
+    "agosto": 8,
+    "septiembre": 9,
+    "setiembre": 9,
+    "octubre": 10,
+    "noviembre": 11,
+    "diciembre": 12,
+}
+
+
+def parse_spanish_long_date(value):
+    raw = normalize_name(value)
+    match = re.search(r"(\d{1,2}) de ([a-záéíóúñ]+) de (\d{4})", raw)
+    if not match:
+        return None
+    month = SPANISH_MONTHS.get(match.group(2))
+    if not month:
+        return None
+    return datetime.date(int(match.group(3)), month, int(match.group(1)))
+
+
+def parse_mindbody_time(value):
+    raw = clean_value(value).replace(".", "").casefold()
+    match = re.search(r"(\d{1,2}):(\d{2})\s*([ap])?\s*m?", raw)
+    if not match:
+        return None
+    hour = int(match.group(1))
+    minute = int(match.group(2))
+    period = match.group(3)
+    if period == "p" and hour != 12:
+        hour += 12
+    if period == "a" and hour == 12:
+        hour = 0
+    try:
+        return datetime.time(hour, minute)
+    except ValueError:
+        return None
+
+
+def parse_mindbody_time_range(value):
+    parts = clean_value(value).split("-")
+    start = parse_mindbody_time(parts[0]) if parts else None
+    end = parse_mindbody_time(parts[1]) if len(parts) > 1 else None
+    return start, end
 
 
 def parse_yes_no(value):
@@ -788,6 +856,373 @@ def natural_key_collision_samples(valid_rows, natural_key_builder, sample_fields
         if len(samples) == max_samples:
             break
     return samples
+
+
+class MindbodyHtmlTableParser(HTMLParser):
+    def __init__(self):
+        super().__init__()
+        self.rows = []
+        self.current_row = []
+        self.current_cell = []
+        self.in_row = False
+        self.in_cell = False
+
+    def handle_starttag(self, tag, attrs):
+        if tag == "tr":
+            self.in_row = True
+            self.current_row = []
+        if tag == "td" and self.in_row:
+            self.in_cell = True
+            self.current_cell = []
+
+    def handle_endtag(self, tag):
+        if tag == "td" and self.in_cell:
+            value = html.unescape("".join(self.current_cell)).replace("\xa0", " ")
+            self.current_row.append(re.sub(r"\s+", " ", value).strip())
+            self.in_cell = False
+            self.current_cell = []
+        if tag == "tr" and self.in_row:
+            if self.current_row:
+                self.rows.append(self.current_row)
+            self.in_row = False
+
+    def handle_data(self, data):
+        if self.in_cell:
+            self.current_cell.append(data)
+
+
+def trainer_event_name(value):
+    return clean_value(value).replace("***", "").strip()
+
+
+def trainer_event_key(value):
+    return normalize_name(trainer_event_name(value))
+
+
+def load_trainer_availability_rows(uploaded_file):
+    uploaded_file.seek(0)
+    content = uploaded_file.read()
+    if isinstance(content, str):
+        html_text = content
+    else:
+        try:
+            html_text = content.decode("utf-8-sig")
+        except UnicodeDecodeError:
+            html_text = content.decode("latin-1")
+
+    parser = MindbodyHtmlTableParser()
+    parser.feed(html_text)
+
+    staff_name = None
+    current_date = None
+    parsed_rows = []
+    for row_index, row in enumerate(parser.rows, start=1):
+        if len(row) == 1 and clean_value(row[0]).startswith("SCHEDULE FOR "):
+            staff_name = clean_value(row[0]).replace("SCHEDULE FOR ", "").strip()
+            current_date = None
+            continue
+        if len(row) == 1:
+            parsed_date = parse_spanish_long_date(row[0])
+            if parsed_date:
+                current_date = parsed_date
+            continue
+        if not staff_name or not current_date or len(row) < 2:
+            continue
+
+        raw_payload = {
+            "staff": staff_name,
+            "date_label": current_date.isoformat(),
+            "time_range": clean_value(row[0]),
+            "event": clean_value(row[1]),
+            "studio": clean_value(row[2]) if len(row) > 2 else "",
+            "category": clean_value(row[3]) if len(row) > 3 else "",
+            "room": clean_value(row[4]) if len(row) > 4 else "",
+            "notes": clean_value(row[5]) if len(row) > 5 else "",
+        }
+        start_time, end_time = parse_mindbody_time_range(raw_payload["time_range"])
+        event_name = trainer_event_name(raw_payload["event"])
+        payload = {
+            **raw_payload,
+            "event": event_name,
+            "_event_key": trainer_event_key(event_name),
+            "_class_date": current_date.isoformat(),
+            "_start_time": start_time.isoformat(timespec="minutes") if start_time else None,
+            "_end_time": end_time.isoformat(timespec="minutes") if end_time else None,
+            "_is_class_row": trainer_event_key(event_name) in TRAINER_AVAILABILITY_CLASS_NAMES,
+        }
+        errors = []
+        if payload["_is_class_row"]:
+            if not start_time:
+                errors.append("Invalid start time")
+            if not end_time:
+                errors.append("Invalid end time")
+            if not payload["studio"]:
+                errors.append("Missing studio")
+            if not payload["room"]:
+                errors.append("Missing room")
+            if not payload["staff"]:
+                errors.append("Missing staff")
+
+        parsed_rows.append({
+            "row_number": row_index,
+            "hash": row_hash(payload),
+            "payload": payload,
+            "raw_payload": raw_payload,
+            "errors": errors,
+        })
+    return parsed_rows
+
+
+def trainer_scheduled_class_natural_key(site, payload):
+    return hash_parts([
+        site.id,
+        payload.get("_class_date"),
+        payload.get("_start_time"),
+        payload.get("_end_time"),
+        payload.get("studio"),
+        payload.get("room"),
+        payload.get("staff"),
+        payload.get("event"),
+    ])
+
+
+def build_trainer_lookup_preview(site, class_rows):
+    studio_names = {row["payload"]["studio"] for row in class_rows if row["payload"].get("studio")}
+    staff_names = {row["payload"]["staff"] for row in class_rows if row["payload"].get("staff")}
+    room_pairs = {
+        (row["payload"]["studio"], row["payload"]["room"])
+        for row in class_rows
+        if row["payload"].get("studio") and row["payload"].get("room")
+    }
+
+    existing_studios = {
+        studio.normalized_name: studio
+        for studio in Studio.objects.filter(
+            site=site,
+            normalized_name__in=[normalize_name(name) for name in studio_names],
+        )
+    }
+    existing_staff = set(
+        StaffMember.objects.filter(
+            site=site,
+            normalized_name__in=[normalize_name(name) for name in staff_names],
+        ).values_list("normalized_name", flat=True)
+    )
+
+    existing_rooms = {}
+    for studio_name, room_name in room_pairs:
+        studio = existing_studios.get(normalize_name(studio_name))
+        if not studio:
+            continue
+        room = Room.objects.filter(
+            site=site,
+            studio=studio,
+            normalized_name=normalize_name(room_name),
+        ).first()
+        if room:
+            existing_rooms[(studio_name, room_name)] = room
+
+    new_studios = sorted(name for name in studio_names if normalize_name(name) not in existing_studios)
+    new_staff = sorted(name for name in staff_names if normalize_name(name) not in existing_staff)
+    new_rooms = [
+        {"studio": studio_name, "room": room_name}
+        for studio_name, room_name in room_pairs
+        if (studio_name, room_name) not in existing_rooms
+    ]
+    new_rooms = sorted(new_rooms, key=lambda row: (row["studio"], row["room"]))
+    rooms_requiring_capacity = [
+        {
+            "studio": studio_name,
+            "room": room_name,
+            "current_capacity": existing_rooms[(studio_name, room_name)].default_group_capacity,
+        }
+        for studio_name, room_name in room_pairs
+        if (studio_name, room_name) in existing_rooms
+        and existing_rooms[(studio_name, room_name)].default_group_capacity == 0
+    ]
+    rooms_requiring_capacity = sorted(
+        rooms_requiring_capacity,
+        key=lambda row: (row["studio"], row["room"]),
+    )
+
+    return {
+        "studios": {
+            "total": len(studio_names),
+            "new": len(new_studios),
+            "sample_new": new_studios[:10],
+        },
+        "staff_members": {
+            "total": len(staff_names),
+            "new": len(new_staff),
+            "sample_new": new_staff[:10],
+        },
+        "rooms": {
+            "total": len(room_pairs),
+            "new": len(new_rooms),
+            "sample_new": new_rooms[:20],
+            "requiring_capacity": len(rooms_requiring_capacity),
+            "sample_requiring_capacity": rooms_requiring_capacity[:20],
+        },
+    }
+
+
+def class_conflict_samples(class_rows):
+    valid_room_rows = [
+        row for row in class_rows
+        if row["payload"].get("studio") and row["payload"].get("room")
+    ]
+    room_time_groups = {}
+    staff_time_groups = {}
+    for row in valid_room_rows:
+        payload = row["payload"]
+        room_key = (
+            payload["_class_date"],
+            payload["_start_time"],
+            payload["_end_time"],
+            payload["studio"],
+            payload["room"],
+        )
+        staff_key = (
+            payload["_class_date"],
+            payload["_start_time"],
+            payload["_end_time"],
+            payload["staff"],
+        )
+        room_time_groups.setdefault(room_key, []).append(row)
+        staff_time_groups.setdefault(staff_key, []).append(row)
+
+    room_time_conflicts = []
+    for key, rows in room_time_groups.items():
+        staff_names = sorted({row["payload"]["staff"] for row in rows})
+        if len(staff_names) > 1:
+            room_time_conflicts.append({
+                "date": key[0],
+                "start_time": key[1],
+                "end_time": key[2],
+                "studio": key[3],
+                "room": key[4],
+                "staff_members": staff_names,
+                "row_numbers": [row["row_number"] for row in rows],
+            })
+
+    staff_time_conflicts = []
+    for key, rows in staff_time_groups.items():
+        rooms = sorted({f"{row['payload']['studio']} / {row['payload']['room']}" for row in rows})
+        if len(rooms) > 1:
+            staff_time_conflicts.append({
+                "date": key[0],
+                "start_time": key[1],
+                "end_time": key[2],
+                "staff": key[3],
+                "rooms": rooms,
+                "row_numbers": [row["row_number"] for row in rows],
+            })
+
+    exact_duplicate_groups = []
+    natural_groups = {}
+    for row in class_rows:
+        natural_groups.setdefault(row["hash"], []).append(row)
+    for rows in natural_groups.values():
+        if len(rows) > 1:
+            exact_duplicate_groups.append({
+                "count": len(rows),
+                "row_numbers": [row["row_number"] for row in rows[:10]],
+                "payload": compact_payload(rows[0]["payload"], [
+                    "_class_date",
+                    "_start_time",
+                    "_end_time",
+                    "studio",
+                    "room",
+                    "staff",
+                    "event",
+                ]),
+            })
+
+    return {
+        "same_room_time_different_staff": room_time_conflicts[:50],
+        "same_staff_time_multiple_rooms": staff_time_conflicts[:50],
+        "exact_duplicate_samples": exact_duplicate_groups[:50],
+        "same_room_time_different_staff_count": len(room_time_conflicts),
+        "same_staff_time_multiple_rooms_count": len(staff_time_conflicts),
+        "exact_duplicate_groups": len(exact_duplicate_groups),
+    }
+
+
+def preview_trainer_availability_report(uploaded_file, site):
+    rows = load_trainer_availability_rows(uploaded_file)
+    class_rows = [row for row in rows if row["payload"]["_is_class_row"]]
+    non_class_rows = [row for row in rows if not row["payload"]["_is_class_row"]]
+    valid_class_rows = [row for row in class_rows if not row["errors"]]
+    invalid_class_rows = [row for row in class_rows if row["errors"]]
+    date_values = [
+        datetime.date.fromisoformat(row["payload"]["_class_date"])
+        for row in class_rows
+        if row["payload"].get("_class_date")
+    ]
+    conflict_data = class_conflict_samples(class_rows)
+    sample_fields = [
+        "_class_date",
+        "_start_time",
+        "_end_time",
+        "event",
+        "studio",
+        "room",
+        "staff",
+    ]
+    requires_review = (
+        bool(invalid_class_rows)
+        or conflict_data["same_room_time_different_staff_count"] > 0
+        or conflict_data["same_staff_time_multiple_rooms_count"] > 0
+        or conflict_data["exact_duplicate_groups"] > 0
+    )
+
+    return {
+        "report_type": TRAINER_AVAILABILITY_REPORT_TYPE,
+        "sheet_name": "HTML",
+        "headers": ["staff", "date", "time_range", "event", "studio", "category", "room", "notes"],
+        "missing_headers": [],
+        "extra_headers": [],
+        "is_valid_schema": True,
+        "row_counts": {
+            "raw_rows": len(rows),
+            "class_rows": len(class_rows),
+            "non_class_rows": len(non_class_rows),
+            "valid_rows": len(valid_class_rows),
+            "invalid_rows": len(invalid_class_rows),
+            "missing_room_rows": sum("Missing room" in row["errors"] for row in invalid_class_rows),
+            "missing_studio_rows": sum("Missing studio" in row["errors"] for row in invalid_class_rows),
+        },
+        "date_range": {
+            "from": min(date_values).isoformat() if date_values else None,
+            "to": max(date_values).isoformat() if date_values else None,
+        },
+        "schedule": {
+            "class_count": len(class_rows),
+            "valid_class_count": len(valid_class_rows),
+            "needs_review_count": len(invalid_class_rows),
+            "studios": sorted({row["payload"]["studio"] for row in class_rows if row["payload"].get("studio")}),
+            "rooms": sorted({row["payload"]["room"] for row in class_rows if row["payload"].get("room")}),
+            "staff_members": sorted({row["payload"]["staff"] for row in class_rows if row["payload"].get("staff")}),
+            "class_names": sorted({row["payload"]["event"] for row in class_rows if row["payload"].get("event")}),
+        },
+        "lookup_preview": build_trainer_lookup_preview(site, class_rows),
+        "data_quality": {
+            "requires_review": requires_review,
+            **conflict_data,
+            "import_impact": current_record_impact(
+                valid_class_rows,
+                ScheduledClass,
+                lambda payload: trainer_scheduled_class_natural_key(site, payload),
+            ),
+            "natural_key_collision_samples": natural_key_collision_samples(
+                valid_class_rows,
+                lambda payload: trainer_scheduled_class_natural_key(site, payload),
+                sample_fields,
+            ),
+        },
+        "invalid_row_samples": invalid_class_rows[:20],
+        "sample_rows": valid_class_rows[:10],
+    }
 
 
 @transaction.atomic
@@ -1811,6 +2246,8 @@ def preview_report(uploaded_file, site, report_type):
         return preview_sales_report(uploaded_file, site)
     if report_type == SALES_BY_SERVICE_REPORT_TYPE:
         return preview_sales_by_service_report(uploaded_file, site)
+    if report_type == TRAINER_AVAILABILITY_REPORT_TYPE:
+        return preview_trainer_availability_report(uploaded_file, site)
     raise ValueError(f"Unsupported report_type. Supported: {', '.join(SUPPORTED_REPORT_TYPES)}.")
 
 
@@ -1821,4 +2258,6 @@ def import_report(uploaded_file, site, report_type, uploaded_by=None):
         return import_sales_report(uploaded_file, site, uploaded_by=uploaded_by)
     if report_type == SALES_BY_SERVICE_REPORT_TYPE:
         return import_sales_by_service_report(uploaded_file, site, uploaded_by=uploaded_by)
+    if report_type == TRAINER_AVAILABILITY_REPORT_TYPE:
+        raise ValueError("Trainer Availability import is not implemented yet. Use preview first.")
     raise ValueError(f"Unsupported report_type. Supported: {', '.join(SUPPORTED_REPORT_TYPES)}.")
