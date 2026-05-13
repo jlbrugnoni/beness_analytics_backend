@@ -1034,11 +1034,11 @@ def build_trainer_lookup_preview(site, class_rows):
         {
             "studio": studio_name,
             "room": room_name,
-            "current_capacity": existing_rooms[(studio_name, room_name)].default_group_capacity,
+            "current_capacity": existing_rooms[(studio_name, room_name)].group_capacity,
         }
         for studio_name, room_name in room_pairs
         if (studio_name, room_name) in existing_rooms
-        and existing_rooms[(studio_name, room_name)].default_group_capacity == 0
+        and existing_rooms[(studio_name, room_name)].group_capacity == 0
     ]
     rooms_requiring_capacity = sorted(
         rooms_requiring_capacity,

@@ -134,8 +134,8 @@ class Room(SiteScopedModel):
 
     studio = models.ForeignKey(Studio, on_delete=models.CASCADE, related_name="rooms")
     room_type = models.CharField(max_length=20, choices=ROOM_TYPE_CHOICES, default=ROOM_TYPE_GROUP)
-    default_group_capacity = models.PositiveIntegerField(default=0)
-    default_private_capacity = models.PositiveIntegerField(default=0)
+    group_capacity = models.PositiveIntegerField(default=0)
+    private_capacity = models.PositiveIntegerField(default=0)
 
     class Meta(SiteScopedModel.Meta):
         unique_together = ("site", "studio", "normalized_name")
@@ -168,6 +168,7 @@ class PricingOption(SiteScopedModel):
         blank=True,
         related_name="pricing_options",
     )
+    track_retention = models.BooleanField(default=False)
 
 
 class PaymentMethod(SiteScopedModel):
@@ -175,6 +176,14 @@ class PaymentMethod(SiteScopedModel):
 
 
 class ScheduledClass(models.Model):
+    SESSION_TYPE_GROUP = "group"
+    SESSION_TYPE_PRIVATE = "private"
+
+    SESSION_TYPE_CHOICES = [
+        (SESSION_TYPE_GROUP, "Group"),
+        (SESSION_TYPE_PRIVATE, "Private"),
+    ]
+
     STATUS_SCHEDULED = "scheduled"
     STATUS_CANCELLED = "cancelled"
     STATUS_UNAVAILABLE = "unavailable"
@@ -213,13 +222,21 @@ class ScheduledClass(models.Model):
         blank=True,
         related_name="scheduled_classes",
     )
+    pricing_option = models.ForeignKey(
+        PricingOption,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scheduled_classes",
+    )
+    name = models.CharField(max_length=150)
     class_date = models.DateField(db_index=True)
     start_time = models.TimeField(db_index=True)
     end_time = models.TimeField()
-    class_name = models.CharField(max_length=255)
-    service_category_name = models.CharField(max_length=255, blank=True, null=True)
+    session_type = models.CharField(max_length=20, choices=SESSION_TYPE_CHOICES, default=SESSION_TYPE_GROUP)
     capacity = models.PositiveIntegerField(default=0)
     status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_SCHEDULED, db_index=True)
+    reason = models.CharField(max_length=255, blank=True, null=True)
     source = models.CharField(max_length=50, choices=SOURCE_CHOICES, default=SOURCE_MANUAL)
     source_import = models.ForeignKey(
         "ReportImport",
@@ -235,7 +252,7 @@ class ScheduledClass(models.Model):
         blank=True,
         related_name="scheduled_classes",
     )
-    natural_key = models.CharField(max_length=64, unique=True, db_index=True)
+    natural_key = models.CharField(max_length=64, unique=True, db_index=True, blank=True, null=True)
     current_row_hash = models.CharField(max_length=64, blank=True, null=True, db_index=True)
     manually_modified = models.BooleanField(default=False)
     review_reason = models.CharField(max_length=255, blank=True, null=True)
@@ -253,7 +270,7 @@ class ScheduledClass(models.Model):
 
     def __str__(self):
         room_name = self.room.name if self.room else "No room"
-        return f"{self.class_date} {self.start_time} - {room_name} - {self.class_name}"
+        return f"{self.class_date} {self.start_time} - {room_name} - {self.name}"
 
     def save(self, *args, **kwargs):
         if not self.natural_key:
@@ -265,10 +282,37 @@ class ScheduledClass(models.Model):
                 self.class_date,
                 self.start_time,
                 self.end_time,
-                self.class_name,
+                self.name,
             ]
             self.natural_key = hashlib.sha256("|".join(str(part) for part in parts).encode("utf-8")).hexdigest()
         super().save(*args, **kwargs)
+
+
+class StudioClosure(models.Model):
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="studio_closures")
+    studio = models.ForeignKey(
+        Studio,
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="studio_closures",
+    )
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, null=True, blank=True, related_name="studio_closures")
+    closure_date = models.DateField()
+    all_day = models.BooleanField(default=True)
+    start_time = models.TimeField(blank=True, null=True)
+    end_time = models.TimeField(blank=True, null=True)
+    reason = models.CharField(max_length=255)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["closure_date", "start_time", "site__name", "studio__name"]
+
+    def __str__(self):
+        scope = self.room or self.studio or self.site
+        return f"{self.closure_date} - {scope} - {self.reason}"
 
 
 class ReportImport(models.Model):

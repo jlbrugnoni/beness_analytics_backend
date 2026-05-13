@@ -20,6 +20,7 @@ from .models import (
     ServicePurchaseRawRow,
     Site,
     StaffMember,
+    StudioClosure,
     Studio,
     TrainerAvailabilityRawRow,
 )
@@ -134,6 +135,16 @@ class PaymentMethodSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = PaymentMethod
+        fields = "__all__"
+
+
+class StudioClosureSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    studio_name = serializers.CharField(source="studio.name", read_only=True)
+    room_name = serializers.CharField(source="room.name", read_only=True)
+
+    class Meta:
+        model = StudioClosure
         fields = "__all__"
 
 
@@ -253,7 +264,7 @@ class AttendanceClassMatchSerializer(serializers.ModelSerializer):
     attendance_date = serializers.DateField(source="attendance_visit.visit_date", read_only=True)
     attendance_time = serializers.CharField(source="attendance_visit.visit_time_raw", read_only=True)
     client_name = serializers.CharField(source="attendance_visit.client.name", read_only=True)
-    scheduled_class_name = serializers.CharField(source="scheduled_class.class_name", read_only=True)
+    scheduled_class_name = serializers.CharField(source="scheduled_class.name", read_only=True)
 
     class Meta:
         model = AttendanceClassMatch

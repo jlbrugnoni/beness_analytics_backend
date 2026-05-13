@@ -14,6 +14,7 @@ router.register(r"staff-members", views.StaffMemberViewSet, basename="staff-memb
 router.register(r"service-categories", views.ServiceCategoryViewSet, basename="service-category")
 router.register(r"pricing-options", views.PricingOptionViewSet, basename="pricing-option")
 router.register(r"payment-methods", views.PaymentMethodViewSet, basename="payment-method")
+router.register(r"studio-closures", views.StudioClosureViewSet, basename="studio-closure")
 router.register(r"report-imports", views.ReportImportViewSet, basename="report-import")
 router.register(r"scheduled-classes", views.ScheduledClassViewSet, basename="scheduled-class")
 router.register(r"attendance-visits", views.AttendanceVisitViewSet, basename="attendance-visit")
@@ -29,6 +30,7 @@ router.register(r"login-logs", views.LoginLogViewSet, basename="login-log")
 
 urlpatterns = [
     path("", include(router.urls)),
+    path("analytics/", include("analytics.urls")),
     path("login", views.login_view, name="login"),
     path("validate-token", views.validate_token_view, name="validate-token"),
     path("logout", views.logout_view, name="logout"),
