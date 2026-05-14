@@ -1,3 +1,5 @@
+import json
+
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import Group
@@ -452,7 +454,17 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             return Response({"error": "Site not found."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            result = import_report(uploaded_file, site, report_type, uploaded_by=request.user)
+            options = {}
+            room_capacities_raw = request.data.get("room_capacities")
+            if room_capacities_raw:
+                try:
+                    options["room_capacities"] = json.loads(room_capacities_raw)
+                except json.JSONDecodeError:
+                    return Response(
+                        {"error": "room_capacities must be valid JSON."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            result = import_report(uploaded_file, site, report_type, uploaded_by=request.user, options=options)
         except Exception as exc:
             return Response({"error": f"Could not import file: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -550,8 +562,11 @@ class ScheduledClassViewSet(ImportedDataFilterMixin, viewsets.ModelViewSet):
             )
         )
         room = self.request.query_params.get("room")
+        studio = self.request.query_params.get("studio")
         staff_member = self.request.query_params.get("staff_member")
         status_value = self.request.query_params.get("status")
+        if studio:
+            queryset = queryset.filter(studio_id=studio)
         if room:
             queryset = queryset.filter(room_id=room)
         if staff_member:

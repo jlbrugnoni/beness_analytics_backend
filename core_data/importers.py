@@ -31,6 +31,7 @@ from .models import (
     ServicePurchaseVersion,
     StaffMember,
     Studio,
+    TrainerAvailabilityRawRow,
 )
 
 
@@ -986,6 +987,35 @@ def trainer_scheduled_class_natural_key(site, payload):
     ])
 
 
+def trainer_room_capacity_key(studio_name, room_name):
+    return f"{normalize_name(studio_name)}::{normalize_name(room_name)}"
+
+
+def parse_room_capacity_overrides(room_capacities):
+    overrides = {}
+    if not room_capacities:
+        return overrides
+
+    for item in room_capacities:
+        studio_name = item.get("studio")
+        room_name = item.get("room")
+        if not studio_name or not room_name:
+            continue
+        try:
+            group_capacity = int(item.get("group_capacity") or 0)
+        except (TypeError, ValueError):
+            group_capacity = 0
+        try:
+            private_capacity = int(item.get("private_capacity") or 0)
+        except (TypeError, ValueError):
+            private_capacity = 0
+        overrides[trainer_room_capacity_key(studio_name, room_name)] = {
+            "group_capacity": max(group_capacity, 0),
+            "private_capacity": max(private_capacity, 0),
+        }
+    return overrides
+
+
 def build_trainer_lookup_preview(site, class_rows):
     studio_names = {row["payload"]["studio"] for row in class_rows if row["payload"].get("studio")}
     staff_names = {row["payload"]["staff"] for row in class_rows if row["payload"].get("staff")}
@@ -1034,7 +1064,9 @@ def build_trainer_lookup_preview(site, class_rows):
         {
             "studio": studio_name,
             "room": room_name,
+            "room_key": trainer_room_capacity_key(studio_name, room_name),
             "current_capacity": existing_rooms[(studio_name, room_name)].group_capacity,
+            "is_new": False,
         }
         for studio_name, room_name in room_pairs
         if (studio_name, room_name) in existing_rooms
@@ -1062,6 +1094,16 @@ def build_trainer_lookup_preview(site, class_rows):
             "sample_new": new_rooms[:20],
             "requiring_capacity": len(rooms_requiring_capacity),
             "sample_requiring_capacity": rooms_requiring_capacity[:20],
+            "capacity_requirements": [
+                {
+                    "studio": row["studio"],
+                    "room": row["room"],
+                    "room_key": trainer_room_capacity_key(row["studio"], row["room"]),
+                    "current_capacity": 0,
+                    "is_new": True,
+                }
+                for row in new_rooms
+            ] + rooms_requiring_capacity,
         },
     }
 
@@ -1148,6 +1190,45 @@ def class_conflict_samples(class_rows):
     }
 
 
+def trainer_conflict_row_numbers(class_rows):
+    valid_room_rows = [
+        row for row in class_rows
+        if not row["errors"] and row["payload"].get("studio") and row["payload"].get("room")
+    ]
+    room_time_groups = {}
+    staff_time_groups = {}
+    for row in valid_room_rows:
+        payload = row["payload"]
+        room_key = (
+            payload["_class_date"],
+            payload["_start_time"],
+            payload["_end_time"],
+            normalize_name(payload["studio"]),
+            normalize_name(payload["room"]),
+        )
+        staff_key = (
+            payload["_class_date"],
+            payload["_start_time"],
+            payload["_end_time"],
+            normalize_name(payload["staff"]),
+        )
+        room_time_groups.setdefault(room_key, []).append(row)
+        staff_time_groups.setdefault(staff_key, []).append(row)
+
+    conflict_rows = set()
+    for rows in room_time_groups.values():
+        if len({normalize_name(row["payload"]["staff"]) for row in rows}) > 1:
+            conflict_rows.update(row["row_number"] for row in rows)
+    for rows in staff_time_groups.values():
+        rooms = {
+            (normalize_name(row["payload"]["studio"]), normalize_name(row["payload"]["room"]))
+            for row in rows
+        }
+        if len(rooms) > 1:
+            conflict_rows.update(row["row_number"] for row in rows)
+    return conflict_rows
+
+
 def preview_trainer_availability_report(uploaded_file, site):
     rows = load_trainer_availability_rows(uploaded_file)
     class_rows = [row for row in rows if row["payload"]["_is_class_row"]]
@@ -1175,6 +1256,8 @@ def preview_trainer_availability_report(uploaded_file, site):
         or conflict_data["same_staff_time_multiple_rooms_count"] > 0
         or conflict_data["exact_duplicate_groups"] > 0
     )
+
+    lookup_preview = build_trainer_lookup_preview(site, class_rows)
 
     return {
         "report_type": TRAINER_AVAILABILITY_REPORT_TYPE,
@@ -1205,7 +1288,8 @@ def preview_trainer_availability_report(uploaded_file, site):
             "staff_members": sorted({row["payload"]["staff"] for row in class_rows if row["payload"].get("staff")}),
             "class_names": sorted({row["payload"]["event"] for row in class_rows if row["payload"].get("event")}),
         },
-        "lookup_preview": build_trainer_lookup_preview(site, class_rows),
+        "lookup_preview": lookup_preview,
+        "capacity_requirements": lookup_preview["rooms"]["capacity_requirements"],
         "data_quality": {
             "requires_review": requires_review,
             **conflict_data,
@@ -1223,6 +1307,227 @@ def preview_trainer_availability_report(uploaded_file, site):
         "invalid_row_samples": invalid_class_rows[:20],
         "sample_rows": valid_class_rows[:10],
     }
+
+
+def get_or_create_room_cached(cache, site, studio, room_name, capacity_overrides=None):
+    cleaned_name = clean_value(room_name)
+    if not studio or not cleaned_name or cleaned_name == "N/A":
+        return None, False
+
+    normalized_name = normalize_name(cleaned_name)
+    room_key = trainer_room_capacity_key(studio.name, cleaned_name)
+    override = (capacity_overrides or {}).get(room_key, {})
+    cache_key = ("Room", site.id, studio.id, normalized_name)
+    if cache_key in cache:
+        room = cache[cache_key]
+        if override.get("group_capacity") and room.group_capacity != override["group_capacity"]:
+            room.group_capacity = override["group_capacity"]
+            room.save(update_fields=["group_capacity", "updated_at"])
+        return room, False
+
+    room = Room.objects.filter(site=site, studio=studio, normalized_name=normalized_name).first()
+    if room:
+        if override.get("group_capacity") and room.group_capacity != override["group_capacity"]:
+            room.group_capacity = override["group_capacity"]
+            room.save(update_fields=["group_capacity", "updated_at"])
+        cache[cache_key] = room
+        return room, False
+
+    room = Room.objects.create(
+        site=site,
+        studio=studio,
+        name=cleaned_name,
+        mindbody_name=cleaned_name,
+        normalized_name=normalized_name,
+        room_type=Room.ROOM_TYPE_GROUP,
+        group_capacity=override.get("group_capacity", 0),
+        private_capacity=override.get("private_capacity", 0),
+    )
+    cache[cache_key] = room
+    return room, True
+
+
+def trainer_class_status(room, row_number, conflict_rows):
+    if row_number in conflict_rows:
+        return ScheduledClass.STATUS_CONFLICT, "Schedule conflict in Trainer Availability report"
+    if not room or room.group_capacity == 0:
+        return ScheduledClass.STATUS_NEEDS_REVIEW, "Room capacity missing"
+    return ScheduledClass.STATUS_SCHEDULED, None
+
+
+@transaction.atomic
+def import_trainer_availability_report(uploaded_file, site, uploaded_by=None, room_capacities=None):
+    preview = preview_trainer_availability_report(uploaded_file, site)
+    capacity_overrides = parse_room_capacity_overrides(room_capacities)
+    missing_capacity = [
+        row for row in preview["capacity_requirements"]
+        if capacity_overrides.get(row["room_key"], {}).get("group_capacity", 0) <= 0
+    ]
+    if missing_capacity:
+        missing_names = ", ".join(f"{row['studio']} / {row['room']}" for row in missing_capacity[:10])
+        extra_count = len(missing_capacity) - 10
+        if extra_count > 0:
+            missing_names = f"{missing_names}, and {extra_count} more"
+        raise ValueError(f"Room capacity is required before import for: {missing_names}")
+
+    rows_to_import = load_trainer_availability_rows(uploaded_file)
+    class_rows = [row for row in rows_to_import if row["payload"]["_is_class_row"]]
+    valid_class_rows = [row for row in class_rows if not row["errors"]]
+    invalid_class_rows = [row for row in class_rows if row["errors"]]
+    conflict_rows = trainer_conflict_row_numbers(class_rows)
+
+    report_import = ReportImport.objects.create(
+        report_type=TRAINER_AVAILABILITY_REPORT_TYPE,
+        source_system="mindbody",
+        file_name=getattr(uploaded_file, "name", "uploaded.xls"),
+        status=ReportImport.STATUS_PROCESSING,
+        total_rows=len(rows_to_import),
+        valid_rows=len(valid_class_rows),
+        error_rows=len(invalid_class_rows),
+        uploaded_by=uploaded_by,
+    )
+
+    stats = {
+        "report_import_id": report_import.id,
+        "raw_rows_created": 0,
+        "scheduled_classes_created": 0,
+        "scheduled_classes_changed": 0,
+        "scheduled_classes_identical": 0,
+        "scheduled_classes_needing_review": 0,
+        "scheduled_classes_conflict": 0,
+        "natural_key_collisions": 0,
+        "new_lookups": {
+            "studios": 0,
+            "rooms": 0,
+            "staff_members": 0,
+        },
+    }
+
+    lookup_cache = {}
+    current_class_candidates = {}
+
+    for row in rows_to_import:
+        payload = row["payload"]
+        raw_row = TrainerAvailabilityRawRow.objects.create(
+            report_import=report_import,
+            site=site,
+            row_number=row["row_number"],
+            row_hash=row["hash"],
+            raw_payload=row["raw_payload"],
+            normalized_payload=payload,
+            is_class_row=payload["_is_class_row"],
+            is_valid=not row["errors"],
+            validation_errors=row["errors"],
+        )
+        stats["raw_rows_created"] += 1
+
+        if not payload["_is_class_row"] or row["errors"]:
+            continue
+
+        studio, created = get_or_create_scoped_cached(
+            lookup_cache,
+            Studio,
+            site,
+            payload.get("studio"),
+        )
+        stats["new_lookups"]["studios"] += int(created)
+
+        staff_member, created = get_or_create_scoped_cached(
+            lookup_cache,
+            StaffMember,
+            site,
+            payload.get("staff"),
+        )
+        stats["new_lookups"]["staff_members"] += int(created)
+
+        room, created = get_or_create_room_cached(
+            lookup_cache,
+            site,
+            studio,
+            payload.get("room"),
+            capacity_overrides=capacity_overrides,
+        )
+        stats["new_lookups"]["rooms"] += int(created)
+
+        natural_key = trainer_scheduled_class_natural_key(site, payload)
+        status, review_reason = trainer_class_status(room, row["row_number"], conflict_rows)
+        if status == ScheduledClass.STATUS_CONFLICT:
+            stats["scheduled_classes_conflict"] += 1
+        elif status == ScheduledClass.STATUS_NEEDS_REVIEW:
+            stats["scheduled_classes_needing_review"] += 1
+
+        current_class_candidates[natural_key] = {
+            "row": row,
+            "payload": payload,
+            "raw_row": raw_row,
+            "site": site,
+            "studio": studio,
+            "room": room,
+            "staff_member": staff_member,
+            "status": status,
+            "review_reason": review_reason,
+        }
+
+    for natural_key, candidate in current_class_candidates.items():
+        row = candidate["row"]
+        payload = candidate["payload"]
+        room = candidate["room"]
+        values = {
+            "site": candidate["site"],
+            "studio": candidate["studio"],
+            "room": room,
+            "staff_member": candidate["staff_member"],
+            "name": payload.get("event") or "Class",
+            "class_date": datetime.date.fromisoformat(payload["_class_date"]),
+            "start_time": datetime.time.fromisoformat(payload["_start_time"]),
+            "end_time": datetime.time.fromisoformat(payload["_end_time"]),
+            "session_type": ScheduledClass.SESSION_TYPE_GROUP,
+            "capacity": room.group_capacity if room else 0,
+            "status": candidate["status"],
+            "reason": candidate["review_reason"],
+            "source": ScheduledClass.SOURCE_TRAINER_AVAILABILITY,
+            "source_import": report_import,
+            "source_row": candidate["raw_row"],
+            "current_row_hash": row["hash"],
+            "review_reason": candidate["review_reason"],
+        }
+
+        scheduled_class = ScheduledClass.objects.filter(natural_key=natural_key).first()
+        if not scheduled_class:
+            ScheduledClass.objects.create(natural_key=natural_key, **values)
+            stats["scheduled_classes_created"] += 1
+        elif scheduled_class.current_row_hash == row["hash"]:
+            scheduled_class.source_import = report_import
+            scheduled_class.source_row = candidate["raw_row"]
+            scheduled_class.save(update_fields=["source_import", "source_row", "updated_at"])
+            stats["scheduled_classes_identical"] += 1
+        else:
+            protected_manual_fields = {
+                "studio",
+                "room",
+                "staff_member",
+                "name",
+                "class_date",
+                "start_time",
+                "end_time",
+                "session_type",
+                "capacity",
+                "status",
+                "reason",
+                "review_reason",
+            }
+            for field, value in values.items():
+                if not scheduled_class.manually_modified or field not in protected_manual_fields:
+                    setattr(scheduled_class, field, value)
+            scheduled_class.save()
+            stats["scheduled_classes_changed"] += 1
+
+    stats["natural_key_collisions"] = len(valid_class_rows) - len(current_class_candidates)
+
+    report_import.status = ReportImport.STATUS_COMPLETED
+    report_import.processed_at = timezone.now()
+    report_import.save(update_fields=["status", "processed_at"])
+    return {"preview": preview, "import": stats}
 
 
 @transaction.atomic
@@ -2251,7 +2556,8 @@ def preview_report(uploaded_file, site, report_type):
     raise ValueError(f"Unsupported report_type. Supported: {', '.join(SUPPORTED_REPORT_TYPES)}.")
 
 
-def import_report(uploaded_file, site, report_type, uploaded_by=None):
+def import_report(uploaded_file, site, report_type, uploaded_by=None, options=None):
+    options = options or {}
     if report_type == ATTENDANCE_REPORT_TYPE:
         return import_attendance_report(uploaded_file, site, uploaded_by=uploaded_by)
     if report_type == SALES_REPORT_TYPE:
@@ -2259,5 +2565,10 @@ def import_report(uploaded_file, site, report_type, uploaded_by=None):
     if report_type == SALES_BY_SERVICE_REPORT_TYPE:
         return import_sales_by_service_report(uploaded_file, site, uploaded_by=uploaded_by)
     if report_type == TRAINER_AVAILABILITY_REPORT_TYPE:
-        raise ValueError("Trainer Availability import is not implemented yet. Use preview first.")
+        return import_trainer_availability_report(
+            uploaded_file,
+            site,
+            uploaded_by=uploaded_by,
+            room_capacities=options.get("room_capacities"),
+        )
     raise ValueError(f"Unsupported report_type. Supported: {', '.join(SUPPORTED_REPORT_TYPES)}.")
