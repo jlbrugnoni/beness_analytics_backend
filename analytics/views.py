@@ -1108,15 +1108,21 @@ def occupation_view(request):
         for scheduled_class in scheduled_classes
         if scheduled_class.status == ScheduledClass.STATUS_SCHEDULED and not is_closed(scheduled_class)
     ]
-    attended_visits = attendance.filter(no_show=False, late_cancel=False)
-
-    attended_by_slot = {}
-    for visit in attended_visits.values("site_id", "visit_studio_id", "visit_date", "visit_time_raw"):
-        visit_time = parse_time_value(visit["visit_time_raw"])
-        if not visit_time:
+    available_class_ids = [scheduled_class.id for scheduled_class in available_classes]
+    class_match_rows = (
+        AttendanceClassMatch.objects.filter(scheduled_class_id__in=available_class_ids)
+        .values(
+            "scheduled_class_id",
+            "attendance_visit__no_show",
+            "attendance_visit__late_cancel",
+        )
+    )
+    attended_by_class = {}
+    for row in class_match_rows:
+        if row["attendance_visit__no_show"] or row["attendance_visit__late_cancel"]:
             continue
-        key = (visit["site_id"], visit["visit_studio_id"], visit["visit_date"], visit_time)
-        attended_by_slot[key] = attended_by_slot.get(key, 0) + 1
+        scheduled_class_id = row["scheduled_class_id"]
+        attended_by_class[scheduled_class_id] = attended_by_class.get(scheduled_class_id, 0) + 1
 
     slots = {}
     by_studio = {}
@@ -1124,6 +1130,7 @@ def occupation_view(request):
     by_room = {}
 
     for scheduled_class in available_classes:
+        attended_count = attended_by_class.get(scheduled_class.id, 0)
         key = (
             scheduled_class.site_id,
             scheduled_class.studio_id,
@@ -1137,10 +1144,11 @@ def occupation_view(request):
             "start_time": scheduled_class.start_time.strftime("%H:%M"),
             "capacity": 0,
             "scheduled_classes": 0,
-            "attended": attended_by_slot.get(key, 0),
+            "attended": 0,
         })
         slot["capacity"] += scheduled_class.capacity
         slot["scheduled_classes"] += 1
+        slot["attended"] += attended_count
 
         studio_row = by_studio.setdefault(scheduled_class.studio_id, {
             "name": scheduled_class.studio.name,
@@ -1150,11 +1158,13 @@ def occupation_view(request):
         })
         studio_row["capacity"] += scheduled_class.capacity
         studio_row["scheduled_classes"] += 1
+        studio_row["attended"] += attended_count
 
         day_key = scheduled_class.class_date.isoformat()
         day_row = by_day.setdefault(day_key, {"date": day_key, "capacity": 0, "attended": 0, "scheduled_classes": 0})
         day_row["capacity"] += scheduled_class.capacity
         day_row["scheduled_classes"] += 1
+        day_row["attended"] += attended_count
 
         room_name = scheduled_class.room.name if scheduled_class.room else "N/A"
         room_key = scheduled_class.room_id or f"none-{scheduled_class.studio_id}"
@@ -1162,10 +1172,12 @@ def occupation_view(request):
             "name": room_name,
             "studio": scheduled_class.studio.name,
             "capacity": 0,
+            "attended": 0,
             "scheduled_classes": 0,
         })
         room_row["capacity"] += scheduled_class.capacity
         room_row["scheduled_classes"] += 1
+        room_row["attended"] += attended_count
 
     total_capacity = 0
     matched_attended = 0
@@ -1173,20 +1185,28 @@ def occupation_view(request):
         total_capacity += slot["capacity"]
         matched_attended += slot["attended"]
         slot["occupation_rate"] = percentage(slot["attended"], slot["capacity"])
-        _, studio_id, class_date, _ = key
-        by_studio[studio_id]["attended"] += slot["attended"]
-        by_day[class_date.isoformat()]["attended"] += slot["attended"]
 
     for row in by_studio.values():
         row["occupation_rate"] = percentage(row["attended"], row["capacity"])
     for row in by_day.values():
         row["occupation_rate"] = percentage(row["attended"], row["capacity"])
+    for row in by_room.values():
+        row["occupation_rate"] = percentage(row["attended"], row["capacity"])
 
-    scheduled_slot_keys = set(slots.keys())
-    unscheduled_attended = sum(
-        count for key, count in attended_by_slot.items()
-        if key not in scheduled_slot_keys
+    unresolved_attended = AttendanceClassMatch.objects.filter(
+        attendance_visit__visit_date__range=(start, end),
+        attendance_visit__no_show=False,
+        attendance_visit__late_cancel=False,
+        match_method__in=[
+            AttendanceClassMatch.METHOD_AMBIGUOUS,
+            AttendanceClassMatch.METHOD_UNMATCHED,
+        ],
     )
+    if request.query_params.get("site"):
+        unresolved_attended = unresolved_attended.filter(attendance_visit__site_id=request.query_params.get("site"))
+    if request.query_params.get("studio"):
+        unresolved_attended = unresolved_attended.filter(attendance_visit__visit_studio_id=request.query_params.get("studio"))
+    unscheduled_attended = unresolved_attended.count()
 
     return Response({
         "formula": "ocupacion = asistencias reales / capacidad programada",
@@ -1198,14 +1218,14 @@ def occupation_view(request):
         "scheduled_capacity": total_capacity,
         "matched_attended_visits": matched_attended,
         "unscheduled_attended_visits": unscheduled_attended,
+        "unresolved_attended_visits": unscheduled_attended,
         "occupation_rate": percentage(matched_attended, total_capacity),
         "by_studio": sorted(by_studio.values(), key=lambda row: row["name"]),
         "by_day": sorted(by_day.values(), key=lambda row: row["date"]),
         "by_room_capacity": sorted(by_room.values(), key=lambda row: (row["studio"], row["name"])),
         "by_slot": sorted(slots.values(), key=lambda row: (row["date"], row["start_time"], row["studio"]))[:100],
         "note": (
-            "La asistencia se empareja por site, estudio, fecha y hora de inicio. Si dos salas del mismo estudio "
-            "funcionan a la misma hora, la ocupacion es mas confiable a nivel estudio/franja que a nivel sala "
-            "hasta que tengamos una fuente con sala exacta por visita."
+            "La ocupacion usa los emparejamientos guardados entre asistencias y clases programadas. "
+            "Reconstruye los emparejamientos despues de importar agenda o asistencia para actualizar estos datos."
         ),
     })
