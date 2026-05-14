@@ -11,7 +11,16 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from analytics.models import MembershipMonthStatus
-from core_data.models import AttendanceVisit, PricingOption, SaleLine, ScheduledClass, ServicePurchase, Site, StudioClosure
+from core_data.models import (
+    AttendanceClassMatch,
+    AttendanceVisit,
+    PricingOption,
+    SaleLine,
+    ScheduledClass,
+    ServicePurchase,
+    Site,
+    StudioClosure,
+)
 
 
 def parse_date(value):
@@ -934,6 +943,131 @@ def rebuild_membership_months_view(request):
     return Response({
         "rebuilt": results,
         "total_rows": sum(row["rows"] for row in results),
+    })
+
+
+def candidate_classes_for_visit(visit, visit_time, scheduled_by_slot):
+    if not visit_time:
+        return []
+    return scheduled_by_slot.get(
+        (
+            visit.site_id,
+            visit.visit_studio_id,
+            visit.visit_date,
+            visit_time,
+        ),
+        [],
+    )
+
+
+def match_visit_to_class(visit, scheduled_by_slot):
+    visit_time = parse_time_value(visit.visit_time_raw)
+    candidates = candidate_classes_for_visit(visit, visit_time, scheduled_by_slot)
+    if not candidates:
+        return {
+            "scheduled_class": None,
+            "match_method": AttendanceClassMatch.METHOD_UNMATCHED,
+            "confidence": Decimal("0.00"),
+            "candidate_class_ids": [],
+            "notes": "No scheduled class found for site, studio, date and start time.",
+        }
+
+    exact_instructor = [
+        scheduled_class
+        for scheduled_class in candidates
+        if scheduled_class.staff_member_id and scheduled_class.staff_member_id == visit.staff_member_id
+    ]
+    if len(exact_instructor) == 1:
+        return {
+            "scheduled_class": exact_instructor[0],
+            "match_method": AttendanceClassMatch.METHOD_EXACT_INSTRUCTOR_TIME,
+            "confidence": Decimal("1.00"),
+            "candidate_class_ids": [scheduled_class.id for scheduled_class in candidates],
+            "notes": "",
+        }
+
+    if len(candidates) == 1:
+        return {
+            "scheduled_class": candidates[0],
+            "match_method": AttendanceClassMatch.METHOD_SINGLE_CLASS_SAME_TIME,
+            "confidence": Decimal("0.75"),
+            "candidate_class_ids": [candidates[0].id],
+            "notes": "Matched by site, studio, date and time; instructor was not exact.",
+        }
+
+    return {
+        "scheduled_class": None,
+        "match_method": AttendanceClassMatch.METHOD_AMBIGUOUS,
+        "confidence": Decimal("0.40"),
+        "candidate_class_ids": [scheduled_class.id for scheduled_class in candidates],
+        "notes": "Multiple scheduled classes found for the same site, studio, date and time.",
+    }
+
+
+def rebuild_attendance_class_matches(site_id=None, start=None, end=None):
+    visits = AttendanceVisit.objects.select_related("staff_member").filter(visit_date__range=(start, end))
+    scheduled_classes = ScheduledClass.objects.select_related("staff_member").filter(
+        class_date__range=(start, end),
+    ).exclude(status__in=[ScheduledClass.STATUS_CANCELLED, ScheduledClass.STATUS_UNAVAILABLE])
+    if site_id:
+        visits = visits.filter(site_id=site_id)
+        scheduled_classes = scheduled_classes.filter(site_id=site_id)
+
+    scheduled_by_slot = {}
+    for scheduled_class in scheduled_classes:
+        key = (
+            scheduled_class.site_id,
+            scheduled_class.studio_id,
+            scheduled_class.class_date,
+            scheduled_class.start_time.replace(second=0, microsecond=0),
+        )
+        scheduled_by_slot.setdefault(key, []).append(scheduled_class)
+
+    stats = {
+        "visits_processed": 0,
+        "matches_created": 0,
+        "matches_updated": 0,
+        "exact_instructor_time": 0,
+        "single_class_same_time": 0,
+        "ambiguous": 0,
+        "unmatched": 0,
+    }
+    method_counter_keys = {
+        AttendanceClassMatch.METHOD_EXACT_INSTRUCTOR_TIME: "exact_instructor_time",
+        AttendanceClassMatch.METHOD_SINGLE_CLASS_SAME_TIME: "single_class_same_time",
+        AttendanceClassMatch.METHOD_AMBIGUOUS: "ambiguous",
+        AttendanceClassMatch.METHOD_UNMATCHED: "unmatched",
+    }
+
+    for visit in visits.iterator():
+        match = match_visit_to_class(visit, scheduled_by_slot)
+        _, created = AttendanceClassMatch.objects.update_or_create(
+            attendance_visit=visit,
+            defaults=match,
+        )
+        stats["visits_processed"] += 1
+        stats["matches_created" if created else "matches_updated"] += 1
+        stats[method_counter_keys[match["match_method"]]] += 1
+
+    return stats
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def rebuild_attendance_class_matches_view(request):
+    start = parse_date(request.data.get("date_from") or request.query_params.get("date_from"))
+    end = parse_date(request.data.get("date_to") or request.query_params.get("date_to"))
+    if not start or not end:
+        start, end = date_bounds(request)
+    site_id = request.data.get("site") or request.query_params.get("site")
+
+    with transaction.atomic():
+        stats = rebuild_attendance_class_matches(site_id=site_id, start=start, end=end)
+
+    return Response({
+        "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+        "site_id": site_id,
+        **stats,
     })
 
 
