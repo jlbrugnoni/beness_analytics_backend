@@ -288,6 +288,116 @@ class ScheduledClass(models.Model):
         super().save(*args, **kwargs)
 
 
+class WeeklyRoomTemplate(models.Model):
+    WEEKDAY_CHOICES = [
+        (0, "Monday"),
+        (1, "Tuesday"),
+        (2, "Wednesday"),
+        (3, "Thursday"),
+        (4, "Friday"),
+        (5, "Saturday"),
+        (6, "Sunday"),
+    ]
+
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="weekly_room_templates")
+    studio = models.ForeignKey(Studio, on_delete=models.CASCADE, related_name="weekly_room_templates")
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="weekly_templates")
+    staff_member = models.ForeignKey(
+        StaffMember,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="weekly_room_templates",
+    )
+    name = models.CharField(max_length=150, default="Pilates")
+    weekday = models.PositiveSmallIntegerField(choices=WEEKDAY_CHOICES)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    capacity = models.PositiveIntegerField(default=0)
+    active_from = models.DateField()
+    active_until = models.DateField(blank=True, null=True)
+    active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["studio__name", "room__name", "weekday", "start_time"]
+        indexes = [
+            models.Index(fields=["site", "studio", "room", "weekday", "start_time"]),
+            models.Index(fields=["active_from", "active_until"]),
+        ]
+
+    def __str__(self):
+        return f"{self.room.name} {self.get_weekday_display()} {self.start_time} - {self.name}"
+
+
+class ExpectedClassSlot(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_MATCHED = "matched"
+    STATUS_MISSING = "missing"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_UNAVAILABLE = "unavailable"
+    STATUS_MANUALLY_CREATED = "manually_created"
+    STATUS_IGNORED = "ignored"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_MATCHED, "Matched"),
+        (STATUS_MISSING, "Missing"),
+        (STATUS_CANCELLED, "Cancelled"),
+        (STATUS_UNAVAILABLE, "Unavailable"),
+        (STATUS_MANUALLY_CREATED, "Manually Created"),
+        (STATUS_IGNORED, "Ignored"),
+    ]
+
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="expected_class_slots")
+    studio = models.ForeignKey(Studio, on_delete=models.CASCADE, related_name="expected_class_slots")
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="expected_class_slots")
+    template = models.ForeignKey(
+        WeeklyRoomTemplate,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="expected_slots",
+    )
+    scheduled_class = models.ForeignKey(
+        ScheduledClass,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="expected_slots",
+    )
+    staff_member = models.ForeignKey(
+        StaffMember,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="expected_class_slots",
+    )
+    slot_date = models.DateField(db_index=True)
+    start_time = models.TimeField(db_index=True)
+    end_time = models.TimeField()
+    name = models.CharField(max_length=150, default="Pilates")
+    capacity = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True)
+    resolution_notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["slot_date", "start_time", "studio__name", "room__name"]
+        unique_together = ("site", "room", "slot_date", "start_time", "end_time")
+        indexes = [
+            models.Index(fields=["site", "studio", "slot_date", "start_time"]),
+            models.Index(fields=["site", "room", "slot_date", "start_time"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.slot_date} {self.start_time} - {self.room.name} - {self.status}"
+
+
 class StudioClosure(models.Model):
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="studio_closures")
     studio = models.ForeignKey(

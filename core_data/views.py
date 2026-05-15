@@ -1,4 +1,5 @@
 import json
+from datetime import date, timedelta
 
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
@@ -21,6 +22,7 @@ from .models import (
     AttendanceVisit,
     AttendanceVisitVersion,
     Client,
+    ExpectedClassSlot,
     LoginLog,
     PaymentMethod,
     PricingOption,
@@ -39,6 +41,7 @@ from .models import (
     StudioClosure,
     Studio,
     TrainerAvailabilityRawRow,
+    WeeklyRoomTemplate,
 )
 from .serializers import (
     AttendanceClassMatchSerializer,
@@ -46,6 +49,7 @@ from .serializers import (
     AttendanceVisitSerializer,
     ChangePasswordSerializer,
     ClientSerializer,
+    ExpectedClassSlotSerializer,
     GroupSerializer,
     LoginLogSerializer,
     PaymentMethodSerializer,
@@ -64,6 +68,7 @@ from .serializers import (
     StudioSerializer,
     TrainerAvailabilityRawRowSerializer,
     UserSerializer,
+    WeeklyRoomTemplateSerializer,
 )
 
 
@@ -211,6 +216,158 @@ class PaymentMethodViewSet(viewsets.ModelViewSet):
     queryset = PaymentMethod.objects.select_related("site").all()
     serializer_class = PaymentMethodSerializer
     permission_classes = [IsAuthenticated]
+
+
+def parse_iso_date(value):
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def generated_slot_status(expected_slot):
+    if expected_slot.scheduled_class_id:
+        return ExpectedClassSlot.STATUS_MATCHED
+    return ExpectedClassSlot.STATUS_MISSING
+
+
+def find_matching_scheduled_class(template, slot_date):
+    candidates = ScheduledClass.objects.filter(
+        site=template.site,
+        studio=template.studio,
+        room=template.room,
+        class_date=slot_date,
+        start_time=template.start_time,
+        end_time=template.end_time,
+    ).exclude(status=ScheduledClass.STATUS_CANCELLED)
+    if template.staff_member_id:
+        exact = candidates.filter(staff_member_id=template.staff_member_id).first()
+        if exact:
+            return exact
+    if candidates.count() == 1:
+        return candidates.first()
+    return None
+
+
+def generate_expected_slots(site_id=None, studio_id=None, room_id=None, date_from=None, date_to=None):
+    templates = WeeklyRoomTemplate.objects.select_related("site", "studio", "room", "staff_member").filter(active=True)
+    if site_id:
+        templates = templates.filter(site_id=site_id)
+    if studio_id:
+        templates = templates.filter(studio_id=studio_id)
+    if room_id:
+        templates = templates.filter(room_id=room_id)
+
+    stats = {"created": 0, "updated": 0, "matched": 0, "missing": 0}
+    current_date = date_from
+    while current_date <= date_to:
+        for template in templates:
+            if template.weekday != current_date.weekday():
+                continue
+            if template.active_from > current_date:
+                continue
+            if template.active_until and template.active_until < current_date:
+                continue
+
+            scheduled_class = find_matching_scheduled_class(template, current_date)
+            status_value = ExpectedClassSlot.STATUS_MATCHED if scheduled_class else ExpectedClassSlot.STATUS_MISSING
+            expected_slot, created = ExpectedClassSlot.objects.update_or_create(
+                site=template.site,
+                room=template.room,
+                slot_date=current_date,
+                start_time=template.start_time,
+                end_time=template.end_time,
+                defaults={
+                    "studio": template.studio,
+                    "template": template,
+                    "scheduled_class": scheduled_class,
+                    "staff_member": template.staff_member,
+                    "name": template.name,
+                    "capacity": template.capacity,
+                    "status": status_value,
+                },
+            )
+            stats["created" if created else "updated"] += 1
+            stats["matched" if expected_slot.scheduled_class_id else "missing"] += 1
+        current_date += timedelta(days=1)
+    return stats
+
+
+class WeeklyRoomTemplateViewSet(viewsets.ModelViewSet):
+    serializer_class = WeeklyRoomTemplateSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = WeeklyRoomTemplate.objects.select_related("site", "studio", "room", "staff_member").all()
+        site = self.request.query_params.get("site")
+        studio = self.request.query_params.get("studio")
+        room = self.request.query_params.get("room")
+        active = self.request.query_params.get("active")
+        if site:
+            queryset = queryset.filter(site_id=site)
+        if studio:
+            queryset = queryset.filter(studio_id=studio)
+        if room:
+            queryset = queryset.filter(room_id=room)
+        if active in ("true", "false"):
+            queryset = queryset.filter(active=active == "true")
+        return queryset
+
+
+class ExpectedClassSlotViewSet(viewsets.ModelViewSet):
+    serializer_class = ExpectedClassSlotSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = ExpectedClassSlot.objects.select_related(
+            "site",
+            "studio",
+            "room",
+            "template",
+            "scheduled_class",
+            "staff_member",
+        ).all()
+        site = self.request.query_params.get("site")
+        studio = self.request.query_params.get("studio")
+        room = self.request.query_params.get("room")
+        status_value = self.request.query_params.get("status")
+        date_from = self.request.query_params.get("date_from")
+        date_to = self.request.query_params.get("date_to")
+        if site:
+            queryset = queryset.filter(site_id=site)
+        if studio:
+            queryset = queryset.filter(studio_id=studio)
+        if room:
+            queryset = queryset.filter(room_id=room)
+        if status_value:
+            queryset = queryset.filter(status=status_value)
+        if date_from:
+            queryset = queryset.filter(slot_date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(slot_date__lte=date_to)
+        return queryset
+
+    @action(detail=False, methods=["post"], url_path="generate")
+    def generate(self, request):
+        start = parse_iso_date(request.data.get("date_from") or request.query_params.get("date_from"))
+        end = parse_iso_date(request.data.get("date_to") or request.query_params.get("date_to"))
+        if not start or not end:
+            return Response({"error": "date_from and date_to are required."}, status=status.HTTP_400_BAD_REQUEST)
+        if end < start:
+            return Response({"error": "date_to must be after date_from."}, status=status.HTTP_400_BAD_REQUEST)
+        if (end - start).days > 120:
+            return Response({"error": "Generate at most 120 days at a time."}, status=status.HTTP_400_BAD_REQUEST)
+
+        stats = generate_expected_slots(
+            site_id=request.data.get("site") or request.query_params.get("site"),
+            studio_id=request.data.get("studio") or request.query_params.get("studio"),
+            room_id=request.data.get("room") or request.query_params.get("room"),
+            date_from=start,
+            date_to=end,
+        )
+        return Response({"date_range": {"from": start.isoformat(), "to": end.isoformat()}, **stats})
 
 
 class StudioClosureViewSet(viewsets.ModelViewSet):
@@ -375,6 +532,7 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             SaleLineVersion,
             ServicePurchaseVersion,
             AttendanceClassMatch,
+            ExpectedClassSlot,
             ScheduledClass,
             TrainerAvailabilityRawRow,
             AttendanceVisit,

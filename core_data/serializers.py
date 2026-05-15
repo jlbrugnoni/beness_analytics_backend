@@ -7,6 +7,7 @@ from .models import (
     AttendanceClassMatch,
     AttendanceVisit,
     Client,
+    ExpectedClassSlot,
     LoginLog,
     PaymentMethod,
     PricingOption,
@@ -23,6 +24,7 @@ from .models import (
     StudioClosure,
     Studio,
     TrainerAvailabilityRawRow,
+    WeeklyRoomTemplate,
 )
 
 
@@ -176,6 +178,31 @@ class ScheduledClassSerializer(serializers.ModelSerializer):
         model = ScheduledClass
         fields = "__all__"
         read_only_fields = ["natural_key", "current_row_hash", "created_at", "updated_at"]
+
+
+class WeeklyRoomTemplateSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    studio_name = serializers.CharField(source="studio.name", read_only=True)
+    room_name = serializers.CharField(source="room.name", read_only=True)
+    staff_member_name = serializers.CharField(source="staff_member.name", read_only=True)
+    weekday_name = serializers.CharField(source="get_weekday_display", read_only=True)
+
+    class Meta:
+        model = WeeklyRoomTemplate
+        fields = "__all__"
+
+
+class ExpectedClassSlotSerializer(serializers.ModelSerializer):
+    site_name = serializers.CharField(source="site.name", read_only=True)
+    studio_name = serializers.CharField(source="studio.name", read_only=True)
+    room_name = serializers.CharField(source="room.name", read_only=True)
+    staff_member_name = serializers.CharField(source="staff_member.name", read_only=True)
+    scheduled_class_name = serializers.CharField(source="scheduled_class.name", read_only=True)
+    scheduled_class_status = serializers.CharField(source="scheduled_class.status", read_only=True)
+
+    class Meta:
+        model = ExpectedClassSlot
+        fields = "__all__"
 
 
 class AttendanceVisitSerializer(serializers.ModelSerializer):
