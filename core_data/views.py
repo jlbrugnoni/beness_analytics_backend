@@ -233,6 +233,16 @@ def generated_slot_status(expected_slot):
     return ExpectedClassSlot.STATUS_MISSING
 
 
+def minutes_since_midnight(value):
+    return value.hour * 60 + value.minute
+
+
+def duration_difference_minutes(start_a, end_a, start_b, end_b):
+    duration_a = minutes_since_midnight(end_a) - minutes_since_midnight(start_a)
+    duration_b = minutes_since_midnight(end_b) - minutes_since_midnight(start_b)
+    return abs(duration_a - duration_b)
+
+
 def find_matching_scheduled_class(template, slot_date):
     candidates = ScheduledClass.objects.filter(
         site=template.site,
@@ -240,14 +250,22 @@ def find_matching_scheduled_class(template, slot_date):
         room=template.room,
         class_date=slot_date,
         start_time=template.start_time,
-        end_time=template.end_time,
     ).exclude(status=ScheduledClass.STATUS_CANCELLED)
+    candidates = [
+        candidate for candidate in candidates
+        if duration_difference_minutes(
+            template.start_time,
+            template.end_time,
+            candidate.start_time,
+            candidate.end_time,
+        ) <= 15
+    ]
     if template.staff_member_id:
-        exact = candidates.filter(staff_member_id=template.staff_member_id).first()
+        exact = next((candidate for candidate in candidates if candidate.staff_member_id == template.staff_member_id), None)
         if exact:
             return exact
-    if candidates.count() == 1:
-        return candidates.first()
+    if len(candidates) == 1:
+        return candidates[0]
     return None
 
 
@@ -260,7 +278,13 @@ def generate_expected_slots(site_id=None, studio_id=None, room_id=None, date_fro
     if room_id:
         templates = templates.filter(room_id=room_id)
 
-    stats = {"created": 0, "updated": 0, "matched": 0, "missing": 0}
+    protected_statuses = {
+        ExpectedClassSlot.STATUS_CANCELLED,
+        ExpectedClassSlot.STATUS_UNAVAILABLE,
+        ExpectedClassSlot.STATUS_MANUALLY_CREATED,
+        ExpectedClassSlot.STATUS_IGNORED,
+    }
+    stats = {"created": 0, "updated": 0, "matched": 0, "missing": 0, "preserved": 0}
     current_date = date_from
     while current_date <= date_to:
         for template in templates:
@@ -273,22 +297,44 @@ def generate_expected_slots(site_id=None, studio_id=None, room_id=None, date_fro
 
             scheduled_class = find_matching_scheduled_class(template, current_date)
             status_value = ExpectedClassSlot.STATUS_MATCHED if scheduled_class else ExpectedClassSlot.STATUS_MISSING
-            expected_slot, created = ExpectedClassSlot.objects.update_or_create(
+            expected_slot = ExpectedClassSlot.objects.filter(
                 site=template.site,
                 room=template.room,
                 slot_date=current_date,
                 start_time=template.start_time,
                 end_time=template.end_time,
-                defaults={
-                    "studio": template.studio,
-                    "template": template,
-                    "scheduled_class": scheduled_class,
-                    "staff_member": template.staff_member,
-                    "name": template.name,
-                    "capacity": template.capacity,
-                    "status": status_value,
-                },
-            )
+            ).first()
+
+            if expected_slot and expected_slot.status in protected_statuses:
+                stats["preserved"] += 1
+                stats["matched" if expected_slot.scheduled_class_id else "missing"] += 1
+                continue
+
+            defaults = {
+                "studio": template.studio,
+                "template": template,
+                "scheduled_class": scheduled_class,
+                "staff_member": template.staff_member,
+                "name": template.name,
+                "capacity": template.capacity,
+                "status": status_value,
+            }
+
+            if expected_slot:
+                for field, value in defaults.items():
+                    setattr(expected_slot, field, value)
+                expected_slot.save()
+                created = False
+            else:
+                expected_slot = ExpectedClassSlot.objects.create(
+                    site=template.site,
+                    room=template.room,
+                    slot_date=current_date,
+                    start_time=template.start_time,
+                    end_time=template.end_time,
+                    **defaults,
+                )
+                created = True
             stats["created" if created else "updated"] += 1
             stats["matched" if expected_slot.scheduled_class_id else "missing"] += 1
         current_date += timedelta(days=1)
@@ -368,6 +414,54 @@ class ExpectedClassSlotViewSet(viewsets.ModelViewSet):
             date_to=end,
         )
         return Response({"date_range": {"from": start.isoformat(), "to": end.isoformat()}, **stats})
+
+    @action(detail=True, methods=["post"], url_path="create-scheduled-class")
+    def create_scheduled_class(self, request, pk=None):
+        expected_slot = self.get_object()
+        if expected_slot.scheduled_class_id:
+            return Response({"error": "This expected slot already has a scheduled class."}, status=status.HTTP_400_BAD_REQUEST)
+
+        scheduled_class = ScheduledClass.objects.create(
+            site=expected_slot.site,
+            studio=expected_slot.studio,
+            room=expected_slot.room,
+            staff_member=expected_slot.staff_member,
+            name=expected_slot.name,
+            class_date=expected_slot.slot_date,
+            start_time=expected_slot.start_time,
+            end_time=expected_slot.end_time,
+            session_type=ScheduledClass.SESSION_TYPE_GROUP,
+            capacity=expected_slot.capacity,
+            status=ScheduledClass.STATUS_SCHEDULED,
+            reason="Created from expected schedule slot",
+            source=ScheduledClass.SOURCE_MANUAL,
+            manually_modified=True,
+        )
+        expected_slot.scheduled_class = scheduled_class
+        expected_slot.status = ExpectedClassSlot.STATUS_MANUALLY_CREATED
+        expected_slot.resolution_notes = request.data.get("notes") or "Scheduled class created manually from expected slot."
+        expected_slot.save(update_fields=["scheduled_class", "status", "resolution_notes", "updated_at"])
+        return Response({
+            "expected_slot": ExpectedClassSlotSerializer(expected_slot).data,
+            "scheduled_class": ScheduledClassSerializer(scheduled_class).data,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="resolve")
+    def resolve(self, request, pk=None):
+        expected_slot = self.get_object()
+        status_value = request.data.get("status")
+        allowed_statuses = {
+            ExpectedClassSlot.STATUS_CANCELLED,
+            ExpectedClassSlot.STATUS_UNAVAILABLE,
+            ExpectedClassSlot.STATUS_IGNORED,
+            ExpectedClassSlot.STATUS_MISSING,
+        }
+        if status_value not in allowed_statuses:
+            return Response({"error": "Invalid resolution status."}, status=status.HTTP_400_BAD_REQUEST)
+        expected_slot.status = status_value
+        expected_slot.resolution_notes = request.data.get("notes") or expected_slot.resolution_notes
+        expected_slot.save(update_fields=["status", "resolution_notes", "updated_at"])
+        return Response(ExpectedClassSlotSerializer(expected_slot).data)
 
 
 class StudioClosureViewSet(viewsets.ModelViewSet):
