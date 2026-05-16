@@ -458,7 +458,31 @@ class ExpectedClassSlotViewSet(viewsets.ModelViewSet):
         }
         if status_value not in allowed_statuses:
             return Response({"error": "Invalid resolution status."}, status=status.HTTP_400_BAD_REQUEST)
-        expected_slot.status = status_value
+
+        if status_value == ExpectedClassSlot.STATUS_CANCELLED and expected_slot.scheduled_class_id:
+            expected_slot.scheduled_class.status = ScheduledClass.STATUS_CANCELLED
+            expected_slot.scheduled_class.reason = request.data.get("notes") or "Cancelled from expected schedule slot."
+            expected_slot.scheduled_class.manually_modified = True
+            expected_slot.scheduled_class.save(update_fields=["status", "reason", "manually_modified", "updated_at"])
+        elif status_value == ExpectedClassSlot.STATUS_UNAVAILABLE and expected_slot.scheduled_class_id:
+            expected_slot.scheduled_class.status = ScheduledClass.STATUS_UNAVAILABLE
+            expected_slot.scheduled_class.reason = request.data.get("notes") or "Marked unavailable from expected schedule slot."
+            expected_slot.scheduled_class.manually_modified = True
+            expected_slot.scheduled_class.save(update_fields=["status", "reason", "manually_modified", "updated_at"])
+        elif status_value == ExpectedClassSlot.STATUS_MISSING and expected_slot.scheduled_class_id:
+            expected_slot.scheduled_class.status = ScheduledClass.STATUS_SCHEDULED
+            expected_slot.scheduled_class.reason = request.data.get("notes") or "Restored from expected schedule slot."
+            expected_slot.scheduled_class.manually_modified = True
+            expected_slot.scheduled_class.save(update_fields=["status", "reason", "manually_modified", "updated_at"])
+
+        if status_value == ExpectedClassSlot.STATUS_MISSING and expected_slot.scheduled_class_id:
+            expected_slot.status = (
+                ExpectedClassSlot.STATUS_MANUALLY_CREATED
+                if expected_slot.scheduled_class.source == ScheduledClass.SOURCE_MANUAL
+                else ExpectedClassSlot.STATUS_MATCHED
+            )
+        else:
+            expected_slot.status = status_value
         expected_slot.resolution_notes = request.data.get("notes") or expected_slot.resolution_notes
         expected_slot.save(update_fields=["status", "resolution_notes", "updated_at"])
         return Response(ExpectedClassSlotSerializer(expected_slot).data)

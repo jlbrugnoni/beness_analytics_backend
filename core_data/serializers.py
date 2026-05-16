@@ -199,10 +199,39 @@ class ExpectedClassSlotSerializer(serializers.ModelSerializer):
     staff_member_name = serializers.CharField(source="staff_member.name", read_only=True)
     scheduled_class_name = serializers.CharField(source="scheduled_class.name", read_only=True)
     scheduled_class_status = serializers.CharField(source="scheduled_class.status", read_only=True)
+    scheduled_class_staff_member_name = serializers.CharField(source="scheduled_class.staff_member.name", read_only=True)
+    scheduled_class_capacity = serializers.IntegerField(source="scheduled_class.capacity", read_only=True)
+    scheduled_class_attendance_count = serializers.SerializerMethodField()
+    scheduled_class_attended_count = serializers.SerializerMethodField()
+    scheduled_class_no_show_count = serializers.SerializerMethodField()
+    scheduled_class_late_cancel_count = serializers.SerializerMethodField()
 
     class Meta:
         model = ExpectedClassSlot
         fields = "__all__"
+
+    def get_scheduled_class_attendance_count(self, obj):
+        if not obj.scheduled_class_id:
+            return 0
+        return obj.scheduled_class.attendance_matches.count()
+
+    def get_scheduled_class_attended_count(self, obj):
+        if not obj.scheduled_class_id:
+            return 0
+        return obj.scheduled_class.attendance_matches.filter(
+            attendance_visit__no_show=False,
+            attendance_visit__late_cancel=False,
+        ).count()
+
+    def get_scheduled_class_no_show_count(self, obj):
+        if not obj.scheduled_class_id:
+            return 0
+        return obj.scheduled_class.attendance_matches.filter(attendance_visit__no_show=True).count()
+
+    def get_scheduled_class_late_cancel_count(self, obj):
+        if not obj.scheduled_class_id:
+            return 0
+        return obj.scheduled_class.attendance_matches.filter(attendance_visit__late_cancel=True).count()
 
 
 class AttendanceVisitSerializer(serializers.ModelSerializer):
