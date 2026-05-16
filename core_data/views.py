@@ -266,10 +266,17 @@ def find_matching_scheduled_class(template, slot_date):
             candidate.end_time,
         ) <= 15
     ]
+    candidates.sort(key=lambda candidate: 0 if candidate.source == ScheduledClass.SOURCE_TRAINER_AVAILABILITY else 1)
     if template.staff_member_id:
         exact = next((candidate for candidate in candidates if candidate.staff_member_id == template.staff_member_id), None)
         if exact:
             return exact
+    detected_candidates = [
+        candidate for candidate in candidates
+        if candidate.source == ScheduledClass.SOURCE_TRAINER_AVAILABILITY
+    ]
+    if len(detected_candidates) == 1:
+        return detected_candidates[0]
     if len(candidates) == 1:
         return candidates[0]
     return None
@@ -347,6 +354,70 @@ def generate_expected_slots(site_id=None, studio_id=None, room_id=None, date_fro
     return stats
 
 
+def rematch_expected_slots_to_detected_classes(site_id=None, studio_id=None, room_id=None, date_from=None, date_to=None):
+    expected_slots = ExpectedClassSlot.objects.select_related(
+        "template",
+        "scheduled_class",
+    ).filter(
+        template__isnull=False,
+        slot_date__range=(date_from, date_to),
+    ).exclude(
+        status__in=[
+            ExpectedClassSlot.STATUS_CANCELLED,
+            ExpectedClassSlot.STATUS_UNAVAILABLE,
+            ExpectedClassSlot.STATUS_IGNORED,
+        ],
+    )
+    if site_id:
+        expected_slots = expected_slots.filter(site_id=site_id)
+    if studio_id:
+        expected_slots = expected_slots.filter(studio_id=studio_id)
+    if room_id:
+        expected_slots = expected_slots.filter(room_id=room_id)
+
+    stats = {
+        "expected_slots_checked": 0,
+        "expected_slots_relinked": 0,
+        "manual_classes_removed": 0,
+        "attendance_matches_transferred": 0,
+    }
+    auto_created_reasons = {
+        "Automatically created from expected schedule after report import.",
+        "Created from expected schedule slot",
+    }
+    for expected_slot in expected_slots:
+        stats["expected_slots_checked"] += 1
+        detected_class = find_matching_scheduled_class(expected_slot.template, expected_slot.slot_date)
+        if not detected_class or detected_class.source != ScheduledClass.SOURCE_TRAINER_AVAILABILITY:
+            continue
+        if expected_slot.scheduled_class_id == detected_class.id:
+            expected_slot.status = ExpectedClassSlot.STATUS_MATCHED
+            expected_slot.save(update_fields=["status", "updated_at"])
+            continue
+
+        previous_class = expected_slot.scheduled_class
+        if previous_class and previous_class.source == ScheduledClass.SOURCE_MANUAL:
+            transferred = AttendanceClassMatch.objects.filter(scheduled_class=previous_class).update(scheduled_class=detected_class)
+            stats["attendance_matches_transferred"] += transferred
+
+        expected_slot.scheduled_class = detected_class
+        expected_slot.status = ExpectedClassSlot.STATUS_MATCHED
+        expected_slot.resolution_notes = "Relinked to detected class during schedule rematch."
+        expected_slot.save(update_fields=["scheduled_class", "status", "resolution_notes", "updated_at"])
+        stats["expected_slots_relinked"] += 1
+
+        if (
+            previous_class
+            and previous_class.source == ScheduledClass.SOURCE_MANUAL
+            and previous_class.reason in auto_created_reasons
+            and not previous_class.expected_slots.exists()
+        ):
+            previous_class.delete()
+            stats["manual_classes_removed"] += 1
+
+    return stats
+
+
 def create_scheduled_classes_from_missing_expected_slots(site_id=None, studio_id=None, room_id=None, date_from=None, date_to=None):
     expected_slots = ExpectedClassSlot.objects.select_related("site", "studio", "room", "staff_member").filter(
         status=ExpectedClassSlot.STATUS_MISSING,
@@ -405,6 +476,11 @@ def automate_schedule_after_import(site, import_result, report_type):
             date_from=start,
             date_to=end,
         )
+        rematch_stats = rematch_expected_slots_to_detected_classes(
+            site_id=site.id,
+            date_from=start,
+            date_to=end,
+        )
         manual_class_stats = create_scheduled_classes_from_missing_expected_slots(
             site_id=site.id,
             date_from=start,
@@ -418,6 +494,7 @@ def automate_schedule_after_import(site, import_result, report_type):
         "skipped": False,
         "date_range": {"from": start.isoformat(), "to": end.isoformat()},
         "expected_slots": expected_stats,
+        "expected_slot_rematch": rematch_stats,
         "manual_classes": manual_class_stats,
         "attendance_matches": match_stats,
     }
@@ -562,6 +639,38 @@ class ExpectedClassSlotViewSet(viewsets.ModelViewSet):
             "date_range": {"from": start.isoformat(), "to": end.isoformat()},
             **stats,
             **manual_class_stats,
+        })
+
+    @action(detail=False, methods=["post"], url_path="rematch")
+    def rematch(self, request):
+        start = parse_iso_date(request.data.get("date_from") or request.query_params.get("date_from"))
+        end = parse_iso_date(request.data.get("date_to") or request.query_params.get("date_to"))
+        if not start or not end:
+            return Response({"error": "date_from and date_to are required."}, status=status.HTTP_400_BAD_REQUEST)
+        if end < start:
+            return Response({"error": "date_to must be after date_from."}, status=status.HTTP_400_BAD_REQUEST)
+        if (end - start).days > 120:
+            return Response({"error": "Rematch at most 120 days at a time."}, status=status.HTTP_400_BAD_REQUEST)
+
+        site_id = request.data.get("site") or request.query_params.get("site")
+        studio_id = request.data.get("studio") or request.query_params.get("studio")
+        room_id = request.data.get("room") or request.query_params.get("room")
+        with transaction.atomic():
+            rematch_stats = rematch_expected_slots_to_detected_classes(
+                site_id=site_id,
+                studio_id=studio_id,
+                room_id=room_id,
+                date_from=start,
+                date_to=end,
+            )
+            from analytics.views import rebuild_attendance_class_matches
+
+            match_stats = rebuild_attendance_class_matches(site_id=site_id, start=start, end=end)
+
+        return Response({
+            "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+            **rematch_stats,
+            "attendance_matches": match_stats,
         })
 
     @action(detail=False, methods=["post"], url_path="reset-scoped")
