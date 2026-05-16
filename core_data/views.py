@@ -551,7 +551,18 @@ class ExpectedClassSlotViewSet(viewsets.ModelViewSet):
             date_from=start,
             date_to=end,
         )
-        return Response({"date_range": {"from": start.isoformat(), "to": end.isoformat()}, **stats})
+        manual_class_stats = create_scheduled_classes_from_missing_expected_slots(
+            site_id=request.data.get("site") or request.query_params.get("site"),
+            studio_id=request.data.get("studio") or request.query_params.get("studio"),
+            room_id=request.data.get("room") or request.query_params.get("room"),
+            date_from=start,
+            date_to=end,
+        )
+        return Response({
+            "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+            **stats,
+            **manual_class_stats,
+        })
 
     @action(detail=False, methods=["post"], url_path="reset-scoped")
     def reset_scoped(self, request):
