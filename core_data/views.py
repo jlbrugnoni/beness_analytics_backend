@@ -361,6 +361,62 @@ class WeeklyRoomTemplateViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(active=active == "true")
         return queryset
 
+    @action(detail=False, methods=["post"], url_path="sync-capacity-from-rooms")
+    def sync_capacity_from_rooms(self, request):
+        if not settings.ENABLE_ANALYTICS_RESET:
+            return Response(
+                {"error": "Schedule maintenance actions are disabled for this environment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response({"error": "Only staff users can update schedule templates."}, status=status.HTTP_403_FORBIDDEN)
+
+        site_id = request.data.get("site") or request.query_params.get("site")
+        if not site_id:
+            return Response({"error": "site is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        queryset = WeeklyRoomTemplate.objects.select_related("room").filter(site_id=site_id)
+        studio_id = request.data.get("studio") or request.query_params.get("studio")
+        room_id = request.data.get("room") or request.query_params.get("room")
+        active_only = request.data.get("active_only", True)
+        if studio_id:
+            queryset = queryset.filter(studio_id=studio_id)
+        if room_id:
+            queryset = queryset.filter(room_id=room_id)
+        if active_only in (True, "true", "True", "1", 1):
+            queryset = queryset.filter(active=True)
+
+        updated = 0
+        skipped = 0
+        samples = []
+        with transaction.atomic():
+            for template in queryset:
+                room_capacity = template.room.group_capacity or template.room.private_capacity or 0
+                if room_capacity <= 0:
+                    skipped += 1
+                    continue
+                if template.capacity == room_capacity:
+                    continue
+                previous_capacity = template.capacity
+                template.capacity = room_capacity
+                template.save(update_fields=["capacity", "updated_at"])
+                updated += 1
+                if len(samples) < 10:
+                    samples.append({
+                        "id": template.id,
+                        "room": template.room.name,
+                        "weekday": template.weekday,
+                        "start_time": template.start_time.strftime("%H:%M"),
+                        "previous_capacity": previous_capacity,
+                        "new_capacity": room_capacity,
+                    })
+
+        return Response({
+            "updated": updated,
+            "skipped_without_capacity": skipped,
+            "samples": samples,
+        })
+
 
 class ExpectedClassSlotViewSet(viewsets.ModelViewSet):
     serializer_class = ExpectedClassSlotSerializer
@@ -414,6 +470,69 @@ class ExpectedClassSlotViewSet(viewsets.ModelViewSet):
             date_to=end,
         )
         return Response({"date_range": {"from": start.isoformat(), "to": end.isoformat()}, **stats})
+
+    @action(detail=False, methods=["post"], url_path="reset-scoped")
+    def reset_scoped(self, request):
+        if not settings.ENABLE_ANALYTICS_RESET:
+            return Response(
+                {"error": "Schedule reset is disabled for this environment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response({"error": "Only staff users can reset schedule data."}, status=status.HTTP_403_FORBIDDEN)
+        if request.data.get("confirmation") != "RESET SCHEDULE DATA":
+            return Response({"error": "Invalid confirmation phrase."}, status=status.HTTP_400_BAD_REQUEST)
+
+        site_id = request.data.get("site") or request.query_params.get("site")
+        start = parse_iso_date(request.data.get("date_from") or request.query_params.get("date_from"))
+        end = parse_iso_date(request.data.get("date_to") or request.query_params.get("date_to"))
+        if not site_id:
+            return Response({"error": "site is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not start or not end:
+            return Response({"error": "date_from and date_to are required."}, status=status.HTTP_400_BAD_REQUEST)
+        if end < start:
+            return Response({"error": "date_to must be after date_from."}, status=status.HTTP_400_BAD_REQUEST)
+        if (end - start).days > 120:
+            return Response({"error": "Reset at most 120 days at a time."}, status=status.HTTP_400_BAD_REQUEST)
+
+        expected_slots = ExpectedClassSlot.objects.filter(
+            site_id=site_id,
+            slot_date__range=(start, end),
+        )
+        studio_id = request.data.get("studio") or request.query_params.get("studio")
+        room_id = request.data.get("room") or request.query_params.get("room")
+        if studio_id:
+            expected_slots = expected_slots.filter(studio_id=studio_id)
+        if room_id:
+            expected_slots = expected_slots.filter(room_id=room_id)
+
+        include_manual_classes = request.data.get("include_manual_classes", True)
+        include_manual_classes = include_manual_classes in (True, "true", "True", "1", 1)
+
+        manual_class_ids = []
+        if include_manual_classes:
+            manual_class_ids = list(
+                expected_slots.filter(
+                    scheduled_class__source=ScheduledClass.SOURCE_MANUAL,
+                ).values_list("scheduled_class_id", flat=True)
+            )
+
+        with transaction.atomic():
+            expected_count = expected_slots.count()
+            expected_slots.delete()
+            manual_class_count = 0
+            if manual_class_ids:
+                manual_class_count, _ = ScheduledClass.objects.filter(
+                    id__in=manual_class_ids,
+                    source=ScheduledClass.SOURCE_MANUAL,
+                ).delete()
+
+        return Response({
+            "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+            "expected_slots_deleted": expected_count,
+            "manual_classes_deleted": manual_class_count,
+            "imported_classes_preserved": True,
+        })
 
     @action(detail=True, methods=["post"], url_path="create-scheduled-class")
     def create_scheduled_class(self, request, pk=None):
