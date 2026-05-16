@@ -15,7 +15,13 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .importers import SUPPORTED_REPORT_TYPES, import_report, preview_report
+from .importers import (
+    ATTENDANCE_REPORT_TYPE,
+    SUPPORTED_REPORT_TYPES,
+    TRAINER_AVAILABILITY_REPORT_TYPE,
+    import_report,
+    preview_report,
+)
 from .models import (
     AttendanceRawRow,
     AttendanceClassMatch,
@@ -339,6 +345,82 @@ def generate_expected_slots(site_id=None, studio_id=None, room_id=None, date_fro
             stats["matched" if expected_slot.scheduled_class_id else "missing"] += 1
         current_date += timedelta(days=1)
     return stats
+
+
+def create_scheduled_classes_from_missing_expected_slots(site_id=None, studio_id=None, room_id=None, date_from=None, date_to=None):
+    expected_slots = ExpectedClassSlot.objects.select_related("site", "studio", "room", "staff_member").filter(
+        status=ExpectedClassSlot.STATUS_MISSING,
+        scheduled_class__isnull=True,
+        slot_date__range=(date_from, date_to),
+    )
+    if site_id:
+        expected_slots = expected_slots.filter(site_id=site_id)
+    if studio_id:
+        expected_slots = expected_slots.filter(studio_id=studio_id)
+    if room_id:
+        expected_slots = expected_slots.filter(room_id=room_id)
+
+    stats = {"manual_classes_created": 0}
+    for expected_slot in expected_slots:
+        scheduled_class = ScheduledClass.objects.create(
+            site=expected_slot.site,
+            studio=expected_slot.studio,
+            room=expected_slot.room,
+            staff_member=expected_slot.staff_member,
+            name=expected_slot.name,
+            class_date=expected_slot.slot_date,
+            start_time=expected_slot.start_time,
+            end_time=expected_slot.end_time,
+            session_type=ScheduledClass.SESSION_TYPE_GROUP,
+            capacity=expected_slot.capacity,
+            status=ScheduledClass.STATUS_SCHEDULED,
+            reason="Automatically created from expected schedule after report import.",
+            source=ScheduledClass.SOURCE_MANUAL,
+            manually_modified=True,
+        )
+        expected_slot.scheduled_class = scheduled_class
+        expected_slot.status = ExpectedClassSlot.STATUS_MANUALLY_CREATED
+        expected_slot.resolution_notes = "Automatically created from expected schedule after report import."
+        expected_slot.save(update_fields=["scheduled_class", "status", "resolution_notes", "updated_at"])
+        stats["manual_classes_created"] += 1
+    return stats
+
+
+def automate_schedule_after_import(site, import_result, report_type):
+    if report_type not in {ATTENDANCE_REPORT_TYPE, TRAINER_AVAILABILITY_REPORT_TYPE}:
+        return None
+
+    date_range = (import_result.get("preview") or {}).get("date_range") or {}
+    start = parse_iso_date(date_range.get("from"))
+    end = parse_iso_date(date_range.get("to"))
+    if not start or not end:
+        return {
+            "skipped": True,
+            "reason": "Report did not provide a valid date range.",
+        }
+
+    with transaction.atomic():
+        expected_stats = generate_expected_slots(
+            site_id=site.id,
+            date_from=start,
+            date_to=end,
+        )
+        manual_class_stats = create_scheduled_classes_from_missing_expected_slots(
+            site_id=site.id,
+            date_from=start,
+            date_to=end,
+        )
+        from analytics.views import rebuild_attendance_class_matches
+
+        match_stats = rebuild_attendance_class_matches(site_id=site.id, start=start, end=end)
+
+    return {
+        "skipped": False,
+        "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+        "expected_slots": expected_stats,
+        "manual_classes": manual_class_stats,
+        "attendance_matches": match_stats,
+    }
 
 
 class WeeklyRoomTemplateViewSet(viewsets.ModelViewSet):
@@ -860,6 +942,15 @@ class ReportImportViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
             result = import_report(uploaded_file, site, report_type, uploaded_by=request.user, options=options)
+            auto_reconcile = request.data.get("auto_schedule_reconcile", "true")
+            if auto_reconcile in (True, "true", "True", "1", 1):
+                try:
+                    result["schedule_automation"] = automate_schedule_after_import(site, result, report_type)
+                except Exception as exc:
+                    result["schedule_automation"] = {
+                        "skipped": True,
+                        "error": f"Schedule automation failed after import: {exc}",
+                    }
         except Exception as exc:
             return Response({"error": f"Could not import file: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
 
