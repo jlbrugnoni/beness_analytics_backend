@@ -11,7 +11,16 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from analytics.models import MembershipMonthStatus
-from core_data.models import AttendanceVisit, PricingOption, SaleLine, ScheduledClass, ServicePurchase, Site, StudioClosure
+from core_data.models import (
+    AttendanceClassMatch,
+    AttendanceVisit,
+    PricingOption,
+    SaleLine,
+    ScheduledClass,
+    ServicePurchase,
+    Site,
+    StudioClosure,
+)
 
 
 def parse_date(value):
@@ -937,6 +946,131 @@ def rebuild_membership_months_view(request):
     })
 
 
+def candidate_classes_for_visit(visit, visit_time, scheduled_by_slot):
+    if not visit_time:
+        return []
+    return scheduled_by_slot.get(
+        (
+            visit.site_id,
+            visit.visit_studio_id,
+            visit.visit_date,
+            visit_time,
+        ),
+        [],
+    )
+
+
+def match_visit_to_class(visit, scheduled_by_slot):
+    visit_time = parse_time_value(visit.visit_time_raw)
+    candidates = candidate_classes_for_visit(visit, visit_time, scheduled_by_slot)
+    if not candidates:
+        return {
+            "scheduled_class": None,
+            "match_method": AttendanceClassMatch.METHOD_UNMATCHED,
+            "confidence": Decimal("0.00"),
+            "candidate_class_ids": [],
+            "notes": "No scheduled class found for site, studio, date and start time.",
+        }
+
+    exact_instructor = [
+        scheduled_class
+        for scheduled_class in candidates
+        if scheduled_class.staff_member_id and scheduled_class.staff_member_id == visit.staff_member_id
+    ]
+    if len(exact_instructor) == 1:
+        return {
+            "scheduled_class": exact_instructor[0],
+            "match_method": AttendanceClassMatch.METHOD_EXACT_INSTRUCTOR_TIME,
+            "confidence": Decimal("1.00"),
+            "candidate_class_ids": [scheduled_class.id for scheduled_class in candidates],
+            "notes": "",
+        }
+
+    if len(candidates) == 1:
+        return {
+            "scheduled_class": candidates[0],
+            "match_method": AttendanceClassMatch.METHOD_SINGLE_CLASS_SAME_TIME,
+            "confidence": Decimal("0.75"),
+            "candidate_class_ids": [candidates[0].id],
+            "notes": "Matched by site, studio, date and time; instructor was not exact.",
+        }
+
+    return {
+        "scheduled_class": None,
+        "match_method": AttendanceClassMatch.METHOD_AMBIGUOUS,
+        "confidence": Decimal("0.40"),
+        "candidate_class_ids": [scheduled_class.id for scheduled_class in candidates],
+        "notes": "Multiple scheduled classes found for the same site, studio, date and time.",
+    }
+
+
+def rebuild_attendance_class_matches(site_id=None, start=None, end=None):
+    visits = AttendanceVisit.objects.select_related("staff_member").filter(visit_date__range=(start, end))
+    scheduled_classes = ScheduledClass.objects.select_related("staff_member").filter(
+        class_date__range=(start, end),
+    ).exclude(status__in=[ScheduledClass.STATUS_CANCELLED, ScheduledClass.STATUS_UNAVAILABLE])
+    if site_id:
+        visits = visits.filter(site_id=site_id)
+        scheduled_classes = scheduled_classes.filter(site_id=site_id)
+
+    scheduled_by_slot = {}
+    for scheduled_class in scheduled_classes:
+        key = (
+            scheduled_class.site_id,
+            scheduled_class.studio_id,
+            scheduled_class.class_date,
+            scheduled_class.start_time.replace(second=0, microsecond=0),
+        )
+        scheduled_by_slot.setdefault(key, []).append(scheduled_class)
+
+    stats = {
+        "visits_processed": 0,
+        "matches_created": 0,
+        "matches_updated": 0,
+        "exact_instructor_time": 0,
+        "single_class_same_time": 0,
+        "ambiguous": 0,
+        "unmatched": 0,
+    }
+    method_counter_keys = {
+        AttendanceClassMatch.METHOD_EXACT_INSTRUCTOR_TIME: "exact_instructor_time",
+        AttendanceClassMatch.METHOD_SINGLE_CLASS_SAME_TIME: "single_class_same_time",
+        AttendanceClassMatch.METHOD_AMBIGUOUS: "ambiguous",
+        AttendanceClassMatch.METHOD_UNMATCHED: "unmatched",
+    }
+
+    for visit in visits.iterator():
+        match = match_visit_to_class(visit, scheduled_by_slot)
+        _, created = AttendanceClassMatch.objects.update_or_create(
+            attendance_visit=visit,
+            defaults=match,
+        )
+        stats["visits_processed"] += 1
+        stats["matches_created" if created else "matches_updated"] += 1
+        stats[method_counter_keys[match["match_method"]]] += 1
+
+    return stats
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def rebuild_attendance_class_matches_view(request):
+    start = parse_date(request.data.get("date_from") or request.query_params.get("date_from"))
+    end = parse_date(request.data.get("date_to") or request.query_params.get("date_to"))
+    if not start or not end:
+        start, end = date_bounds(request)
+    site_id = request.data.get("site") or request.query_params.get("site")
+
+    with transaction.atomic():
+        stats = rebuild_attendance_class_matches(site_id=site_id, start=start, end=end)
+
+    return Response({
+        "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+        "site_id": site_id,
+        **stats,
+    })
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def occupation_view(request):
@@ -974,15 +1108,21 @@ def occupation_view(request):
         for scheduled_class in scheduled_classes
         if scheduled_class.status == ScheduledClass.STATUS_SCHEDULED and not is_closed(scheduled_class)
     ]
-    attended_visits = attendance.filter(no_show=False, late_cancel=False)
-
-    attended_by_slot = {}
-    for visit in attended_visits.values("site_id", "visit_studio_id", "visit_date", "visit_time_raw"):
-        visit_time = parse_time_value(visit["visit_time_raw"])
-        if not visit_time:
+    available_class_ids = [scheduled_class.id for scheduled_class in available_classes]
+    class_match_rows = (
+        AttendanceClassMatch.objects.filter(scheduled_class_id__in=available_class_ids)
+        .values(
+            "scheduled_class_id",
+            "attendance_visit__no_show",
+            "attendance_visit__late_cancel",
+        )
+    )
+    attended_by_class = {}
+    for row in class_match_rows:
+        if row["attendance_visit__no_show"] or row["attendance_visit__late_cancel"]:
             continue
-        key = (visit["site_id"], visit["visit_studio_id"], visit["visit_date"], visit_time)
-        attended_by_slot[key] = attended_by_slot.get(key, 0) + 1
+        scheduled_class_id = row["scheduled_class_id"]
+        attended_by_class[scheduled_class_id] = attended_by_class.get(scheduled_class_id, 0) + 1
 
     slots = {}
     by_studio = {}
@@ -990,6 +1130,7 @@ def occupation_view(request):
     by_room = {}
 
     for scheduled_class in available_classes:
+        attended_count = attended_by_class.get(scheduled_class.id, 0)
         key = (
             scheduled_class.site_id,
             scheduled_class.studio_id,
@@ -1003,10 +1144,11 @@ def occupation_view(request):
             "start_time": scheduled_class.start_time.strftime("%H:%M"),
             "capacity": 0,
             "scheduled_classes": 0,
-            "attended": attended_by_slot.get(key, 0),
+            "attended": 0,
         })
         slot["capacity"] += scheduled_class.capacity
         slot["scheduled_classes"] += 1
+        slot["attended"] += attended_count
 
         studio_row = by_studio.setdefault(scheduled_class.studio_id, {
             "name": scheduled_class.studio.name,
@@ -1016,11 +1158,13 @@ def occupation_view(request):
         })
         studio_row["capacity"] += scheduled_class.capacity
         studio_row["scheduled_classes"] += 1
+        studio_row["attended"] += attended_count
 
         day_key = scheduled_class.class_date.isoformat()
         day_row = by_day.setdefault(day_key, {"date": day_key, "capacity": 0, "attended": 0, "scheduled_classes": 0})
         day_row["capacity"] += scheduled_class.capacity
         day_row["scheduled_classes"] += 1
+        day_row["attended"] += attended_count
 
         room_name = scheduled_class.room.name if scheduled_class.room else "N/A"
         room_key = scheduled_class.room_id or f"none-{scheduled_class.studio_id}"
@@ -1028,10 +1172,12 @@ def occupation_view(request):
             "name": room_name,
             "studio": scheduled_class.studio.name,
             "capacity": 0,
+            "attended": 0,
             "scheduled_classes": 0,
         })
         room_row["capacity"] += scheduled_class.capacity
         room_row["scheduled_classes"] += 1
+        room_row["attended"] += attended_count
 
     total_capacity = 0
     matched_attended = 0
@@ -1039,20 +1185,28 @@ def occupation_view(request):
         total_capacity += slot["capacity"]
         matched_attended += slot["attended"]
         slot["occupation_rate"] = percentage(slot["attended"], slot["capacity"])
-        _, studio_id, class_date, _ = key
-        by_studio[studio_id]["attended"] += slot["attended"]
-        by_day[class_date.isoformat()]["attended"] += slot["attended"]
 
     for row in by_studio.values():
         row["occupation_rate"] = percentage(row["attended"], row["capacity"])
     for row in by_day.values():
         row["occupation_rate"] = percentage(row["attended"], row["capacity"])
+    for row in by_room.values():
+        row["occupation_rate"] = percentage(row["attended"], row["capacity"])
 
-    scheduled_slot_keys = set(slots.keys())
-    unscheduled_attended = sum(
-        count for key, count in attended_by_slot.items()
-        if key not in scheduled_slot_keys
+    unresolved_attended = AttendanceClassMatch.objects.filter(
+        attendance_visit__visit_date__range=(start, end),
+        attendance_visit__no_show=False,
+        attendance_visit__late_cancel=False,
+        match_method__in=[
+            AttendanceClassMatch.METHOD_AMBIGUOUS,
+            AttendanceClassMatch.METHOD_UNMATCHED,
+        ],
     )
+    if request.query_params.get("site"):
+        unresolved_attended = unresolved_attended.filter(attendance_visit__site_id=request.query_params.get("site"))
+    if request.query_params.get("studio"):
+        unresolved_attended = unresolved_attended.filter(attendance_visit__visit_studio_id=request.query_params.get("studio"))
+    unscheduled_attended = unresolved_attended.count()
 
     return Response({
         "formula": "ocupacion = asistencias reales / capacidad programada",
@@ -1064,14 +1218,14 @@ def occupation_view(request):
         "scheduled_capacity": total_capacity,
         "matched_attended_visits": matched_attended,
         "unscheduled_attended_visits": unscheduled_attended,
+        "unresolved_attended_visits": unscheduled_attended,
         "occupation_rate": percentage(matched_attended, total_capacity),
         "by_studio": sorted(by_studio.values(), key=lambda row: row["name"]),
         "by_day": sorted(by_day.values(), key=lambda row: row["date"]),
         "by_room_capacity": sorted(by_room.values(), key=lambda row: (row["studio"], row["name"])),
         "by_slot": sorted(slots.values(), key=lambda row: (row["date"], row["start_time"], row["studio"]))[:100],
         "note": (
-            "La asistencia se empareja por site, estudio, fecha y hora de inicio. Si dos salas del mismo estudio "
-            "funcionan a la misma hora, la ocupacion es mas confiable a nivel estudio/franja que a nivel sala "
-            "hasta que tengamos una fuente con sala exacta por visita."
+            "La ocupacion usa los emparejamientos guardados entre asistencias y clases programadas. "
+            "Reconstruye los emparejamientos despues de importar agenda o asistencia para actualizar estos datos."
         ),
     })

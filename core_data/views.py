@@ -1,9 +1,13 @@
+import json
+from datetime import date, timedelta
+
 from django.conf import settings
 from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.db.models import Count, Q
 from rest_framework import status, viewsets
 from rest_framework.authtoken.models import Token
 from rest_framework.decorators import action, api_view, permission_classes
@@ -11,12 +15,20 @@ from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
 
-from .importers import SUPPORTED_REPORT_TYPES, import_report, preview_report
+from .importers import (
+    ATTENDANCE_REPORT_TYPE,
+    SUPPORTED_REPORT_TYPES,
+    TRAINER_AVAILABILITY_REPORT_TYPE,
+    import_report,
+    preview_report,
+)
 from .models import (
     AttendanceRawRow,
+    AttendanceClassMatch,
     AttendanceVisit,
     AttendanceVisitVersion,
     Client,
+    ExpectedClassSlot,
     LoginLog,
     PaymentMethod,
     PricingOption,
@@ -34,12 +46,16 @@ from .models import (
     StaffMember,
     StudioClosure,
     Studio,
+    TrainerAvailabilityRawRow,
+    WeeklyRoomTemplate,
 )
 from .serializers import (
+    AttendanceClassMatchSerializer,
     AttendanceRawRowSerializer,
     AttendanceVisitSerializer,
     ChangePasswordSerializer,
     ClientSerializer,
+    ExpectedClassSlotSerializer,
     GroupSerializer,
     LoginLogSerializer,
     PaymentMethodSerializer,
@@ -56,7 +72,9 @@ from .serializers import (
     StaffMemberSerializer,
     StudioClosureSerializer,
     StudioSerializer,
+    TrainerAvailabilityRawRowSerializer,
     UserSerializer,
+    WeeklyRoomTemplateSerializer,
 )
 
 
@@ -159,9 +177,21 @@ class StudioViewSet(viewsets.ModelViewSet):
 
 
 class RoomViewSet(viewsets.ModelViewSet):
-    queryset = Room.objects.select_related("site", "studio").all()
     serializer_class = RoomSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = Room.objects.select_related("site", "studio").all()
+        site = self.request.query_params.get("site")
+        studio = self.request.query_params.get("studio")
+        search = self.request.query_params.get("search")
+        if site:
+            queryset = queryset.filter(site_id=site)
+        if studio:
+            queryset = queryset.filter(studio_id=studio)
+        if search:
+            queryset = queryset.filter(Q(name__icontains=search) | Q(studio__name__icontains=search))
+        return queryset
 
 
 class ClientViewSet(viewsets.ModelViewSet):
@@ -194,21 +224,376 @@ class PaymentMethodViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated]
 
 
-class ScheduledClassViewSet(viewsets.ModelViewSet):
-    serializer_class = ScheduledClassSerializer
+def parse_iso_date(value):
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def generated_slot_status(expected_slot):
+    if expected_slot.scheduled_class_id:
+        return ExpectedClassSlot.STATUS_MATCHED
+    return ExpectedClassSlot.STATUS_MISSING
+
+
+def minutes_since_midnight(value):
+    return value.hour * 60 + value.minute
+
+
+def duration_difference_minutes(start_a, end_a, start_b, end_b):
+    duration_a = minutes_since_midnight(end_a) - minutes_since_midnight(start_a)
+    duration_b = minutes_since_midnight(end_b) - minutes_since_midnight(start_b)
+    return abs(duration_a - duration_b)
+
+
+def find_matching_scheduled_class(template, slot_date):
+    candidates = ScheduledClass.objects.filter(
+        site=template.site,
+        studio=template.studio,
+        room=template.room,
+        class_date=slot_date,
+        start_time=template.start_time,
+    ).exclude(status=ScheduledClass.STATUS_CANCELLED)
+    candidates = [
+        candidate for candidate in candidates
+        if duration_difference_minutes(
+            template.start_time,
+            template.end_time,
+            candidate.start_time,
+            candidate.end_time,
+        ) <= 15
+    ]
+    candidates.sort(key=lambda candidate: 0 if candidate.source == ScheduledClass.SOURCE_TRAINER_AVAILABILITY else 1)
+    if template.staff_member_id:
+        exact = next((candidate for candidate in candidates if candidate.staff_member_id == template.staff_member_id), None)
+        if exact:
+            return exact
+    detected_candidates = [
+        candidate for candidate in candidates
+        if candidate.source == ScheduledClass.SOURCE_TRAINER_AVAILABILITY
+    ]
+    if len(detected_candidates) == 1:
+        return detected_candidates[0]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
+def generate_expected_slots(site_id=None, studio_id=None, room_id=None, date_from=None, date_to=None):
+    templates = WeeklyRoomTemplate.objects.select_related("site", "studio", "room", "staff_member").filter(active=True)
+    if site_id:
+        templates = templates.filter(site_id=site_id)
+    if studio_id:
+        templates = templates.filter(studio_id=studio_id)
+    if room_id:
+        templates = templates.filter(room_id=room_id)
+
+    protected_statuses = {
+        ExpectedClassSlot.STATUS_CANCELLED,
+        ExpectedClassSlot.STATUS_UNAVAILABLE,
+        ExpectedClassSlot.STATUS_MANUALLY_CREATED,
+        ExpectedClassSlot.STATUS_IGNORED,
+    }
+    stats = {"created": 0, "updated": 0, "matched": 0, "missing": 0, "preserved": 0}
+    current_date = date_from
+    while current_date <= date_to:
+        for template in templates:
+            if template.weekday != current_date.weekday():
+                continue
+            if template.active_from > current_date:
+                continue
+            if template.active_until and template.active_until < current_date:
+                continue
+
+            scheduled_class = find_matching_scheduled_class(template, current_date)
+            status_value = ExpectedClassSlot.STATUS_MATCHED if scheduled_class else ExpectedClassSlot.STATUS_MISSING
+            expected_slot = ExpectedClassSlot.objects.filter(
+                site=template.site,
+                room=template.room,
+                slot_date=current_date,
+                start_time=template.start_time,
+                end_time=template.end_time,
+            ).first()
+
+            if expected_slot and expected_slot.status in protected_statuses:
+                stats["preserved"] += 1
+                stats["matched" if expected_slot.scheduled_class_id else "missing"] += 1
+                continue
+
+            defaults = {
+                "studio": template.studio,
+                "template": template,
+                "scheduled_class": scheduled_class,
+                "staff_member": template.staff_member,
+                "name": template.name,
+                "capacity": template.capacity,
+                "status": status_value,
+            }
+
+            if expected_slot:
+                for field, value in defaults.items():
+                    setattr(expected_slot, field, value)
+                expected_slot.save()
+                created = False
+            else:
+                expected_slot = ExpectedClassSlot.objects.create(
+                    site=template.site,
+                    room=template.room,
+                    slot_date=current_date,
+                    start_time=template.start_time,
+                    end_time=template.end_time,
+                    **defaults,
+                )
+                created = True
+            stats["created" if created else "updated"] += 1
+            stats["matched" if expected_slot.scheduled_class_id else "missing"] += 1
+        current_date += timedelta(days=1)
+    return stats
+
+
+def rematch_expected_slots_to_detected_classes(site_id=None, studio_id=None, room_id=None, date_from=None, date_to=None):
+    expected_slots = ExpectedClassSlot.objects.select_related(
+        "template",
+        "scheduled_class",
+    ).filter(
+        template__isnull=False,
+        slot_date__range=(date_from, date_to),
+    ).exclude(
+        status__in=[
+            ExpectedClassSlot.STATUS_CANCELLED,
+            ExpectedClassSlot.STATUS_UNAVAILABLE,
+            ExpectedClassSlot.STATUS_IGNORED,
+        ],
+    )
+    if site_id:
+        expected_slots = expected_slots.filter(site_id=site_id)
+    if studio_id:
+        expected_slots = expected_slots.filter(studio_id=studio_id)
+    if room_id:
+        expected_slots = expected_slots.filter(room_id=room_id)
+
+    stats = {
+        "expected_slots_checked": 0,
+        "expected_slots_relinked": 0,
+        "manual_classes_removed": 0,
+        "attendance_matches_transferred": 0,
+    }
+    auto_created_reasons = {
+        "Automatically created from expected schedule after report import.",
+        "Created from expected schedule slot",
+    }
+    for expected_slot in expected_slots:
+        stats["expected_slots_checked"] += 1
+        detected_class = find_matching_scheduled_class(expected_slot.template, expected_slot.slot_date)
+        if not detected_class or detected_class.source != ScheduledClass.SOURCE_TRAINER_AVAILABILITY:
+            continue
+        if expected_slot.scheduled_class_id == detected_class.id:
+            expected_slot.status = ExpectedClassSlot.STATUS_MATCHED
+            expected_slot.save(update_fields=["status", "updated_at"])
+            continue
+
+        previous_class = expected_slot.scheduled_class
+        if previous_class and previous_class.source == ScheduledClass.SOURCE_MANUAL:
+            transferred = AttendanceClassMatch.objects.filter(scheduled_class=previous_class).update(scheduled_class=detected_class)
+            stats["attendance_matches_transferred"] += transferred
+
+        expected_slot.scheduled_class = detected_class
+        expected_slot.status = ExpectedClassSlot.STATUS_MATCHED
+        expected_slot.resolution_notes = "Relinked to detected class during schedule rematch."
+        expected_slot.save(update_fields=["scheduled_class", "status", "resolution_notes", "updated_at"])
+        stats["expected_slots_relinked"] += 1
+
+        if (
+            previous_class
+            and previous_class.source == ScheduledClass.SOURCE_MANUAL
+            and previous_class.reason in auto_created_reasons
+            and not previous_class.expected_slots.exists()
+        ):
+            previous_class.delete()
+            stats["manual_classes_removed"] += 1
+
+    return stats
+
+
+def create_scheduled_classes_from_missing_expected_slots(site_id=None, studio_id=None, room_id=None, date_from=None, date_to=None):
+    expected_slots = ExpectedClassSlot.objects.select_related("site", "studio", "room", "staff_member").filter(
+        status=ExpectedClassSlot.STATUS_MISSING,
+        scheduled_class__isnull=True,
+        slot_date__range=(date_from, date_to),
+    )
+    if site_id:
+        expected_slots = expected_slots.filter(site_id=site_id)
+    if studio_id:
+        expected_slots = expected_slots.filter(studio_id=studio_id)
+    if room_id:
+        expected_slots = expected_slots.filter(room_id=room_id)
+
+    stats = {"manual_classes_created": 0}
+    for expected_slot in expected_slots:
+        scheduled_class = ScheduledClass.objects.create(
+            site=expected_slot.site,
+            studio=expected_slot.studio,
+            room=expected_slot.room,
+            staff_member=expected_slot.staff_member,
+            name=expected_slot.name,
+            class_date=expected_slot.slot_date,
+            start_time=expected_slot.start_time,
+            end_time=expected_slot.end_time,
+            session_type=ScheduledClass.SESSION_TYPE_GROUP,
+            capacity=expected_slot.capacity,
+            status=ScheduledClass.STATUS_SCHEDULED,
+            reason="Automatically created from expected schedule after report import.",
+            source=ScheduledClass.SOURCE_MANUAL,
+            manually_modified=True,
+        )
+        expected_slot.scheduled_class = scheduled_class
+        expected_slot.status = ExpectedClassSlot.STATUS_MANUALLY_CREATED
+        expected_slot.resolution_notes = "Automatically created from expected schedule after report import."
+        expected_slot.save(update_fields=["scheduled_class", "status", "resolution_notes", "updated_at"])
+        stats["manual_classes_created"] += 1
+    return stats
+
+
+def automate_schedule_after_import(site, import_result, report_type):
+    if report_type not in {ATTENDANCE_REPORT_TYPE, TRAINER_AVAILABILITY_REPORT_TYPE}:
+        return None
+
+    date_range = (import_result.get("preview") or {}).get("date_range") or {}
+    start = parse_iso_date(date_range.get("from"))
+    end = parse_iso_date(date_range.get("to"))
+    if not start or not end:
+        return {
+            "skipped": True,
+            "reason": "Report did not provide a valid date range.",
+        }
+
+    with transaction.atomic():
+        expected_stats = generate_expected_slots(
+            site_id=site.id,
+            date_from=start,
+            date_to=end,
+        )
+        rematch_stats = rematch_expected_slots_to_detected_classes(
+            site_id=site.id,
+            date_from=start,
+            date_to=end,
+        )
+        manual_class_stats = create_scheduled_classes_from_missing_expected_slots(
+            site_id=site.id,
+            date_from=start,
+            date_to=end,
+        )
+        from analytics.views import rebuild_attendance_class_matches
+
+        match_stats = rebuild_attendance_class_matches(site_id=site.id, start=start, end=end)
+
+    return {
+        "skipped": False,
+        "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+        "expected_slots": expected_stats,
+        "expected_slot_rematch": rematch_stats,
+        "manual_classes": manual_class_stats,
+        "attendance_matches": match_stats,
+    }
+
+
+class WeeklyRoomTemplateViewSet(viewsets.ModelViewSet):
+    serializer_class = WeeklyRoomTemplateSerializer
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        queryset = ScheduledClass.objects.select_related(
+        queryset = WeeklyRoomTemplate.objects.select_related("site", "studio", "room", "staff_member").all()
+        site = self.request.query_params.get("site")
+        studio = self.request.query_params.get("studio")
+        room = self.request.query_params.get("room")
+        active = self.request.query_params.get("active")
+        if site:
+            queryset = queryset.filter(site_id=site)
+        if studio:
+            queryset = queryset.filter(studio_id=studio)
+        if room:
+            queryset = queryset.filter(room_id=room)
+        if active in ("true", "false"):
+            queryset = queryset.filter(active=active == "true")
+        return queryset
+
+    @action(detail=False, methods=["post"], url_path="sync-capacity-from-rooms")
+    def sync_capacity_from_rooms(self, request):
+        if not settings.ENABLE_ANALYTICS_RESET:
+            return Response(
+                {"error": "Schedule maintenance actions are disabled for this environment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response({"error": "Only staff users can update schedule templates."}, status=status.HTTP_403_FORBIDDEN)
+
+        site_id = request.data.get("site") or request.query_params.get("site")
+        if not site_id:
+            return Response({"error": "site is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        queryset = WeeklyRoomTemplate.objects.select_related("room").filter(site_id=site_id)
+        studio_id = request.data.get("studio") or request.query_params.get("studio")
+        room_id = request.data.get("room") or request.query_params.get("room")
+        active_only = request.data.get("active_only", True)
+        if studio_id:
+            queryset = queryset.filter(studio_id=studio_id)
+        if room_id:
+            queryset = queryset.filter(room_id=room_id)
+        if active_only in (True, "true", "True", "1", 1):
+            queryset = queryset.filter(active=True)
+
+        updated = 0
+        skipped = 0
+        samples = []
+        with transaction.atomic():
+            for template in queryset:
+                room_capacity = template.room.group_capacity or template.room.private_capacity or 0
+                if room_capacity <= 0:
+                    skipped += 1
+                    continue
+                if template.capacity == room_capacity:
+                    continue
+                previous_capacity = template.capacity
+                template.capacity = room_capacity
+                template.save(update_fields=["capacity", "updated_at"])
+                updated += 1
+                if len(samples) < 10:
+                    samples.append({
+                        "id": template.id,
+                        "room": template.room.name,
+                        "weekday": template.weekday,
+                        "start_time": template.start_time.strftime("%H:%M"),
+                        "previous_capacity": previous_capacity,
+                        "new_capacity": room_capacity,
+                    })
+
+        return Response({
+            "updated": updated,
+            "skipped_without_capacity": skipped,
+            "samples": samples,
+        })
+
+
+class ExpectedClassSlotViewSet(viewsets.ModelViewSet):
+    serializer_class = ExpectedClassSlotSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = ExpectedClassSlot.objects.select_related(
             "site",
             "studio",
             "room",
+            "template",
+            "scheduled_class",
             "staff_member",
-            "pricing_option",
         ).all()
         site = self.request.query_params.get("site")
         studio = self.request.query_params.get("studio")
         room = self.request.query_params.get("room")
+        status_value = self.request.query_params.get("status")
         date_from = self.request.query_params.get("date_from")
         date_to = self.request.query_params.get("date_to")
         if site:
@@ -217,11 +602,211 @@ class ScheduledClassViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(studio_id=studio)
         if room:
             queryset = queryset.filter(room_id=room)
+        if status_value:
+            queryset = queryset.filter(status=status_value)
         if date_from:
-            queryset = queryset.filter(class_date__gte=date_from)
+            queryset = queryset.filter(slot_date__gte=date_from)
         if date_to:
-            queryset = queryset.filter(class_date__lte=date_to)
+            queryset = queryset.filter(slot_date__lte=date_to)
         return queryset
+
+    @action(detail=False, methods=["post"], url_path="generate")
+    def generate(self, request):
+        start = parse_iso_date(request.data.get("date_from") or request.query_params.get("date_from"))
+        end = parse_iso_date(request.data.get("date_to") or request.query_params.get("date_to"))
+        if not start or not end:
+            return Response({"error": "date_from and date_to are required."}, status=status.HTTP_400_BAD_REQUEST)
+        if end < start:
+            return Response({"error": "date_to must be after date_from."}, status=status.HTTP_400_BAD_REQUEST)
+        if (end - start).days > 120:
+            return Response({"error": "Generate at most 120 days at a time."}, status=status.HTTP_400_BAD_REQUEST)
+
+        stats = generate_expected_slots(
+            site_id=request.data.get("site") or request.query_params.get("site"),
+            studio_id=request.data.get("studio") or request.query_params.get("studio"),
+            room_id=request.data.get("room") or request.query_params.get("room"),
+            date_from=start,
+            date_to=end,
+        )
+        manual_class_stats = create_scheduled_classes_from_missing_expected_slots(
+            site_id=request.data.get("site") or request.query_params.get("site"),
+            studio_id=request.data.get("studio") or request.query_params.get("studio"),
+            room_id=request.data.get("room") or request.query_params.get("room"),
+            date_from=start,
+            date_to=end,
+        )
+        return Response({
+            "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+            **stats,
+            **manual_class_stats,
+        })
+
+    @action(detail=False, methods=["post"], url_path="rematch")
+    def rematch(self, request):
+        start = parse_iso_date(request.data.get("date_from") or request.query_params.get("date_from"))
+        end = parse_iso_date(request.data.get("date_to") or request.query_params.get("date_to"))
+        if not start or not end:
+            return Response({"error": "date_from and date_to are required."}, status=status.HTTP_400_BAD_REQUEST)
+        if end < start:
+            return Response({"error": "date_to must be after date_from."}, status=status.HTTP_400_BAD_REQUEST)
+        if (end - start).days > 120:
+            return Response({"error": "Rematch at most 120 days at a time."}, status=status.HTTP_400_BAD_REQUEST)
+
+        site_id = request.data.get("site") or request.query_params.get("site")
+        studio_id = request.data.get("studio") or request.query_params.get("studio")
+        room_id = request.data.get("room") or request.query_params.get("room")
+        with transaction.atomic():
+            rematch_stats = rematch_expected_slots_to_detected_classes(
+                site_id=site_id,
+                studio_id=studio_id,
+                room_id=room_id,
+                date_from=start,
+                date_to=end,
+            )
+            from analytics.views import rebuild_attendance_class_matches
+
+            match_stats = rebuild_attendance_class_matches(site_id=site_id, start=start, end=end)
+
+        return Response({
+            "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+            **rematch_stats,
+            "attendance_matches": match_stats,
+        })
+
+    @action(detail=False, methods=["post"], url_path="reset-scoped")
+    def reset_scoped(self, request):
+        if not settings.ENABLE_ANALYTICS_RESET:
+            return Response(
+                {"error": "Schedule reset is disabled for this environment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response({"error": "Only staff users can reset schedule data."}, status=status.HTTP_403_FORBIDDEN)
+        if request.data.get("confirmation") != "RESET SCHEDULE DATA":
+            return Response({"error": "Invalid confirmation phrase."}, status=status.HTTP_400_BAD_REQUEST)
+
+        site_id = request.data.get("site") or request.query_params.get("site")
+        start = parse_iso_date(request.data.get("date_from") or request.query_params.get("date_from"))
+        end = parse_iso_date(request.data.get("date_to") or request.query_params.get("date_to"))
+        if not site_id:
+            return Response({"error": "site is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not start or not end:
+            return Response({"error": "date_from and date_to are required."}, status=status.HTTP_400_BAD_REQUEST)
+        if end < start:
+            return Response({"error": "date_to must be after date_from."}, status=status.HTTP_400_BAD_REQUEST)
+        if (end - start).days > 120:
+            return Response({"error": "Reset at most 120 days at a time."}, status=status.HTTP_400_BAD_REQUEST)
+
+        expected_slots = ExpectedClassSlot.objects.filter(
+            site_id=site_id,
+            slot_date__range=(start, end),
+        )
+        studio_id = request.data.get("studio") or request.query_params.get("studio")
+        room_id = request.data.get("room") or request.query_params.get("room")
+        if studio_id:
+            expected_slots = expected_slots.filter(studio_id=studio_id)
+        if room_id:
+            expected_slots = expected_slots.filter(room_id=room_id)
+
+        include_manual_classes = request.data.get("include_manual_classes", True)
+        include_manual_classes = include_manual_classes in (True, "true", "True", "1", 1)
+
+        manual_class_ids = []
+        if include_manual_classes:
+            manual_class_ids = list(
+                expected_slots.filter(
+                    scheduled_class__source=ScheduledClass.SOURCE_MANUAL,
+                ).values_list("scheduled_class_id", flat=True)
+            )
+
+        with transaction.atomic():
+            expected_count = expected_slots.count()
+            expected_slots.delete()
+            manual_class_count = 0
+            if manual_class_ids:
+                manual_class_count, _ = ScheduledClass.objects.filter(
+                    id__in=manual_class_ids,
+                    source=ScheduledClass.SOURCE_MANUAL,
+                ).delete()
+
+        return Response({
+            "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+            "expected_slots_deleted": expected_count,
+            "manual_classes_deleted": manual_class_count,
+            "imported_classes_preserved": True,
+        })
+
+    @action(detail=True, methods=["post"], url_path="create-scheduled-class")
+    def create_scheduled_class(self, request, pk=None):
+        expected_slot = self.get_object()
+        if expected_slot.scheduled_class_id:
+            return Response({"error": "This expected slot already has a scheduled class."}, status=status.HTTP_400_BAD_REQUEST)
+
+        scheduled_class = ScheduledClass.objects.create(
+            site=expected_slot.site,
+            studio=expected_slot.studio,
+            room=expected_slot.room,
+            staff_member=expected_slot.staff_member,
+            name=expected_slot.name,
+            class_date=expected_slot.slot_date,
+            start_time=expected_slot.start_time,
+            end_time=expected_slot.end_time,
+            session_type=ScheduledClass.SESSION_TYPE_GROUP,
+            capacity=expected_slot.capacity,
+            status=ScheduledClass.STATUS_SCHEDULED,
+            reason="Created from expected schedule slot",
+            source=ScheduledClass.SOURCE_MANUAL,
+            manually_modified=True,
+        )
+        expected_slot.scheduled_class = scheduled_class
+        expected_slot.status = ExpectedClassSlot.STATUS_MANUALLY_CREATED
+        expected_slot.resolution_notes = request.data.get("notes") or "Scheduled class created manually from expected slot."
+        expected_slot.save(update_fields=["scheduled_class", "status", "resolution_notes", "updated_at"])
+        return Response({
+            "expected_slot": ExpectedClassSlotSerializer(expected_slot).data,
+            "scheduled_class": ScheduledClassSerializer(scheduled_class).data,
+        }, status=status.HTTP_201_CREATED)
+
+    @action(detail=True, methods=["post"], url_path="resolve")
+    def resolve(self, request, pk=None):
+        expected_slot = self.get_object()
+        status_value = request.data.get("status")
+        allowed_statuses = {
+            ExpectedClassSlot.STATUS_CANCELLED,
+            ExpectedClassSlot.STATUS_UNAVAILABLE,
+            ExpectedClassSlot.STATUS_IGNORED,
+            ExpectedClassSlot.STATUS_MISSING,
+        }
+        if status_value not in allowed_statuses:
+            return Response({"error": "Invalid resolution status."}, status=status.HTTP_400_BAD_REQUEST)
+
+        if status_value == ExpectedClassSlot.STATUS_CANCELLED and expected_slot.scheduled_class_id:
+            expected_slot.scheduled_class.status = ScheduledClass.STATUS_CANCELLED
+            expected_slot.scheduled_class.reason = request.data.get("notes") or "Cancelled from expected schedule slot."
+            expected_slot.scheduled_class.manually_modified = True
+            expected_slot.scheduled_class.save(update_fields=["status", "reason", "manually_modified", "updated_at"])
+        elif status_value == ExpectedClassSlot.STATUS_UNAVAILABLE and expected_slot.scheduled_class_id:
+            expected_slot.scheduled_class.status = ScheduledClass.STATUS_UNAVAILABLE
+            expected_slot.scheduled_class.reason = request.data.get("notes") or "Marked unavailable from expected schedule slot."
+            expected_slot.scheduled_class.manually_modified = True
+            expected_slot.scheduled_class.save(update_fields=["status", "reason", "manually_modified", "updated_at"])
+        elif status_value == ExpectedClassSlot.STATUS_MISSING and expected_slot.scheduled_class_id:
+            expected_slot.scheduled_class.status = ScheduledClass.STATUS_SCHEDULED
+            expected_slot.scheduled_class.reason = request.data.get("notes") or "Restored from expected schedule slot."
+            expected_slot.scheduled_class.manually_modified = True
+            expected_slot.scheduled_class.save(update_fields=["status", "reason", "manually_modified", "updated_at"])
+
+        if status_value == ExpectedClassSlot.STATUS_MISSING and expected_slot.scheduled_class_id:
+            expected_slot.status = (
+                ExpectedClassSlot.STATUS_MANUALLY_CREATED
+                if expected_slot.scheduled_class.source == ScheduledClass.SOURCE_MANUAL
+                else ExpectedClassSlot.STATUS_MATCHED
+            )
+        else:
+            expected_slot.status = status_value
+        expected_slot.resolution_notes = request.data.get("notes") or expected_slot.resolution_notes
+        expected_slot.save(update_fields=["status", "resolution_notes", "updated_at"])
+        return Response(ExpectedClassSlotSerializer(expected_slot).data)
 
 
 class StudioClosureViewSet(viewsets.ModelViewSet):
@@ -385,6 +970,10 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             AttendanceVisitVersion,
             SaleLineVersion,
             ServicePurchaseVersion,
+            AttendanceClassMatch,
+            ExpectedClassSlot,
+            ScheduledClass,
+            TrainerAvailabilityRawRow,
             AttendanceVisit,
             SaleLine,
             ServicePurchase,
@@ -462,7 +1051,26 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             return Response({"error": "Site not found."}, status=status.HTTP_404_NOT_FOUND)
 
         try:
-            result = import_report(uploaded_file, site, report_type, uploaded_by=request.user)
+            options = {}
+            room_capacities_raw = request.data.get("room_capacities")
+            if room_capacities_raw:
+                try:
+                    options["room_capacities"] = json.loads(room_capacities_raw)
+                except json.JSONDecodeError:
+                    return Response(
+                        {"error": "room_capacities must be valid JSON."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+            result = import_report(uploaded_file, site, report_type, uploaded_by=request.user, options=options)
+            auto_reconcile = request.data.get("auto_schedule_reconcile", "true")
+            if auto_reconcile in (True, "true", "True", "1", 1):
+                try:
+                    result["schedule_automation"] = automate_schedule_after_import(site, result, report_type)
+                except Exception as exc:
+                    result["schedule_automation"] = {
+                        "skipped": True,
+                        "error": f"Schedule automation failed after import: {exc}",
+                    }
         except Exception as exc:
             return Response({"error": f"Could not import file: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -524,6 +1132,56 @@ class AttendanceVisitViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelView
         )
 
 
+class ScheduledClassViewSet(ImportedDataFilterMixin, viewsets.ModelViewSet):
+    serializer_class = ScheduledClassSerializer
+    permission_classes = [IsAuthenticated]
+    date_field = "class_date"
+    search_fields = ["name", "studio__name", "room__name", "staff_member__name"]
+
+    def get_queryset(self):
+        queryset = (
+            ScheduledClass.objects.select_related(
+                "site",
+                "studio",
+                "room",
+                "staff_member",
+                "source_import",
+                "source_row",
+            )
+            .annotate(
+                attendance_count=Count("attendance_matches"),
+                attended_count=Count(
+                    "attendance_matches",
+                    filter=Q(
+                        attendance_matches__attendance_visit__no_show=False,
+                        attendance_matches__attendance_visit__late_cancel=False,
+                    ),
+                ),
+                no_show_count=Count(
+                    "attendance_matches",
+                    filter=Q(attendance_matches__attendance_visit__no_show=True),
+                ),
+                late_cancel_count=Count(
+                    "attendance_matches",
+                    filter=Q(attendance_matches__attendance_visit__late_cancel=True),
+                ),
+            )
+        )
+        room = self.request.query_params.get("room")
+        studio = self.request.query_params.get("studio")
+        staff_member = self.request.query_params.get("staff_member")
+        status_value = self.request.query_params.get("status")
+        if studio:
+            queryset = queryset.filter(studio_id=studio)
+        if room:
+            queryset = queryset.filter(room_id=room)
+        if staff_member:
+            queryset = queryset.filter(staff_member_id=staff_member)
+        if status_value:
+            queryset = queryset.filter(status=status_value)
+        return self.filter_queryset(queryset)
+
+
 class SaleLineViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = SaleLineSerializer
     permission_classes = [IsAuthenticated]
@@ -571,6 +1229,35 @@ class AttendanceRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
 
     def get_queryset(self):
         return self.filter_queryset(AttendanceRawRow.objects.select_related("site", "report_import").all())
+
+
+class TrainerAvailabilityRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
+    serializer_class = TrainerAvailabilityRawRowSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return self.filter_queryset(
+            TrainerAvailabilityRawRow.objects.select_related("site", "report_import").all()
+        )
+
+
+class AttendanceClassMatchViewSet(viewsets.ReadOnlyModelViewSet):
+    serializer_class = AttendanceClassMatchSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        queryset = AttendanceClassMatch.objects.select_related(
+            "attendance_visit",
+            "attendance_visit__client",
+            "scheduled_class",
+        ).all()
+        scheduled_class = self.request.query_params.get("scheduled_class")
+        match_method = self.request.query_params.get("match_method")
+        if scheduled_class:
+            queryset = queryset.filter(scheduled_class_id=scheduled_class)
+        if match_method:
+            queryset = queryset.filter(match_method=match_method)
+        return queryset
 
 
 class SaleRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):

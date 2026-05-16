@@ -1,3 +1,5 @@
+import hashlib
+
 from django.conf import settings
 from django.contrib.auth.models import AbstractBaseUser, BaseUserManager, Group, PermissionsMixin
 from django.db import models
@@ -136,7 +138,7 @@ class Room(SiteScopedModel):
     private_capacity = models.PositiveIntegerField(default=0)
 
     class Meta(SiteScopedModel.Meta):
-        unique_together = ("site", "studio", "name")
+        unique_together = ("site", "studio", "normalized_name")
 
 
 class Client(SiteScopedModel):
@@ -185,16 +187,34 @@ class ScheduledClass(models.Model):
     STATUS_SCHEDULED = "scheduled"
     STATUS_CANCELLED = "cancelled"
     STATUS_UNAVAILABLE = "unavailable"
+    STATUS_NEEDS_REVIEW = "needs_review"
+    STATUS_CONFLICT = "conflict"
 
     STATUS_CHOICES = [
         (STATUS_SCHEDULED, "Scheduled"),
         (STATUS_CANCELLED, "Cancelled"),
         (STATUS_UNAVAILABLE, "Unavailable"),
+        (STATUS_NEEDS_REVIEW, "Needs Review"),
+        (STATUS_CONFLICT, "Conflict"),
+    ]
+
+    SOURCE_TRAINER_AVAILABILITY = "trainer_availability"
+    SOURCE_MANUAL = "manual"
+
+    SOURCE_CHOICES = [
+        (SOURCE_TRAINER_AVAILABILITY, "Trainer Availability"),
+        (SOURCE_MANUAL, "Manual"),
     ]
 
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="scheduled_classes")
-    studio = models.ForeignKey(Studio, on_delete=models.CASCADE, related_name="scheduled_classes")
-    room = models.ForeignKey(Room, on_delete=models.SET_NULL, null=True, blank=True, related_name="scheduled_classes")
+    studio = models.ForeignKey(Studio, on_delete=models.PROTECT, related_name="scheduled_classes")
+    room = models.ForeignKey(
+        Room,
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="scheduled_classes",
+    )
     staff_member = models.ForeignKey(
         StaffMember,
         on_delete=models.SET_NULL,
@@ -210,22 +230,172 @@ class ScheduledClass(models.Model):
         related_name="scheduled_classes",
     )
     name = models.CharField(max_length=150)
-    class_date = models.DateField()
-    start_time = models.TimeField()
+    class_date = models.DateField(db_index=True)
+    start_time = models.TimeField(db_index=True)
     end_time = models.TimeField()
     session_type = models.CharField(max_length=20, choices=SESSION_TYPE_CHOICES, default=SESSION_TYPE_GROUP)
     capacity = models.PositiveIntegerField(default=0)
-    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_SCHEDULED)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_SCHEDULED, db_index=True)
     reason = models.CharField(max_length=255, blank=True, null=True)
+    source = models.CharField(max_length=50, choices=SOURCE_CHOICES, default=SOURCE_MANUAL)
+    source_import = models.ForeignKey(
+        "ReportImport",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scheduled_classes",
+    )
+    source_row = models.ForeignKey(
+        "TrainerAvailabilityRawRow",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scheduled_classes",
+    )
+    natural_key = models.CharField(max_length=64, unique=True, db_index=True, blank=True, null=True)
+    current_row_hash = models.CharField(max_length=64, blank=True, null=True, db_index=True)
+    manually_modified = models.BooleanField(default=False)
+    review_reason = models.CharField(max_length=255, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["class_date", "start_time", "studio__name", "room__name"]
+        ordering = ["class_date", "start_time", "studio__name", "room__name", "staff_member__name"]
+        indexes = [
+            models.Index(fields=["site", "class_date", "start_time"]),
+            models.Index(fields=["site", "studio", "class_date", "start_time"]),
+            models.Index(fields=["site", "room", "class_date", "start_time"]),
+        ]
 
     def __str__(self):
-        return f"{self.class_date} {self.start_time} - {self.name}"
+        room_name = self.room.name if self.room else "No room"
+        return f"{self.class_date} {self.start_time} - {room_name} - {self.name}"
+
+    def save(self, *args, **kwargs):
+        if not self.natural_key:
+            parts = [
+                self.site_id,
+                self.studio_id,
+                self.room_id or "",
+                self.staff_member_id or "",
+                self.class_date,
+                self.start_time,
+                self.end_time,
+                self.name,
+            ]
+            self.natural_key = hashlib.sha256("|".join(str(part) for part in parts).encode("utf-8")).hexdigest()
+        super().save(*args, **kwargs)
+
+
+class WeeklyRoomTemplate(models.Model):
+    WEEKDAY_CHOICES = [
+        (0, "Monday"),
+        (1, "Tuesday"),
+        (2, "Wednesday"),
+        (3, "Thursday"),
+        (4, "Friday"),
+        (5, "Saturday"),
+        (6, "Sunday"),
+    ]
+
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="weekly_room_templates")
+    studio = models.ForeignKey(Studio, on_delete=models.CASCADE, related_name="weekly_room_templates")
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="weekly_templates")
+    staff_member = models.ForeignKey(
+        StaffMember,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="weekly_room_templates",
+    )
+    name = models.CharField(max_length=150, default="Pilates")
+    weekday = models.PositiveSmallIntegerField(choices=WEEKDAY_CHOICES)
+    start_time = models.TimeField()
+    end_time = models.TimeField()
+    capacity = models.PositiveIntegerField(default=0)
+    active_from = models.DateField()
+    active_until = models.DateField(blank=True, null=True)
+    active = models.BooleanField(default=True)
+    notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["studio__name", "room__name", "weekday", "start_time"]
+        indexes = [
+            models.Index(fields=["site", "studio", "room", "weekday", "start_time"]),
+            models.Index(fields=["active_from", "active_until"]),
+        ]
+
+    def __str__(self):
+        return f"{self.room.name} {self.get_weekday_display()} {self.start_time} - {self.name}"
+
+
+class ExpectedClassSlot(models.Model):
+    STATUS_PENDING = "pending"
+    STATUS_MATCHED = "matched"
+    STATUS_MISSING = "missing"
+    STATUS_CANCELLED = "cancelled"
+    STATUS_UNAVAILABLE = "unavailable"
+    STATUS_MANUALLY_CREATED = "manually_created"
+    STATUS_IGNORED = "ignored"
+
+    STATUS_CHOICES = [
+        (STATUS_PENDING, "Pending"),
+        (STATUS_MATCHED, "Matched"),
+        (STATUS_MISSING, "Missing"),
+        (STATUS_CANCELLED, "Cancelled"),
+        (STATUS_UNAVAILABLE, "Unavailable"),
+        (STATUS_MANUALLY_CREATED, "Manually Created"),
+        (STATUS_IGNORED, "Ignored"),
+    ]
+
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="expected_class_slots")
+    studio = models.ForeignKey(Studio, on_delete=models.CASCADE, related_name="expected_class_slots")
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name="expected_class_slots")
+    template = models.ForeignKey(
+        WeeklyRoomTemplate,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="expected_slots",
+    )
+    scheduled_class = models.ForeignKey(
+        ScheduledClass,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="expected_slots",
+    )
+    staff_member = models.ForeignKey(
+        StaffMember,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="expected_class_slots",
+    )
+    slot_date = models.DateField(db_index=True)
+    start_time = models.TimeField(db_index=True)
+    end_time = models.TimeField()
+    name = models.CharField(max_length=150, default="Pilates")
+    capacity = models.PositiveIntegerField(default=0)
+    status = models.CharField(max_length=30, choices=STATUS_CHOICES, default=STATUS_PENDING, db_index=True)
+    resolution_notes = models.TextField(blank=True, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["slot_date", "start_time", "studio__name", "room__name"]
+        unique_together = ("site", "room", "slot_date", "start_time", "end_time")
+        indexes = [
+            models.Index(fields=["site", "studio", "slot_date", "start_time"]),
+            models.Index(fields=["site", "room", "slot_date", "start_time"]),
+            models.Index(fields=["status"]),
+        ]
+
+    def __str__(self):
+        return f"{self.slot_date} {self.start_time} - {self.room.name} - {self.status}"
 
 
 class StudioClosure(models.Model):
@@ -312,6 +482,30 @@ class AttendanceRawRow(models.Model):
         return f"{self.report_import_id} row {self.row_number}"
 
 
+class TrainerAvailabilityRawRow(models.Model):
+    report_import = models.ForeignKey(
+        ReportImport,
+        on_delete=models.CASCADE,
+        related_name="trainer_availability_raw_rows",
+    )
+    site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="trainer_availability_raw_rows")
+    row_number = models.PositiveIntegerField()
+    row_hash = models.CharField(max_length=64, db_index=True)
+    raw_payload = models.JSONField()
+    normalized_payload = models.JSONField(default=dict)
+    is_class_row = models.BooleanField(default=False)
+    is_valid = models.BooleanField(default=True)
+    validation_errors = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ("report_import", "row_number")
+        ordering = ["report_import_id", "row_number"]
+
+    def __str__(self):
+        return f"{self.report_import_id} trainer row {self.row_number}"
+
+
 class AttendanceVisit(models.Model):
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="attendance_visits")
     natural_key = models.CharField(max_length=64, unique=True, db_index=True)
@@ -394,6 +588,46 @@ class AttendanceVisit(models.Model):
 
     def __str__(self):
         return f"{self.visit_date} {self.visit_time_raw} - {self.client.name}"
+
+
+class AttendanceClassMatch(models.Model):
+    METHOD_EXACT_INSTRUCTOR_TIME = "exact_instructor_time"
+    METHOD_SINGLE_CLASS_SAME_TIME = "single_class_same_time"
+    METHOD_MANUAL = "manual"
+    METHOD_AMBIGUOUS = "ambiguous"
+    METHOD_UNMATCHED = "unmatched"
+
+    METHOD_CHOICES = [
+        (METHOD_EXACT_INSTRUCTOR_TIME, "Exact Instructor Time"),
+        (METHOD_SINGLE_CLASS_SAME_TIME, "Single Class Same Time"),
+        (METHOD_MANUAL, "Manual"),
+        (METHOD_AMBIGUOUS, "Ambiguous"),
+        (METHOD_UNMATCHED, "Unmatched"),
+    ]
+
+    attendance_visit = models.OneToOneField(
+        AttendanceVisit,
+        on_delete=models.CASCADE,
+        related_name="class_match",
+    )
+    scheduled_class = models.ForeignKey(
+        ScheduledClass,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="attendance_matches",
+    )
+    match_method = models.CharField(max_length=40, choices=METHOD_CHOICES, db_index=True)
+    confidence = models.DecimalField(max_digits=5, decimal_places=2, default=0)
+    candidate_class_ids = models.JSONField(default=list, blank=True)
+    notes = models.TextField(blank=True, null=True)
+    matched_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["attendance_visit__visit_date", "attendance_visit__visit_time_raw"]
+
+    def __str__(self):
+        return f"{self.attendance_visit_id} -> {self.scheduled_class_id or self.match_method}"
 
 
 class AttendanceVisitVersion(models.Model):
