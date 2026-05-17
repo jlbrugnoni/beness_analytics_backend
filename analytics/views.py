@@ -146,6 +146,29 @@ def date_count_rows(queryset, date_field):
     return [{"date": row["day"].isoformat() if row["day"] else None, "total": row["total"]} for row in rows]
 
 
+def attendance_status_date_rows(queryset):
+    rows = {}
+    for visit_date, no_show, late_cancel in queryset.values_list("visit_date", "no_show", "late_cancel"):
+        if not visit_date:
+            continue
+        key = visit_date.isoformat()
+        row = rows.setdefault(key, {
+            "date": key,
+            "total": 0,
+            "attended": 0,
+            "no_shows": 0,
+            "late_cancels": 0,
+        })
+        row["total"] += 1
+        if no_show:
+            row["no_shows"] += 1
+        elif late_cancel:
+            row["late_cancels"] += 1
+        else:
+            row["attended"] += 1
+    return [rows[key] for key in sorted(rows)]
+
+
 def attendance_hour_rows(queryset):
     counts = {}
     for value in queryset.values_list("visit_time_raw", flat=True):
@@ -809,7 +832,8 @@ def revenue_view(request):
 def attendance_view(request):
     _, _, attendance, _, _ = base_querysets(request)
     total = attendance.count()
-    attended = attendance.filter(no_show=False, late_cancel=False).count()
+    attended_attendance = attendance.filter(no_show=False, late_cancel=False)
+    attended = attended_attendance.count()
     visit_revenue = money_sum(attendance, "revenue")
     return Response({
         "total": total,
@@ -820,12 +844,18 @@ def attendance_view(request):
         "visit_revenue": decimal_value(visit_revenue),
         "average_revenue_per_attended_visit": ratio_money(visit_revenue, attended),
         "by_date": date_count_rows(attendance, "visit_date"),
+        "attended_by_date": date_count_rows(attended_attendance, "visit_date"),
+        "booking_quality_by_date": attendance_status_date_rows(attendance),
         "by_weekday": weekday_count_rows(attendance, "visit_date"),
         "by_studio": count_rows(attendance, "visit_studio__name"),
+        "attended_by_studio": count_rows(attended_attendance, "visit_studio__name"),
         "by_instructor": count_rows(attendance, "staff_member__name"),
+        "attended_by_instructor": count_rows(attended_attendance, "staff_member__name"),
         "instructor_quality": instructor_quality_rows(attendance),
         "by_service": count_rows(attendance, "pricing_option__name"),
+        "attended_by_service": count_rows(attended_attendance, "pricing_option__name"),
         "by_hour": attendance_hour_rows(attendance),
+        "attended_by_hour": attendance_hour_rows(attended_attendance),
     })
 
 
