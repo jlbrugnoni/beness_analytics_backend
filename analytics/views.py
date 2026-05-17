@@ -842,6 +842,20 @@ def retention_view(request):
     not_renewed_count = not_renewed.count()
     not_renewed_activity = not_renewed_activity_summary(not_renewed)
     tracked_products = filtered_by_site(PricingOption.objects.filter(track_retention=True), request).count()
+    current_members_by_month = {
+        row["month"].isoformat(): row["total"]
+        for row in statuses.filter(current_month_member=True).values("month").annotate(total=Count("id"))
+    }
+    not_renewed_members_by_month = {
+        row["month"].isoformat(): row["total"]
+        for row in statuses.filter(status=MembershipMonthStatus.STATUS_NOT_RENEWED).values("month").annotate(total=Count("id"))
+    }
+    renewal_rate_by_month = {}
+    for month in months:
+        month_statuses = statuses.filter(month=month)
+        month_previous = month_statuses.filter(previous_month_member=True).count()
+        month_retained = month_statuses.filter(status=MembershipMonthStatus.STATUS_RETAINED).count()
+        renewal_rate_by_month[month.isoformat()] = percentage(month_retained, month_previous)
 
     return Response({
         "date_range": {"from": start.isoformat(), "to": end.isoformat()},
@@ -865,6 +879,9 @@ def retention_view(request):
         "renewal_rate": percentage(retained, previous_members),
         "churn_rate": percentage(not_renewed_count, previous_members),
         "not_renewed_value": decimal_value(money_sum(not_renewed, "membership_value")),
+        "current_month_members_by_month": current_members_by_month,
+        "not_renewed_members_by_month": not_renewed_members_by_month,
+        "renewal_rate_by_month": renewal_rate_by_month,
         "not_renewed_clients": serialize_membership_status_rows(not_renewed.order_by("month", "client__name")[:25]),
         "retained_samples": serialize_membership_status_rows(
             statuses.filter(status=MembershipMonthStatus.STATUS_RETAINED).order_by("month", "client__name")[:25]
