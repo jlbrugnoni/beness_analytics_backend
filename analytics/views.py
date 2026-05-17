@@ -1071,6 +1071,142 @@ def rebuild_attendance_class_matches_view(request):
     })
 
 
+def serialize_candidate_class(scheduled_class):
+    return {
+        "id": scheduled_class.id,
+        "name": scheduled_class.name,
+        "site": scheduled_class.site.name,
+        "studio": scheduled_class.studio.name,
+        "room": scheduled_class.room.name if scheduled_class.room else "N/A",
+        "staff_member": scheduled_class.staff_member.name if scheduled_class.staff_member else "N/A",
+        "date": scheduled_class.class_date.isoformat(),
+        "start_time": scheduled_class.start_time.strftime("%H:%M"),
+        "end_time": scheduled_class.end_time.strftime("%H:%M"),
+        "capacity": scheduled_class.capacity,
+        "source": scheduled_class.source,
+        "status": scheduled_class.status,
+    }
+
+
+def candidate_classes_for_match(match):
+    visit = match.attendance_visit
+    candidate_ids = list(match.candidate_class_ids or [])
+    candidates = ScheduledClass.objects.select_related("site", "studio", "room", "staff_member").filter(
+        site_id=visit.site_id,
+        studio_id=visit.visit_studio_id,
+        class_date=visit.visit_date,
+    ).exclude(status__in=[ScheduledClass.STATUS_CANCELLED, ScheduledClass.STATUS_UNAVAILABLE])
+    if candidate_ids:
+        candidates = candidates.filter(Q(id__in=candidate_ids) | Q(start_time=parse_time_value(visit.visit_time_raw)))
+    else:
+        visit_time = parse_time_value(visit.visit_time_raw)
+        if visit_time:
+            candidates = candidates.filter(start_time=visit_time)
+    return sorted(candidates, key=lambda item: (item.start_time, item.room.name if item.room else "", item.name))
+
+
+def serialize_unresolved_match(match):
+    visit = match.attendance_visit
+    candidates = candidate_classes_for_match(match)
+    return {
+        "id": match.id,
+        "match_method": match.match_method,
+        "confidence": decimal_value(match.confidence),
+        "notes": match.notes,
+        "candidate_class_ids": match.candidate_class_ids or [],
+        "attendance_visit": {
+            "id": visit.id,
+            "site": visit.site.name,
+            "site_id": visit.site_id,
+            "studio": visit.visit_studio.name,
+            "studio_id": visit.visit_studio_id,
+            "date": visit.visit_date.isoformat(),
+            "time": visit.visit_time_raw,
+            "client": visit.client.name,
+            "client_mindbody_id": visit.client.mindbody_id,
+            "instructor": visit.staff_member.name if visit.staff_member else "N/A",
+            "service": visit.pricing_option.name if visit.pricing_option else "N/A",
+            "revenue": decimal_value(visit.revenue),
+        },
+        "candidates": [serialize_candidate_class(candidate) for candidate in candidates],
+    }
+
+
+@api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
+def unresolved_attendance_matches_view(request):
+    if request.method == "POST":
+        match_id = request.data.get("match")
+        scheduled_class_id = request.data.get("scheduled_class")
+        if not match_id or not scheduled_class_id:
+            return Response({"error": "match and scheduled_class are required."}, status=400)
+
+        try:
+            match = AttendanceClassMatch.objects.select_related("attendance_visit").get(id=match_id)
+            scheduled_class = ScheduledClass.objects.get(id=scheduled_class_id)
+        except (AttendanceClassMatch.DoesNotExist, ScheduledClass.DoesNotExist):
+            return Response({"error": "Match or scheduled class not found."}, status=404)
+
+        visit = match.attendance_visit
+        if (
+            scheduled_class.site_id != visit.site_id
+            or scheduled_class.studio_id != visit.visit_studio_id
+            or scheduled_class.class_date != visit.visit_date
+        ):
+            return Response({"error": "Scheduled class must match the attendance site, studio and date."}, status=400)
+        if scheduled_class.status in [ScheduledClass.STATUS_CANCELLED, ScheduledClass.STATUS_UNAVAILABLE]:
+            return Response({"error": "Cannot match attendance to a cancelled or unavailable class."}, status=400)
+
+        match.scheduled_class = scheduled_class
+        match.match_method = AttendanceClassMatch.METHOD_MANUAL
+        match.confidence = Decimal("1.00")
+        match.notes = "Manually matched from unresolved attendance review."
+        match.save()
+        return Response({"matched": serialize_unresolved_match(match)})
+
+    start, end = date_bounds(request)
+    queryset = AttendanceClassMatch.objects.select_related(
+        "attendance_visit",
+        "attendance_visit__site",
+        "attendance_visit__client",
+        "attendance_visit__staff_member",
+        "attendance_visit__visit_studio",
+        "attendance_visit__pricing_option",
+    ).filter(
+        attendance_visit__visit_date__range=(start, end),
+        attendance_visit__no_show=False,
+        attendance_visit__late_cancel=False,
+        match_method__in=[
+            AttendanceClassMatch.METHOD_AMBIGUOUS,
+            AttendanceClassMatch.METHOD_UNMATCHED,
+        ],
+    )
+    site_id = request.query_params.get("site")
+    studio_id = request.query_params.get("studio")
+    match_method = request.query_params.get("match_method")
+    search = str(request.query_params.get("search") or "").strip()
+    if site_id:
+        queryset = queryset.filter(attendance_visit__site_id=site_id)
+    if studio_id:
+        queryset = queryset.filter(attendance_visit__visit_studio_id=studio_id)
+    if match_method in [AttendanceClassMatch.METHOD_AMBIGUOUS, AttendanceClassMatch.METHOD_UNMATCHED]:
+        queryset = queryset.filter(match_method=match_method)
+    if search:
+        queryset = queryset.filter(
+            Q(attendance_visit__client__name__icontains=search)
+            | Q(attendance_visit__client__mindbody_id__icontains=search)
+            | Q(attendance_visit__staff_member__name__icontains=search)
+            | Q(attendance_visit__pricing_option__name__icontains=search)
+        )
+
+    rows = list(queryset.order_by("attendance_visit__visit_date", "attendance_visit__visit_time_raw")[:200])
+    return Response({
+        "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+        "count": queryset.count(),
+        "rows": [serialize_unresolved_match(match) for match in rows],
+    })
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def occupation_view(request):
