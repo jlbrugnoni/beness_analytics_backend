@@ -882,6 +882,7 @@ def retention_payload(request, start=None, end=None, sample_limit=25):
     reactivated = statuses.filter(status=MembershipMonthStatus.STATUS_REACTIVATED).count()
     not_renewed = statuses.filter(status=MembershipMonthStatus.STATUS_NOT_RENEWED)
     not_renewed_count = not_renewed.count()
+    not_renewed_unassigned_studio = not_renewed.filter(studio__isnull=True).count()
     not_renewed_activity = not_renewed_activity_summary(not_renewed)
     tracked_products = filtered_by_site(PricingOption.objects.filter(track_retention=True), request).count()
     current_members_by_month = {
@@ -891,6 +892,13 @@ def retention_payload(request, start=None, end=None, sample_limit=25):
     not_renewed_members_by_month = {
         row["month"].isoformat(): row["total"]
         for row in statuses.filter(status=MembershipMonthStatus.STATUS_NOT_RENEWED).values("month").annotate(total=Count("id"))
+    }
+    not_renewed_unassigned_studio_by_month = {
+        row["month"].isoformat(): row["total"]
+        for row in statuses.filter(
+            status=MembershipMonthStatus.STATUS_NOT_RENEWED,
+            studio__isnull=True,
+        ).values("month").annotate(total=Count("id"))
     }
     renewal_rate_by_month = {}
     for month in months:
@@ -911,6 +919,7 @@ def retention_payload(request, start=None, end=None, sample_limit=25):
         "reactivated_members": reactivated,
         "not_renewed_services": not_renewed_count,
         "not_renewed_members": not_renewed_count,
+        "not_renewed_unassigned_studio": not_renewed_unassigned_studio,
         "not_renewed_inactive": not_renewed_activity["inactive"],
         "not_renewed_attending_unpaid": not_renewed_activity["attending_unpaid"],
         "not_renewed_attending_paid": not_renewed_activity["attending_paid"],
@@ -923,6 +932,7 @@ def retention_payload(request, start=None, end=None, sample_limit=25):
         "not_renewed_value": decimal_value(money_sum(not_renewed, "membership_value")),
         "current_month_members_by_month": current_members_by_month,
         "not_renewed_members_by_month": not_renewed_members_by_month,
+        "not_renewed_unassigned_studio_by_month": not_renewed_unassigned_studio_by_month,
         "renewal_rate_by_month": renewal_rate_by_month,
         "not_renewed_clients": serialize_membership_status_rows(not_renewed.order_by("month", "client__name")[:sample_limit]),
         "retained_samples": serialize_membership_status_rows(
@@ -1550,6 +1560,7 @@ def dashboard_monthly_trends_view(request):
             "new_members": retention["new_members"],
             "reactivated_members": retention["reactivated_members"],
             "not_renewed_members": retention["not_renewed_members"],
+            "not_renewed_unassigned_studio": retention["not_renewed_unassigned_studio"],
             "renewal_rate": retention["renewal_rate"],
             "churn_rate": retention["churn_rate"],
             "not_renewed_value": retention["not_renewed_value"],
