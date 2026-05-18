@@ -66,6 +66,14 @@ def filtered_sales(queryset, request):
     return queryset
 
 
+def filtered_services(queryset, request):
+    queryset = filtered_by_site(queryset, request)
+    studio_id = request.query_params.get("studio")
+    if studio_id:
+        queryset = queryset.filter(studio_id=studio_id)
+    return queryset
+
+
 def filtered_schedule(queryset, request):
     queryset = filtered_by_site(queryset, request)
     studio_id = request.query_params.get("studio")
@@ -759,7 +767,7 @@ def base_querysets(request, start=None, end=None):
     start, end = date_bounds(request, start=start, end=end)
     attendance = filtered_attendance(AttendanceVisit.objects.filter(visit_date__range=(start, end)), request)
     sales = filtered_sales(SaleLine.objects.filter(sale_date__range=(start, end)), request)
-    services = filtered_by_site(ServicePurchase.objects.filter(sale_date__range=(start, end)), request)
+    services = filtered_services(ServicePurchase.objects.filter(sale_date__range=(start, end)), request)
     return start, end, attendance, sales, services
 
 

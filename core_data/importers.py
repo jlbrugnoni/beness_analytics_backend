@@ -2258,7 +2258,9 @@ def validate_sales_by_service_rows(uploaded_file):
     }
 
 
-def preview_sales_by_service_report(uploaded_file, site):
+def preview_sales_by_service_report(uploaded_file, site, studio=None):
+    if not studio:
+        raise ValueError("Studio is required for Sales by Service imports.")
     rows = validate_sales_by_service_rows(uploaded_file)
     missing_headers = [header for header in SALES_BY_SERVICE_REQUIRED_HEADERS if header not in rows["headers"]]
     extra_headers = [header for header in rows["headers"] if header not in SALES_BY_SERVICE_REQUIRED_HEADERS]
@@ -2288,11 +2290,17 @@ def preview_sales_by_service_report(uploaded_file, site):
     repeated_samples = repeated_row_samples(rows["valid_rows"], sample_fields)
     assign_occurrence_indexes(
         rows["valid_rows"],
-        lambda payload: service_purchase_natural_key(site, payload),
+        lambda payload: service_purchase_natural_key(site, payload, studio),
     )
 
     return {
         "report_type": SALES_BY_SERVICE_REPORT_TYPE,
+        "import_context": {
+            "site_id": site.id,
+            "site": site.name,
+            "studio_id": studio.id,
+            "studio": studio.name,
+        },
         "sheet_name": rows["sheet_name"],
         "headers": rows["headers"],
         "missing_headers": missing_headers,
@@ -2332,13 +2340,13 @@ def preview_sales_by_service_report(uploaded_file, site):
             "repeated_row_samples": repeated_samples,
             "natural_key_collision_samples": natural_key_collision_samples(
                 rows["valid_rows"],
-                lambda payload: service_purchase_natural_key(site, payload),
+                lambda payload: service_purchase_natural_key(site, payload, studio),
                 sample_fields,
             ),
             "import_impact": current_record_impact(
                 rows["valid_rows"],
                 ServicePurchase,
-                lambda payload: service_purchase_natural_key(site, payload),
+                lambda payload: service_purchase_natural_key(site, payload, studio),
             ),
         },
         "invalid_row_samples": rows["invalid_rows"][:10],
@@ -2346,9 +2354,10 @@ def preview_sales_by_service_report(uploaded_file, site):
     }
 
 
-def service_purchase_natural_key(site, payload):
+def service_purchase_natural_key(site, payload, studio=None):
     return hash_parts([
         site.id,
+        studio.id if studio else "",
         payload.get("_occurrence_index"),
         payload.get("ID del Cliente"),
         payload.get("Nombre"),
@@ -2363,6 +2372,7 @@ def service_purchase_natural_key(site, payload):
 def service_purchase_snapshot(payload, related):
     return {
         "site_id": related["site"].id,
+        "studio_id": related["studio"].id if related.get("studio") else None,
         "client_id": related["client"].id,
         "service_category_id": related["service_category"].id if related["service_category"] else None,
         "pricing_option_id": related["pricing_option"].id,
@@ -2379,8 +2389,12 @@ def service_purchase_snapshot(payload, related):
 
 
 @transaction.atomic
-def import_sales_by_service_report(uploaded_file, site, uploaded_by=None):
-    preview = preview_sales_by_service_report(uploaded_file, site)
+def import_sales_by_service_report(uploaded_file, site, uploaded_by=None, studio=None):
+    if not studio:
+        raise ValueError("Studio is required for Sales by Service imports.")
+    if studio.site_id != site.id:
+        raise ValueError("Selected studio does not belong to the selected site.")
+    preview = preview_sales_by_service_report(uploaded_file, site, studio=studio)
     if not preview["is_valid_schema"]:
         raise ValueError(f"Missing required headers: {', '.join(preview['missing_headers'])}")
 
@@ -2393,6 +2407,7 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None):
         valid_rows=preview["row_counts"]["valid_rows"],
         error_rows=preview["row_counts"]["invalid_rows"],
         uploaded_by=uploaded_by,
+        studio=studio,
     )
     stats = {
         "report_import_id": report_import.id,
@@ -2407,7 +2422,7 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None):
     rows_to_import = validate_sales_by_service_rows(uploaded_file)
     assign_occurrence_indexes(
         rows_to_import["valid_rows"],
-        lambda payload: service_purchase_natural_key(site, payload),
+        lambda payload: service_purchase_natural_key(site, payload, studio),
     )
     current_candidates = {}
     lookup_cache = {}
@@ -2442,6 +2457,7 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None):
         raw_row = ServicePurchaseRawRow.objects.create(
             report_import=report_import,
             site=site,
+            studio=studio,
             row_number=row["row_number"],
             row_hash=row["hash"],
             raw_payload=row["raw_payload"],
@@ -2452,11 +2468,12 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None):
         stats["raw_rows_created"] += 1
         related = {
             "site": site,
+            "studio": studio,
             "client": client,
             "service_category": service_category,
             "pricing_option": pricing_option,
         }
-        current_candidates[service_purchase_natural_key(site, payload)] = {
+        current_candidates[service_purchase_natural_key(site, payload, studio)] = {
             "row": row,
             "payload": payload,
             "raw_row": raw_row,
@@ -2478,6 +2495,7 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None):
         changes = changed_fields(previous_snapshot, snapshot)
         values = {
             "site": site,
+            "studio": related["studio"],
             "current_row_hash": row["hash"],
             "client": related["client"],
             "service_category": related["service_category"],
@@ -2529,6 +2547,7 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None):
         ServicePurchaseRawRow.objects.create(
             report_import=report_import,
             site=site,
+            studio=studio,
             row_number=row["row_number"],
             row_hash=row["hash"],
             raw_payload=row["raw_payload"],
@@ -2544,13 +2563,14 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None):
     return {"preview": preview, "import": stats}
 
 
-def preview_report(uploaded_file, site, report_type):
+def preview_report(uploaded_file, site, report_type, options=None):
+    options = options or {}
     if report_type == ATTENDANCE_REPORT_TYPE:
         return preview_attendance_report(uploaded_file, site)
     if report_type == SALES_REPORT_TYPE:
         return preview_sales_report(uploaded_file, site)
     if report_type == SALES_BY_SERVICE_REPORT_TYPE:
-        return preview_sales_by_service_report(uploaded_file, site)
+        return preview_sales_by_service_report(uploaded_file, site, studio=options.get("studio"))
     if report_type == TRAINER_AVAILABILITY_REPORT_TYPE:
         return preview_trainer_availability_report(uploaded_file, site)
     raise ValueError(f"Unsupported report_type. Supported: {', '.join(SUPPORTED_REPORT_TYPES)}.")
@@ -2563,7 +2583,12 @@ def import_report(uploaded_file, site, report_type, uploaded_by=None, options=No
     if report_type == SALES_REPORT_TYPE:
         return import_sales_report(uploaded_file, site, uploaded_by=uploaded_by)
     if report_type == SALES_BY_SERVICE_REPORT_TYPE:
-        return import_sales_by_service_report(uploaded_file, site, uploaded_by=uploaded_by)
+        return import_sales_by_service_report(
+            uploaded_file,
+            site,
+            uploaded_by=uploaded_by,
+            studio=options.get("studio"),
+        )
     if report_type == TRAINER_AVAILABILITY_REPORT_TYPE:
         return import_trainer_availability_report(
             uploaded_file,

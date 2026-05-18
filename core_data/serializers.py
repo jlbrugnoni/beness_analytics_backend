@@ -152,6 +152,7 @@ class StudioClosureSerializer(serializers.ModelSerializer):
 
 class ReportImportSerializer(serializers.ModelSerializer):
     uploaded_by_name = serializers.SerializerMethodField()
+    studio_name = serializers.CharField(source="studio.name", read_only=True)
 
     class Meta:
         model = ReportImport
@@ -264,6 +265,7 @@ class SaleLineSerializer(serializers.ModelSerializer):
 
 class ServicePurchaseSerializer(serializers.ModelSerializer):
     site_name = serializers.CharField(source="site.name", read_only=True)
+    studio_name = serializers.CharField(source="studio.name", read_only=True)
     client_name = serializers.CharField(source="client.name", read_only=True)
     client_mindbody_id = serializers.CharField(source="client.mindbody_id", read_only=True)
     service_category_name = serializers.CharField(source="service_category.name", read_only=True)
@@ -343,6 +345,7 @@ class SaleRawRowSerializer(serializers.ModelSerializer):
 
 class ServicePurchaseRawRowSerializer(serializers.ModelSerializer):
     site_name = serializers.CharField(source="site.name", read_only=True)
+    studio_name = serializers.CharField(source="studio.name", read_only=True)
     report_type = serializers.CharField(source="report_import.report_type", read_only=True)
     file_name = serializers.CharField(source="report_import.file_name", read_only=True)
     payload_summary = serializers.SerializerMethodField()

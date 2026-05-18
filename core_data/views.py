@@ -840,14 +840,17 @@ class ReportImportViewSet(viewsets.ModelViewSet):
     parser_classes = [JSONParser, MultiPartParser, FormParser]
 
     def get_queryset(self):
-        queryset = ReportImport.objects.select_related("uploaded_by").all()
+        queryset = ReportImport.objects.select_related("uploaded_by", "studio").all()
         report_type = self.request.query_params.get("report_type")
         status_value = self.request.query_params.get("status")
+        studio = self.request.query_params.get("studio")
         search = self.request.query_params.get("search")
         if report_type:
             queryset = queryset.filter(report_type=report_type)
         if status_value:
             queryset = queryset.filter(status=status_value)
+        if studio:
+            queryset = queryset.filter(studio_id=studio)
         if search:
             queryset = queryset.filter(file_name__icontains=search)
         return queryset
@@ -983,10 +986,8 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             ReportImport,
             PricingOption,
             PaymentMethod,
-            StaffMember,
             ServiceCategory,
             Client,
-            Studio,
         ]
 
         deleted_counts = {}
@@ -998,13 +999,24 @@ class ReportImportViewSet(viewsets.ModelViewSet):
         return Response({
             "message": "Analytics data reset completed.",
             "deleted_counts": deleted_counts,
-            "preserved": ["users", "groups", "permissions", "sites"],
+            "preserved": [
+                "users",
+                "groups",
+                "permissions",
+                "sites",
+                "studios",
+                "rooms",
+                "staff_members",
+                "weekly_room_templates",
+                "studio_closures",
+            ],
         })
 
     @action(detail=False, methods=["post"], url_path="preview")
     def preview(self, request):
         uploaded_file = request.FILES.get("file")
         site_id = request.data.get("site")
+        studio_id = request.data.get("studio")
         report_type = request.data.get("report_type")
 
         if not uploaded_file:
@@ -1022,8 +1034,24 @@ class ReportImportViewSet(viewsets.ModelViewSet):
         except Site.DoesNotExist:
             return Response({"error": "Site not found."}, status=status.HTTP_404_NOT_FOUND)
 
+        options = {}
+        if report_type == "sales_by_service":
+            if not studio_id:
+                return Response(
+                    {"error": "Studio is required for Sales by Service reports."},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+            try:
+                studio = Studio.objects.get(pk=studio_id, site=site)
+            except Studio.DoesNotExist:
+                return Response(
+                    {"error": "Studio not found for selected site."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+            options["studio"] = studio
+
         try:
-            preview = preview_report(uploaded_file, site, report_type)
+            preview = preview_report(uploaded_file, site, report_type, options=options)
         except Exception as exc:
             return Response({"error": f"Could not parse file: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1033,6 +1061,7 @@ class ReportImportViewSet(viewsets.ModelViewSet):
     def import_file(self, request):
         uploaded_file = request.FILES.get("file")
         site_id = request.data.get("site")
+        studio_id = request.data.get("studio")
         report_type = request.data.get("report_type")
 
         if not uploaded_file:
@@ -1052,6 +1081,20 @@ class ReportImportViewSet(viewsets.ModelViewSet):
 
         try:
             options = {}
+            if report_type == "sales_by_service":
+                if not studio_id:
+                    return Response(
+                        {"error": "Studio is required for Sales by Service reports."},
+                        status=status.HTTP_400_BAD_REQUEST,
+                    )
+                try:
+                    studio = Studio.objects.get(pk=studio_id, site=site)
+                except Studio.DoesNotExist:
+                    return Response(
+                        {"error": "Studio not found for selected site."},
+                        status=status.HTTP_404_NOT_FOUND,
+                    )
+                options["studio"] = studio
             room_capacities_raw = request.data.get("room_capacities")
             if room_capacities_raw:
                 try:
@@ -1189,9 +1232,13 @@ class SaleLineViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelViewSet):
     search_fields = ["client__name", "client__mindbody_id", "sale_number", "item_name", "payment_method__name"]
 
     def get_queryset(self):
-        return self.filter_queryset(
+        queryset = self.filter_queryset(
             SaleLine.objects.select_related("site", "client", "studio", "payment_method").all()
         )
+        studio = self.request.query_params.get("studio")
+        if studio:
+            queryset = queryset.filter(studio_id=studio)
+        return queryset
 
 
 class ServicePurchaseViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelViewSet):
@@ -1201,9 +1248,13 @@ class ServicePurchaseViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelView
     search_fields = ["client__name", "client__mindbody_id", "pricing_option__name", "service_category__name"]
 
     def get_queryset(self):
-        return self.filter_queryset(
-            ServicePurchase.objects.select_related("site", "client", "service_category", "pricing_option").all()
+        queryset = self.filter_queryset(
+            ServicePurchase.objects.select_related("site", "studio", "client", "service_category", "pricing_option").all()
         )
+        studio = self.request.query_params.get("studio")
+        if studio:
+            queryset = queryset.filter(studio_id=studio)
+        return queryset
 
 
 class RawRowFilterMixin:
@@ -1273,7 +1324,11 @@ class ServicePurchaseRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelView
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        return self.filter_queryset(ServicePurchaseRawRow.objects.select_related("site", "report_import").all())
+        queryset = self.filter_queryset(ServicePurchaseRawRow.objects.select_related("site", "studio", "report_import").all())
+        studio = self.request.query_params.get("studio")
+        if studio:
+            queryset = queryset.filter(studio_id=studio)
+        return queryset
 
 
 class LoginLogViewSet(viewsets.ReadOnlyModelViewSet):

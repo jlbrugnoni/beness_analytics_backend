@@ -453,6 +453,13 @@ class ReportImport(models.Model):
         blank=True,
         related_name="report_imports",
     )
+    studio = models.ForeignKey(
+        Studio,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="report_imports",
+    )
     uploaded_at = models.DateTimeField(auto_now_add=True)
     processed_at = models.DateTimeField(blank=True, null=True)
 
@@ -744,6 +751,13 @@ class SaleLineVersion(models.Model):
 class ServicePurchaseRawRow(models.Model):
     report_import = models.ForeignKey(ReportImport, on_delete=models.CASCADE, related_name="service_purchase_raw_rows")
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="service_purchase_raw_rows")
+    studio = models.ForeignKey(
+        Studio,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="service_purchase_raw_rows",
+    )
     row_number = models.PositiveIntegerField()
     row_hash = models.CharField(max_length=64, db_index=True)
     raw_payload = models.JSONField()
@@ -762,6 +776,13 @@ class ServicePurchaseRawRow(models.Model):
 
 class ServicePurchase(models.Model):
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="service_purchases")
+    studio = models.ForeignKey(
+        Studio,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="service_purchases",
+    )
     natural_key = models.CharField(max_length=64, unique=True, db_index=True)
     current_row_hash = models.CharField(max_length=64, db_index=True)
     client = models.ForeignKey(Client, on_delete=models.PROTECT, related_name="service_purchases")
