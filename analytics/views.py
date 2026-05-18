@@ -32,7 +32,9 @@ def parse_date(value):
         return None
 
 
-def date_bounds(request):
+def date_bounds(request, start=None, end=None):
+    if start and end:
+        return start, end
     today = date.today()
     default_start = today.replace(day=1)
     default_end = today.replace(day=monthrange(today.year, today.month)[1])
@@ -514,8 +516,8 @@ def rebuild_membership_month(site_id, target_month):
     return len(rows)
 
 
-def membership_status_queryset(request):
-    start, end = date_bounds(request)
+def membership_status_queryset(request, start=None, end=None):
+    start, end = date_bounds(request, start=start, end=end)
     months = months_between(start, end)
     queryset = MembershipMonthStatus.objects.select_related(
         "site",
@@ -753,18 +755,16 @@ def percentage(numerator, denominator):
     return round(numerator / denominator * 100, 2) if denominator else 0
 
 
-def base_querysets(request):
-    start, end = date_bounds(request)
+def base_querysets(request, start=None, end=None):
+    start, end = date_bounds(request, start=start, end=end)
     attendance = filtered_attendance(AttendanceVisit.objects.filter(visit_date__range=(start, end)), request)
     sales = filtered_sales(SaleLine.objects.filter(sale_date__range=(start, end)), request)
     services = filtered_by_site(ServicePurchase.objects.filter(sale_date__range=(start, end)), request)
     return start, end, attendance, sales, services
 
 
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def summary_view(request):
-    start, end, attendance, sales, services = base_querysets(request)
+def summary_payload(request, start=None, end=None):
+    start, end, attendance, sales, services = base_querysets(request, start=start, end=end)
     attendance_count = attendance.count()
     no_shows = attendance.filter(no_show=True).count()
     late_cancels = attendance.filter(late_cancel=True).count()
@@ -775,7 +775,7 @@ def summary_view(request):
     visit_revenue = money_sum(attendance, "revenue")
     sale_count = sales.values("sale_number").distinct().count()
 
-    return Response({
+    return {
         "date_range": {"from": start.isoformat(), "to": end.isoformat()},
         "studio_filter_limited": bool(request.query_params.get("studio")),
         "totals": {
@@ -796,16 +796,20 @@ def summary_view(request):
             "service_purchases": services.count(),
         },
         "site_count": Site.objects.count(),
-    })
+    }
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def revenue_view(request):
-    _, _, attendance, sales, services = base_querysets(request)
+def summary_view(request):
+    return Response(summary_payload(request))
+
+
+def revenue_payload(request, start=None, end=None):
+    _, _, attendance, sales, services = base_querysets(request, start=start, end=end)
     sales_revenue = money_sum(sales, "paid_total")
     sale_count = sales.values("sale_number").distinct().count()
-    return Response({
+    return {
         "studio_filter_limited": bool(request.query_params.get("studio")),
         "sales_revenue": decimal_value(sales_revenue),
         "service_revenue": decimal_value(money_sum(services, "total_amount")),
@@ -824,18 +828,22 @@ def revenue_view(request):
         "by_studio": money_rows(sales, "studio__name", "paid_total"),
         "by_item": money_rows(sales, "item_name", "paid_total"),
         "by_service": money_rows(services, "pricing_option__name", "total_amount"),
-    })
+    }
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def attendance_view(request):
-    _, _, attendance, _, _ = base_querysets(request)
+def revenue_view(request):
+    return Response(revenue_payload(request))
+
+
+def attendance_payload(request, start=None, end=None):
+    _, _, attendance, _, _ = base_querysets(request, start=start, end=end)
     total = attendance.count()
     attended_attendance = attendance.filter(no_show=False, late_cancel=False)
     attended = attended_attendance.count()
     visit_revenue = money_sum(attendance, "revenue")
-    return Response({
+    return {
         "total": total,
         "attended": attended,
         "no_shows": attendance.filter(no_show=True).count(),
@@ -856,13 +864,17 @@ def attendance_view(request):
         "attended_by_service": count_rows(attended_attendance, "pricing_option__name"),
         "by_hour": attendance_hour_rows(attendance),
         "attended_by_hour": attendance_hour_rows(attended_attendance),
-    })
+    }
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
-def retention_view(request):
-    start, end, months, statuses = membership_status_queryset(request)
+def attendance_view(request):
+    return Response(attendance_payload(request))
+
+
+def retention_payload(request, start=None, end=None, sample_limit=25):
+    start, end, months, statuses = membership_status_queryset(request, start=start, end=end)
     previous_members = statuses.filter(previous_month_member=True).count()
     current_members = statuses.filter(current_month_member=True).count()
     retained = statuses.filter(status=MembershipMonthStatus.STATUS_RETAINED).count()
@@ -887,7 +899,7 @@ def retention_view(request):
         month_retained = month_statuses.filter(status=MembershipMonthStatus.STATUS_RETAINED).count()
         renewal_rate_by_month[month.isoformat()] = percentage(month_retained, month_previous)
 
-    return Response({
+    return {
         "date_range": {"from": start.isoformat(), "to": end.isoformat()},
         "months": [month.isoformat() for month in months],
         "snapshot_rows": statuses.count(),
@@ -912,22 +924,28 @@ def retention_view(request):
         "current_month_members_by_month": current_members_by_month,
         "not_renewed_members_by_month": not_renewed_members_by_month,
         "renewal_rate_by_month": renewal_rate_by_month,
-        "not_renewed_clients": serialize_membership_status_rows(not_renewed.order_by("month", "client__name")[:25]),
+        "not_renewed_clients": serialize_membership_status_rows(not_renewed.order_by("month", "client__name")[:sample_limit]),
         "retained_samples": serialize_membership_status_rows(
-            statuses.filter(status=MembershipMonthStatus.STATUS_RETAINED).order_by("month", "client__name")[:25]
+            statuses.filter(status=MembershipMonthStatus.STATUS_RETAINED).order_by("month", "client__name")[:sample_limit]
         ),
         "new_member_samples": serialize_membership_status_rows(
-            statuses.filter(status=MembershipMonthStatus.STATUS_NEW).order_by("month", "client__name")[:25]
+            statuses.filter(status=MembershipMonthStatus.STATUS_NEW).order_by("month", "client__name")[:sample_limit]
         ),
         "reactivated_samples": serialize_membership_status_rows(
-            statuses.filter(status=MembershipMonthStatus.STATUS_REACTIVATED).order_by("month", "client__name")[:25]
+            statuses.filter(status=MembershipMonthStatus.STATUS_REACTIVATED).order_by("month", "client__name")[:sample_limit]
         ),
         "definition": (
             "La retencion mensual usa snapshots. Un cliente cuenta como miembro de un mes si tuvo al menos "
             "15 dias cubiertos por productos marcados con track_retention. Not renewed se cuenta en el mes "
             "en que el cliente deja de ser miembro, no en el mes en que expiro el servicio anterior."
         ),
-    })
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def retention_view(request):
+    return Response(retention_payload(request))
 
 
 @api_view(["GET"])
@@ -1254,10 +1272,8 @@ def unresolved_attendance_matches_view(request):
     })
 
 
-@api_view(["GET"])
-@permission_classes([IsAuthenticated])
-def occupation_view(request):
-    start, end, attendance, _, _ = base_querysets(request)
+def occupation_payload(request, start=None, end=None):
+    start, end, attendance, _, _ = base_querysets(request, start=start, end=end)
     scheduled_classes = filtered_schedule(
         ScheduledClass.objects.select_related("site", "studio", "room").filter(class_date__range=(start, end)),
         request,
@@ -1391,7 +1407,7 @@ def occupation_view(request):
         unresolved_attended = unresolved_attended.filter(attendance_visit__visit_studio_id=request.query_params.get("studio"))
     unscheduled_attended = unresolved_attended.count()
 
-    return Response({
+    return {
         "formula": "ocupacion = asistencias reales / capacidad programada",
         "date_range": {"from": start.isoformat(), "to": end.isoformat()},
         "scheduled_classes": scheduled_classes.count(),
@@ -1411,4 +1427,198 @@ def occupation_view(request):
             "La ocupacion usa los emparejamientos guardados entre asistencias y clases programadas. "
             "Reconstruye los emparejamientos despues de importar agenda o asistencia para actualizar estos datos."
         ),
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def occupation_view(request):
+    return Response(occupation_payload(request))
+
+
+def previous_month_range(start):
+    previous = add_months(month_start(start), -1)
+    return previous, month_end(previous)
+
+
+def previous_week_range(start, end):
+    return start - timedelta(days=7), end - timedelta(days=7)
+
+
+def month_trend_ranges(start, months=6):
+    end_month = month_start(start)
+    return [
+        (target_month, month_end(target_month))
+        for target_month in (add_months(end_month, offset) for offset in range(-(months - 1), 1))
+    ]
+
+
+def week_trend_ranges(start, end, weeks=6):
+    duration_days = (end - start).days
+    return [
+        (week_start, week_start + timedelta(days=duration_days))
+        for week_start in (start + timedelta(days=7 * offset) for offset in range(-(weeks - 1), 1))
+    ]
+
+
+def weekly_trend_row(request, start, end):
+    summary = summary_payload(request, start=start, end=end)
+    occupation = occupation_payload(request, start=start, end=end)
+    totals = summary["totals"]
+    return {
+        "week_start": start.isoformat(),
+        "week_end": end.isoformat(),
+        "total_bookings": totals["attendance_visits"],
+        "completed_visits": totals["attended_visits"],
+        "no_show_rate": totals["no_show_rate"],
+        "late_cancel_rate": totals["late_cancel_rate"],
+        "average_revenue_per_attended_visit": totals["average_revenue_per_attended_visit"],
+        "active_clients": totals["active_clients"],
+        "scheduled_capacity": occupation["scheduled_capacity"],
+        "attendance_used": occupation["matched_attended_visits"],
+        "scheduled_classes": occupation["available_classes"],
+        "closed_or_unavailable_classes": occupation["closed_or_unavailable_classes"],
+        "occupation_rate": occupation["occupation_rate"],
+    }
+
+
+def weekly_weekday_rows(request, start, end):
+    attendance = attendance_payload(request, start=start, end=end)
+    occupation = occupation_payload(request, start=start, end=end)
+    booking_by_date = {row["date"]: row for row in attendance["booking_quality_by_date"]}
+    occupancy_by_date = {row["date"]: row for row in occupation["by_day"]}
+    rows = []
+    for offset in range((end - start).days + 1):
+        target_date = start + timedelta(days=offset)
+        date_key = target_date.isoformat()
+        booking = booking_by_date.get(date_key, {})
+        occupancy = occupancy_by_date.get(date_key, {})
+        rows.append({
+            "week_start": start.isoformat(),
+            "date": date_key,
+            "weekday": weekday_name(target_date),
+            "total_bookings": booking.get("total", 0),
+            "completed_visits": booking.get("attended", 0),
+            "no_shows": booking.get("no_shows", 0),
+            "late_cancels": booking.get("late_cancels", 0),
+            "scheduled_capacity": occupancy.get("capacity", 0),
+            "attendance_used": occupancy.get("attended", 0),
+            "scheduled_classes": occupancy.get("scheduled_classes", 0),
+            "occupation_rate": occupancy.get("occupation_rate", 0),
+        })
+    return rows
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def dashboard_monthly_view(request):
+    start, end = date_bounds(request)
+    previous_start, previous_end = previous_month_range(start)
+    return Response({
+        "mode": "monthly",
+        "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+        "current": {
+            "summary": summary_payload(request, start=start, end=end),
+            "revenue": revenue_payload(request, start=start, end=end),
+            "retention": retention_payload(request, start=start, end=end),
+        },
+        "comparison": {
+            "date_range": {"from": previous_start.isoformat(), "to": previous_end.isoformat()},
+            "summary": summary_payload(request, start=previous_start, end=previous_end),
+            "retention": retention_payload(request, start=previous_start, end=previous_end),
+        },
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def dashboard_monthly_trends_view(request):
+    start, _ = date_bounds(request)
+    rows = []
+    for month_start_value, month_end_value in month_trend_ranges(start):
+        summary = summary_payload(request, start=month_start_value, end=month_end_value)
+        retention = retention_payload(request, start=month_start_value, end=month_end_value, sample_limit=0)
+        totals = summary["totals"]
+        rows.append({
+            "month": month_start_value.isoformat(),
+            "sales_revenue": totals["sales_revenue"],
+            "visit_revenue": totals["visit_revenue"],
+            "average_ticket": totals["average_ticket"],
+            "previous_members": retention["previous_month_members"],
+            "current_members": retention["current_month_members"],
+            "retained_members": retention["retained_members"],
+            "new_members": retention["new_members"],
+            "reactivated_members": retention["reactivated_members"],
+            "not_renewed_members": retention["not_renewed_members"],
+            "renewal_rate": retention["renewal_rate"],
+            "churn_rate": retention["churn_rate"],
+            "not_renewed_value": retention["not_renewed_value"],
+        })
+    return Response({
+        "mode": "monthly",
+        "months": rows,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def dashboard_monthly_retention_tables_view(request):
+    start, end, _, statuses = membership_status_queryset(request)
+    limit = int(request.query_params.get("limit") or 200)
+    status_filters = {
+        "not_renewed": MembershipMonthStatus.STATUS_NOT_RENEWED,
+        "retained": MembershipMonthStatus.STATUS_RETAINED,
+        "new_members": MembershipMonthStatus.STATUS_NEW,
+        "reactivated": MembershipMonthStatus.STATUS_REACTIVATED,
+    }
+    tables = {}
+    for key, status_value in status_filters.items():
+        queryset = statuses.filter(status=status_value).order_by("month", "client__name")
+        tables[key] = {
+            "count": queryset.count(),
+            "rows": serialize_membership_status_rows(queryset[:limit]),
+        }
+    return Response({
+        "mode": "monthly",
+        "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+        "limit": limit,
+        "tables": tables,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def dashboard_weekly_view(request):
+    start, end = date_bounds(request)
+    previous_start, previous_end = previous_week_range(start, end)
+    return Response({
+        "mode": "weekly",
+        "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+        "current": {
+            "summary": summary_payload(request, start=start, end=end),
+            "attendance": attendance_payload(request, start=start, end=end),
+            "occupation": occupation_payload(request, start=start, end=end),
+        },
+        "comparison": {
+            "date_range": {"from": previous_start.isoformat(), "to": previous_end.isoformat()},
+            "summary": summary_payload(request, start=previous_start, end=previous_end),
+            "attendance": attendance_payload(request, start=previous_start, end=previous_end),
+            "occupation": occupation_payload(request, start=previous_start, end=previous_end),
+        },
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def dashboard_weekly_trends_view(request):
+    start, end = date_bounds(request)
+    weeks = week_trend_ranges(start, end)
+    week_rows = [weekly_trend_row(request, week_start, week_end) for week_start, week_end in weeks]
+    weekday_rows = []
+    for week_start, week_end in weeks:
+        weekday_rows.extend(weekly_weekday_rows(request, week_start, week_end))
+    return Response({
+        "mode": "weekly",
+        "weeks": week_rows,
+        "weekday_rows": weekday_rows,
     })
