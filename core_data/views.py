@@ -22,6 +22,7 @@ from .importers import (
     import_report,
     preview_report,
 )
+from .schedule_reconciliation import reconcile_scheduled_classes_from_templates
 from .models import (
     AttendanceRawRow,
     AttendanceClassMatch,
@@ -486,6 +487,11 @@ def automate_schedule_after_import(site, import_result, report_type):
             date_from=start,
             date_to=end,
         )
+        scheduled_class_reconciliation = reconcile_scheduled_classes_from_templates(
+            site_id=site.id,
+            date_from=start,
+            date_to=end,
+        )
         from analytics.views import rebuild_attendance_class_matches
 
         match_stats = rebuild_attendance_class_matches(site_id=site.id, start=start, end=end)
@@ -496,6 +502,7 @@ def automate_schedule_after_import(site, import_result, report_type):
         "expected_slots": expected_stats,
         "expected_slot_rematch": rematch_stats,
         "manual_classes": manual_class_stats,
+        "scheduled_class_reconciliation": scheduled_class_reconciliation,
         "attendance_matches": match_stats,
     }
 
@@ -858,6 +865,17 @@ class ReportImportViewSet(viewsets.ModelViewSet):
     def perform_create(self, serializer):
         serializer.save(uploaded_by=self.request.user)
 
+    def report_date_range(self, raw_queryset):
+        dates = []
+        for payload in raw_queryset.values_list("normalized_payload", flat=True):
+            date_value = payload.get("_class_date") or payload.get("visit_date") or payload.get("sale_date")
+            parsed = parse_iso_date(date_value)
+            if parsed:
+                dates.append(parsed)
+        if not dates:
+            return None, None
+        return min(dates), max(dates)
+
     def import_models(self, report_import):
         if report_import.report_type == "attendance_with_revenue":
             return {
@@ -949,6 +967,112 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             },
             "changed_samples": changed_samples,
             "invalid_samples": invalid_samples,
+        })
+
+    @action(detail=True, methods=["post"], url_path="rollback")
+    def rollback(self, request, pk=None):
+        if not settings.ENABLE_ANALYTICS_RESET:
+            return Response(
+                {"error": "Report rollback is disabled for this environment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+        if not (request.user.is_staff or request.user.is_superuser):
+            return Response({"error": "Only staff users can rollback imports."}, status=status.HTTP_403_FORBIDDEN)
+        if request.data.get("confirmation") != "DELETE REPORT DATA":
+            return Response({"error": "Invalid confirmation phrase."}, status=status.HTTP_400_BAD_REQUEST)
+
+        report_import = self.get_object()
+        report_payload = {
+            "id": report_import.id,
+            "file_name": report_import.file_name,
+            "report_type": report_import.report_type,
+        }
+        dry_run = request.data.get("dry_run", False) in (True, "true", "True", "1", 1)
+        include_schedule_data = request.data.get("include_schedule_data", True) in (True, "true", "True", "1", 1)
+        deleted_counts = {}
+        notes = []
+
+        with transaction.atomic():
+            if report_import.report_type == TRAINER_AVAILABILITY_REPORT_TYPE:
+                raw_queryset = TrainerAvailabilityRawRow.objects.filter(report_import=report_import)
+                site_ids = list(raw_queryset.values_list("site_id", flat=True).distinct())
+                start, end = self.report_date_range(raw_queryset)
+
+                imported_classes = ScheduledClass.objects.filter(source_import=report_import)
+                deleted_counts["imported_scheduled_classes"] = imported_classes.count()
+
+                expected_slots = ExpectedClassSlot.objects.none()
+                generated_class_ids = []
+                if include_schedule_data and start and end and site_ids:
+                    expected_slots = ExpectedClassSlot.objects.filter(
+                        site_id__in=site_ids,
+                        slot_date__range=(start, end),
+                        created_at__gte=report_import.uploaded_at,
+                    )
+                    generated_class_ids = list(
+                        expected_slots.filter(
+                            scheduled_class__source__in=[
+                                ScheduledClass.SOURCE_MANUAL,
+                                ScheduledClass.SOURCE_EXPECTED_TEMPLATE,
+                            ],
+                            scheduled_class__created_at__gte=report_import.uploaded_at,
+                        ).values_list("scheduled_class_id", flat=True)
+                    )
+
+                deleted_counts["generated_expected_slots"] = expected_slots.count()
+                generated_classes = ScheduledClass.objects.filter(id__in=generated_class_ids)
+                deleted_counts["generated_scheduled_classes"] = generated_classes.count()
+                deleted_counts["trainer_raw_rows"] = raw_queryset.count()
+
+                if not dry_run:
+                    AttendanceClassMatch.objects.filter(scheduled_class__in=imported_classes).delete()
+                    generated_classes.delete()
+                    expected_slots.delete()
+                    imported_classes.delete()
+
+            else:
+                model_config = self.import_models(report_import)
+                if not model_config:
+                    return Response({"error": "Unsupported report type for rollback."}, status=status.HTTP_400_BAD_REQUEST)
+
+                raw_queryset = model_config["raw_model"].objects.filter(report_import=report_import)
+                version_queryset = model_config["version_model"].objects.filter(report_import=report_import)
+                current_model = model_config["current_model"]
+                created_queryset = current_model.objects.filter(first_seen_import=report_import)
+                updated_queryset = current_model.objects.filter(last_seen_import=report_import).exclude(first_seen_import=report_import)
+
+                deleted_counts["raw_rows"] = raw_queryset.count()
+                deleted_counts["versions"] = version_queryset.count()
+                deleted_counts["current_records_created_by_report"] = created_queryset.count()
+                deleted_counts["current_records_updated_by_report"] = updated_queryset.count()
+
+                if updated_queryset.exists():
+                    notes.append(
+                        "Records updated by this report but created by earlier imports are not reverted yet; "
+                        "their import links will be cleared when the report is deleted."
+                    )
+
+                if report_import.report_type == ATTENDANCE_REPORT_TYPE:
+                    deleted_counts["attendance_matches"] = AttendanceClassMatch.objects.filter(
+                        attendance_visit__in=created_queryset,
+                    ).count()
+                    if not dry_run:
+                        AttendanceClassMatch.objects.filter(attendance_visit__in=created_queryset).delete()
+
+                if not dry_run:
+                    created_queryset.delete()
+
+            deleted_counts["report_import"] = 1
+            if not dry_run:
+                report_import.delete()
+            else:
+                transaction.set_rollback(True)
+
+        return Response({
+            "dry_run": dry_run,
+            "report_import": report_payload,
+            "deleted_counts": deleted_counts,
+            "notes": notes,
         })
 
     @action(detail=False, methods=["post"], url_path="reset-analytics-data")
@@ -1188,6 +1312,7 @@ class ScheduledClassViewSet(ImportedDataFilterMixin, viewsets.ModelViewSet):
                 "studio",
                 "room",
                 "staff_member",
+                "template",
                 "source_import",
                 "source_row",
             )
@@ -1214,6 +1339,8 @@ class ScheduledClassViewSet(ImportedDataFilterMixin, viewsets.ModelViewSet):
         studio = self.request.query_params.get("studio")
         staff_member = self.request.query_params.get("staff_member")
         status_value = self.request.query_params.get("status")
+        schedule_status = self.request.query_params.get("schedule_status")
+        expected_from_template = self.request.query_params.get("expected_from_template")
         if studio:
             queryset = queryset.filter(studio_id=studio)
         if room:
@@ -1222,7 +1349,38 @@ class ScheduledClassViewSet(ImportedDataFilterMixin, viewsets.ModelViewSet):
             queryset = queryset.filter(staff_member_id=staff_member)
         if status_value:
             queryset = queryset.filter(status=status_value)
+        if schedule_status:
+            queryset = queryset.filter(schedule_status=schedule_status)
+        if expected_from_template in ("true", "false"):
+            queryset = queryset.filter(expected_from_template=expected_from_template == "true")
         return self.filter_queryset(queryset)
+
+    @action(detail=False, methods=["post"], url_path="reconcile-from-templates")
+    def reconcile_from_templates(self, request):
+        start = parse_iso_date(request.data.get("date_from") or request.query_params.get("date_from"))
+        end = parse_iso_date(request.data.get("date_to") or request.query_params.get("date_to"))
+        if not start or not end:
+            return Response({"error": "date_from and date_to are required."}, status=status.HTTP_400_BAD_REQUEST)
+        if end < start:
+            return Response({"error": "date_to must be after date_from."}, status=status.HTTP_400_BAD_REQUEST)
+        if (end - start).days > 120:
+            return Response({"error": "Reconcile at most 120 days at a time."}, status=status.HTTP_400_BAD_REQUEST)
+
+        site_id = request.data.get("site") or request.query_params.get("site")
+        if not site_id:
+            return Response({"error": "site is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        stats = reconcile_scheduled_classes_from_templates(
+            site_id=site_id,
+            studio_id=request.data.get("studio") or request.query_params.get("studio"),
+            room_id=request.data.get("room") or request.query_params.get("room"),
+            date_from=start,
+            date_to=end,
+        )
+        return Response({
+            "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+            **stats,
+        })
 
 
 class SaleLineViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelViewSet):
