@@ -199,11 +199,27 @@ class ScheduledClass(models.Model):
     ]
 
     SOURCE_TRAINER_AVAILABILITY = "trainer_availability"
+    SOURCE_EXPECTED_TEMPLATE = "expected_template"
     SOURCE_MANUAL = "manual"
 
     SOURCE_CHOICES = [
         (SOURCE_TRAINER_AVAILABILITY, "Trainer Availability"),
+        (SOURCE_EXPECTED_TEMPLATE, "Expected Template"),
         (SOURCE_MANUAL, "Manual"),
+    ]
+
+    SCHEDULE_STATUS_UNRECONCILED = "unreconciled"
+    SCHEDULE_STATUS_MATCHED = "matched"
+    SCHEDULE_STATUS_MISSING_FROM_REPORT = "missing_from_report"
+    SCHEDULE_STATUS_UNEXPECTED_FROM_REPORT = "unexpected_from_report"
+    SCHEDULE_STATUS_MANUAL = "manual"
+
+    SCHEDULE_STATUS_CHOICES = [
+        (SCHEDULE_STATUS_UNRECONCILED, "Unreconciled"),
+        (SCHEDULE_STATUS_MATCHED, "Matched"),
+        (SCHEDULE_STATUS_MISSING_FROM_REPORT, "Missing From Report"),
+        (SCHEDULE_STATUS_UNEXPECTED_FROM_REPORT, "Unexpected From Report"),
+        (SCHEDULE_STATUS_MANUAL, "Manual"),
     ]
 
     site = models.ForeignKey(Site, on_delete=models.CASCADE, related_name="scheduled_classes")
@@ -224,6 +240,13 @@ class ScheduledClass(models.Model):
     )
     pricing_option = models.ForeignKey(
         PricingOption,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="scheduled_classes",
+    )
+    template = models.ForeignKey(
+        "WeeklyRoomTemplate",
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
@@ -255,6 +278,15 @@ class ScheduledClass(models.Model):
     natural_key = models.CharField(max_length=64, unique=True, db_index=True, blank=True, null=True)
     current_row_hash = models.CharField(max_length=64, blank=True, null=True, db_index=True)
     manually_modified = models.BooleanField(default=False)
+    expected_from_template = models.BooleanField(default=False, db_index=True)
+    schedule_status = models.CharField(
+        max_length=40,
+        choices=SCHEDULE_STATUS_CHOICES,
+        default=SCHEDULE_STATUS_UNRECONCILED,
+        db_index=True,
+    )
+    reconciled_at = models.DateTimeField(blank=True, null=True)
+    reconciliation_notes = models.TextField(blank=True, null=True)
     review_reason = models.CharField(max_length=255, blank=True, null=True)
     notes = models.TextField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -266,6 +298,8 @@ class ScheduledClass(models.Model):
             models.Index(fields=["site", "class_date", "start_time"]),
             models.Index(fields=["site", "studio", "class_date", "start_time"]),
             models.Index(fields=["site", "room", "class_date", "start_time"]),
+            models.Index(fields=["site", "schedule_status", "class_date"]),
+            models.Index(fields=["template", "class_date"]),
         ]
 
     def __str__(self):

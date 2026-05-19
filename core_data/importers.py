@@ -920,7 +920,6 @@ def load_trainer_availability_rows(uploaded_file):
     for row_index, row in enumerate(parser.rows, start=1):
         if len(row) == 1 and clean_value(row[0]).startswith("SCHEDULE FOR "):
             staff_name = clean_value(row[0]).replace("SCHEDULE FOR ", "").strip()
-            current_date = None
             continue
         if len(row) == 1:
             parsed_date = parse_spanish_long_date(row[0])
@@ -1486,6 +1485,9 @@ def import_trainer_availability_report(uploaded_file, site, uploaded_by=None, ro
             "status": candidate["status"],
             "reason": candidate["review_reason"],
             "source": ScheduledClass.SOURCE_TRAINER_AVAILABILITY,
+            "expected_from_template": False,
+            "schedule_status": ScheduledClass.SCHEDULE_STATUS_UNEXPECTED_FROM_REPORT,
+            "reconciliation_notes": "Awaiting weekly schedule reconciliation.",
             "source_import": report_import,
             "source_row": candidate["raw_row"],
             "current_row_hash": row["hash"],
