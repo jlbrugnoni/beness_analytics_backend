@@ -8,6 +8,7 @@ urlpatterns = [
     path("revenue/", views.revenue_view, name="analytics-revenue"),
     path("attendance/", views.attendance_view, name="analytics-attendance"),
     path("retention/", views.retention_view, name="analytics-retention"),
+    path("trial-conversions/", views.trial_conversion_view, name="analytics-trial-conversions"),
     path("dashboard/monthly/", views.dashboard_monthly_view, name="analytics-dashboard-monthly"),
     path("dashboard/monthly/trends/", views.dashboard_monthly_trends_view, name="analytics-dashboard-monthly-trends"),
     path("dashboard/monthly/retention-tables/", views.dashboard_monthly_retention_tables_view, name="analytics-dashboard-monthly-retention-tables"),
