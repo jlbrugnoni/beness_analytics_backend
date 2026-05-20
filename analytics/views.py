@@ -124,6 +124,27 @@ def money_rows(queryset, group_field, amount_field, label="name", limit=20):
     ]
 
 
+def item_money_rows(queryset, limit=20):
+    rows = (
+        queryset.values("item_name")
+        .annotate(
+            total=money_annotation("paid_total"),
+            count=Count("id"),
+            units=Coalesce(Sum("quantity"), Decimal("0.00"), output_field=DecimalField(max_digits=14, decimal_places=2)),
+        )
+        .order_by("-total")[:limit]
+    )
+    return [
+        {
+            "name": row["item_name"] or "N/A",
+            "total": decimal_value(row["total"]),
+            "count": row["count"],
+            "units": decimal_value(row["units"]),
+        }
+        for row in rows
+    ]
+
+
 def count_rows(queryset, group_field, label="name", limit=20):
     rows = queryset.values(group_field).annotate(total=Count("id")).order_by("-total")[:limit]
     return [{label: row[group_field] or "N/A", "total": row["total"]} for row in rows]
@@ -187,6 +208,32 @@ def attendance_hour_rows(queryset):
             continue
         counts[parsed_time.hour] = counts.get(parsed_time.hour, 0) + 1
     return [{"hour": f"{hour:02d}:00", "total": counts[hour]} for hour in sorted(counts)]
+
+
+def scheduled_attendance_hour_rows(request, start, end, attended_only=False):
+    scheduled_classes = filtered_schedule(
+        ScheduledClass.objects.filter(
+            class_date__range=(start, end),
+            status=ScheduledClass.STATUS_SCHEDULED,
+        ),
+        request,
+    )
+    scheduled_hours = sorted(set(scheduled_classes.values_list("start_time__hour", flat=True)))
+    counts = {hour: 0 for hour in scheduled_hours if hour is not None}
+    if not counts:
+        return []
+
+    class_ids = list(scheduled_classes.values_list("id", flat=True))
+    matches = AttendanceClassMatch.objects.filter(scheduled_class_id__in=class_ids)
+    if attended_only:
+        matches = matches.filter(attendance_visit__no_show=False, attendance_visit__late_cancel=False)
+    matches = matches.values("scheduled_class__start_time__hour").annotate(total=Count("id"))
+    for row in matches:
+        hour = row["scheduled_class__start_time__hour"]
+        if hour is not None:
+            counts[hour] = row["total"]
+
+    return [{"hour": f"{hour:02d}:00", "total": counts.get(hour, 0)} for hour in sorted(counts)]
 
 
 def weekday_name(value):
@@ -834,7 +881,7 @@ def revenue_payload(request, start=None, end=None):
         "visits_by_weekday": weekday_money_rows(attendance, "visit_date", "revenue"),
         "by_payment_method": money_rows(sales, "payment_method__name", "paid_total"),
         "by_studio": money_rows(sales, "studio__name", "paid_total"),
-        "by_item": money_rows(sales, "item_name", "paid_total"),
+        "by_item": item_money_rows(sales),
         "by_service": money_rows(services, "pricing_option__name", "total_amount"),
     }
 
@@ -846,7 +893,7 @@ def revenue_view(request):
 
 
 def attendance_payload(request, start=None, end=None):
-    _, _, attendance, _, _ = base_querysets(request, start=start, end=end)
+    start, end, attendance, _, _ = base_querysets(request, start=start, end=end)
     total = attendance.count()
     attended_attendance = attendance.filter(no_show=False, late_cancel=False)
     attended = attended_attendance.count()
@@ -870,8 +917,8 @@ def attendance_payload(request, start=None, end=None):
         "instructor_quality": instructor_quality_rows(attendance),
         "by_service": count_rows(attendance, "pricing_option__name"),
         "attended_by_service": count_rows(attended_attendance, "pricing_option__name"),
-        "by_hour": attendance_hour_rows(attendance),
-        "attended_by_hour": attendance_hour_rows(attended_attendance),
+        "by_hour": scheduled_attendance_hour_rows(request, start, end),
+        "attended_by_hour": scheduled_attendance_hour_rows(request, start, end, attended_only=True),
     }
 
 
@@ -908,6 +955,16 @@ def retention_payload(request, start=None, end=None, sample_limit=25):
             studio__isnull=True,
         ).values("month").annotate(total=Count("id"))
     }
+    current_member_mix = [
+        {
+            "name": row["source_purchase__pricing_option__name"] or "N/A",
+            "total": row["total"],
+        }
+        for row in statuses.filter(current_month_member=True)
+        .values("source_purchase__pricing_option__name")
+        .annotate(total=Count("id"))
+        .order_by("-total")
+    ]
     renewal_rate_by_month = {}
     for month in months:
         month_statuses = statuses.filter(month=month)
@@ -939,6 +996,7 @@ def retention_payload(request, start=None, end=None, sample_limit=25):
         "churn_rate": percentage(not_renewed_count, previous_members),
         "not_renewed_value": decimal_value(money_sum(not_renewed, "membership_value")),
         "current_month_members_by_month": current_members_by_month,
+        "current_member_mix": current_member_mix,
         "not_renewed_members_by_month": not_renewed_members_by_month,
         "not_renewed_unassigned_studio_by_month": not_renewed_unassigned_studio_by_month,
         "renewal_rate_by_month": renewal_rate_by_month,
@@ -1479,6 +1537,98 @@ def week_trend_ranges(start, end, weeks=6):
     ]
 
 
+def occupancy_hour_matrix_for_dates(request, target_dates):
+    target_dates = sorted(set(target_dates))
+    if not target_dates:
+        return {"days": [], "hours": [], "cells": []}
+
+    scheduled_classes = filtered_schedule(
+        ScheduledClass.objects.filter(
+            class_date__in=target_dates,
+            status=ScheduledClass.STATUS_SCHEDULED,
+        ),
+        request,
+    )
+    scheduled_by_class = {}
+    cells = {}
+    hours = set()
+    active_dates = set()
+
+    for scheduled_class in scheduled_classes:
+        if not scheduled_class.start_time:
+            continue
+        hour = scheduled_class.start_time.replace(minute=0, second=0, microsecond=0)
+        key = (scheduled_class.class_date, hour)
+        cell = cells.setdefault(key, {
+            "date": scheduled_class.class_date.isoformat(),
+            "weekday": weekday_name(scheduled_class.class_date),
+            "hour": hour.strftime("%H:%M"),
+            "scheduled_capacity": 0,
+            "attended": 0,
+            "scheduled_classes": 0,
+        })
+        cell["scheduled_capacity"] += scheduled_class.capacity
+        cell["scheduled_classes"] += 1
+        scheduled_by_class[scheduled_class.id] = key
+        hours.add(hour)
+        active_dates.add(scheduled_class.class_date)
+
+    if scheduled_by_class:
+        class_match_rows = (
+            AttendanceClassMatch.objects.filter(
+                scheduled_class_id__in=scheduled_by_class,
+                attendance_visit__no_show=False,
+                attendance_visit__late_cancel=False,
+            )
+            .values("scheduled_class_id")
+            .annotate(total=Count("id"))
+        )
+        for row in class_match_rows:
+            key = scheduled_by_class.get(row["scheduled_class_id"])
+            if key in cells:
+                cells[key]["attended"] += row["total"]
+
+    for cell in cells.values():
+        cell["unused_capacity"] = max(0, cell["scheduled_capacity"] - cell["attended"])
+        cell["occupation_rate"] = percentage(cell["attended"], cell["scheduled_capacity"])
+
+    days = [
+        {
+            "date": item_date.isoformat(),
+            "weekday": weekday_name(item_date),
+            "label": f"{weekday_name(item_date)} {item_date.strftime('%d-%m')}",
+        }
+        for item_date in target_dates
+        if item_date in active_dates
+    ]
+
+    return {
+        "days": days,
+        "hours": [hour.strftime("%H:%M") for hour in sorted(hours)],
+        "cells": sorted(cells.values(), key=lambda row: (row["date"], row["hour"])),
+    }
+
+
+def occupancy_hour_matrix_payload(request, start=None, end=None):
+    start, end = date_bounds(request, start=start, end=end)
+    weeks = int(request.query_params.get("weeks") or 6)
+    weeks = min(max(weeks, 2), 8)
+    current_week_dates = [start + timedelta(days=offset) for offset in range((end - start).days + 1)]
+    history_dates = []
+    for weekday_index in range(7):
+        selected_week_date = start + timedelta(days=(weekday_index - start.weekday()) % 7)
+        for offset in range(-(weeks - 1), 1):
+            history_dates.append(selected_week_date + timedelta(days=offset * 7))
+
+    return {
+        "mode": "weekly",
+        "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+        "weeks": weeks,
+        "current_week": occupancy_hour_matrix_for_dates(request, current_week_dates),
+        "weekday_history": occupancy_hour_matrix_for_dates(request, history_dates),
+    }
+
+
 def weekly_trend_row(request, start, end):
     summary = summary_payload(request, start=start, end=end)
     occupation = occupation_payload(request, start=start, end=end)
@@ -1564,6 +1714,7 @@ def dashboard_monthly_trends_view(request):
             "average_ticket": totals["average_ticket"],
             "previous_members": retention["previous_month_members"],
             "current_members": retention["current_month_members"],
+            "current_member_mix": retention["current_member_mix"],
             "retained_members": retention["retained_members"],
             "new_members": retention["new_members"],
             "reactivated_members": retention["reactivated_members"],
@@ -1641,3 +1792,9 @@ def dashboard_weekly_trends_view(request):
         "weeks": week_rows,
         "weekday_rows": weekday_rows,
     })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def dashboard_weekly_occupancy_hour_matrix_view(request):
+    return Response(occupancy_hour_matrix_payload(request))
