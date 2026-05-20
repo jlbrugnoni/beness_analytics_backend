@@ -200,6 +200,29 @@ def attendance_status_date_rows(queryset):
     return [rows[key] for key in sorted(rows)]
 
 
+def trial_status_date_rows(queryset):
+    rows = {}
+    for visit_date, no_show, late_cancel in queryset.values_list("visit_date", "no_show", "late_cancel"):
+        if not visit_date:
+            continue
+        key = visit_date.isoformat()
+        row = rows.setdefault(key, {
+            "date": key,
+            "total": 0,
+            "attended": 0,
+            "no_shows": 0,
+            "late_cancels": 0,
+        })
+        row["total"] += 1
+        if no_show:
+            row["no_shows"] += 1
+        elif late_cancel:
+            row["late_cancels"] += 1
+        else:
+            row["attended"] += 1
+    return [rows[key] for key in sorted(rows)]
+
+
 def attendance_hour_rows(queryset):
     counts = {}
     for value in queryset.values_list("visit_time_raw", flat=True):
@@ -890,6 +913,162 @@ def revenue_payload(request, start=None, end=None):
 @permission_classes([IsAuthenticated])
 def revenue_view(request):
     return Response(revenue_payload(request))
+
+
+def trial_conversion_payload(request, start=None, end=None, conversion_window_days=30, row_limit=200):
+    start, end = date_bounds(request, start=start, end=end)
+    trial_visits = filtered_attendance(
+        AttendanceVisit.objects.select_related(
+            "site",
+            "client",
+            "visit_studio",
+            "staff_member",
+            "pricing_option",
+        ).filter(
+            visit_date__range=(start, end),
+            pricing_option__is_trial_class=True,
+        ),
+        request,
+    )
+    attended_trials = trial_visits.filter(no_show=False, late_cancel=False)
+    tracked_trial_options = filtered_by_site(PricingOption.objects.filter(is_trial_class=True), request).count()
+    unique_trial_clients = attended_trials.values("client_id").distinct().count()
+
+    first_trials = {}
+    for visit in attended_trials.order_by("visit_date", "visit_time_raw", "id"):
+        if visit.client_id not in first_trials:
+            first_trials[visit.client_id] = visit
+
+    client_ids = list(first_trials)
+    purchase_rows = (
+        filtered_services(
+            ServicePurchase.objects.select_related("client", "pricing_option", "site").filter(
+                client_id__in=client_ids,
+                sale_date__gte=start,
+                sale_date__lte=end + timedelta(days=conversion_window_days),
+                total_amount__gt=0,
+            ).exclude(pricing_option__is_trial_class=True),
+            request,
+        )
+        .order_by("sale_date", "id")
+    )
+
+    purchases_by_client = {}
+    for purchase in purchase_rows:
+        purchases_by_client.setdefault(purchase.client_id, []).append(purchase)
+
+    converted_clients = 0
+    converted_members = 0
+    days_to_conversion = []
+    rows = []
+    by_instructor = {}
+    by_studio = {}
+
+    for client_id, trial in first_trials.items():
+        window_end = trial.visit_date + timedelta(days=conversion_window_days)
+        candidate_purchases = [
+            purchase
+            for purchase in purchases_by_client.get(client_id, [])
+            if trial.visit_date <= purchase.sale_date <= window_end
+        ]
+        first_paid_purchase = candidate_purchases[0] if candidate_purchases else None
+        first_member_purchase = next(
+            (purchase for purchase in candidate_purchases if purchase.pricing_option and purchase.pricing_option.track_retention),
+            None,
+        )
+        if first_paid_purchase:
+            converted_clients += 1
+            days_to_conversion.append((first_paid_purchase.sale_date - trial.visit_date).days)
+        if first_member_purchase:
+            converted_members += 1
+
+        instructor_name = trial.staff_member.name if trial.staff_member else "N/A"
+        instructor_row = by_instructor.setdefault(instructor_name, {
+            "name": instructor_name,
+            "trial_clients": 0,
+            "converted_clients": 0,
+            "converted_members": 0,
+        })
+        instructor_row["trial_clients"] += 1
+        if first_paid_purchase:
+            instructor_row["converted_clients"] += 1
+        if first_member_purchase:
+            instructor_row["converted_members"] += 1
+
+        studio_name = trial.visit_studio.name if trial.visit_studio else "N/A"
+        studio_row = by_studio.setdefault(studio_name, {
+            "name": studio_name,
+            "trial_clients": 0,
+            "converted_clients": 0,
+            "converted_members": 0,
+        })
+        studio_row["trial_clients"] += 1
+        if first_paid_purchase:
+            studio_row["converted_clients"] += 1
+        if first_member_purchase:
+            studio_row["converted_members"] += 1
+
+        rows.append({
+            "client": trial.client.name,
+            "client_id": trial.client_id,
+            "trial_date": trial.visit_date.isoformat() if trial.visit_date else None,
+            "studio": studio_name,
+            "instructor": instructor_name,
+            "trial_service": trial.pricing_option.name if trial.pricing_option else "N/A",
+            "converted_to_client": bool(first_paid_purchase),
+            "converted_to_member": bool(first_member_purchase),
+            "conversion_date": first_paid_purchase.sale_date.isoformat() if first_paid_purchase else None,
+            "conversion_service": first_paid_purchase.pricing_option.name if first_paid_purchase and first_paid_purchase.pricing_option else None,
+            "membership_conversion_date": first_member_purchase.sale_date.isoformat() if first_member_purchase else None,
+            "membership_service": first_member_purchase.pricing_option.name if first_member_purchase and first_member_purchase.pricing_option else None,
+            "days_to_conversion": (first_paid_purchase.sale_date - trial.visit_date).days if first_paid_purchase else None,
+        })
+
+    for row in by_instructor.values():
+        row["converted_non_members"] = max(0, row["converted_clients"] - row["converted_members"])
+        row["not_converted_clients"] = max(0, row["trial_clients"] - row["converted_clients"])
+        row["client_conversion_rate"] = percentage(row["converted_clients"], row["trial_clients"])
+        row["member_conversion_rate"] = percentage(row["converted_members"], row["trial_clients"])
+        row["non_member_conversion_rate"] = percentage(row["converted_non_members"], row["trial_clients"])
+    for row in by_studio.values():
+        row["converted_non_members"] = max(0, row["converted_clients"] - row["converted_members"])
+        row["not_converted_clients"] = max(0, row["trial_clients"] - row["converted_clients"])
+        row["client_conversion_rate"] = percentage(row["converted_clients"], row["trial_clients"])
+        row["member_conversion_rate"] = percentage(row["converted_members"], row["trial_clients"])
+        row["non_member_conversion_rate"] = percentage(row["converted_non_members"], row["trial_clients"])
+
+    return {
+        "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+        "conversion_window_days": conversion_window_days,
+        "tracked_trial_options": tracked_trial_options,
+        "trial_bookings": trial_visits.count(),
+        "attended_trials": attended_trials.count(),
+        "trial_no_shows": trial_visits.filter(no_show=True).count(),
+        "trial_late_cancels": trial_visits.filter(late_cancel=True).count(),
+        "unique_trial_clients": unique_trial_clients,
+        "converted_clients": converted_clients,
+        "converted_members": converted_members,
+        "converted_non_members": max(0, converted_clients - converted_members),
+        "not_converted_clients": max(0, unique_trial_clients - converted_clients),
+        "client_conversion_rate": percentage(converted_clients, unique_trial_clients),
+        "member_conversion_rate": percentage(converted_members, unique_trial_clients),
+        "non_member_conversion_rate": percentage(max(0, converted_clients - converted_members), unique_trial_clients),
+        "not_converted_rate": percentage(max(0, unique_trial_clients - converted_clients), unique_trial_clients),
+        "average_days_to_conversion": (
+            sum(days_to_conversion) / len(days_to_conversion)
+            if days_to_conversion else 0
+        ),
+        "by_date": trial_status_date_rows(trial_visits),
+        "by_instructor": sorted(by_instructor.values(), key=lambda row: row["trial_clients"], reverse=True)[:20],
+        "by_studio": sorted(by_studio.values(), key=lambda row: row["trial_clients"], reverse=True)[:20],
+        "rows": sorted(rows, key=lambda row: (row["trial_date"] or "", row["client"]))[:row_limit],
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def trial_conversion_view(request):
+    return Response(trial_conversion_payload(request))
 
 
 def attendance_payload(request, start=None, end=None):
@@ -1632,6 +1811,7 @@ def occupancy_hour_matrix_payload(request, start=None, end=None):
 def weekly_trend_row(request, start, end):
     summary = summary_payload(request, start=start, end=end)
     occupation = occupation_payload(request, start=start, end=end)
+    conversion = trial_conversion_payload(request, start=start, end=end, row_limit=0)
     totals = summary["totals"]
     return {
         "week_start": start.isoformat(),
@@ -1647,6 +1827,14 @@ def weekly_trend_row(request, start, end):
         "scheduled_classes": occupation["available_classes"],
         "closed_or_unavailable_classes": occupation["closed_or_unavailable_classes"],
         "occupation_rate": occupation["occupation_rate"],
+        "trial_bookings": conversion["trial_bookings"],
+        "attended_trials": conversion["attended_trials"],
+        "unique_trial_clients": conversion["unique_trial_clients"],
+        "converted_members": conversion["converted_members"],
+        "converted_non_members": conversion["converted_non_members"],
+        "not_converted_clients": conversion["not_converted_clients"],
+        "member_conversion_rate": conversion["member_conversion_rate"],
+        "non_member_conversion_rate": conversion["non_member_conversion_rate"],
     }
 
 
@@ -1689,11 +1877,13 @@ def dashboard_monthly_view(request):
             "summary": summary_payload(request, start=start, end=end),
             "revenue": revenue_payload(request, start=start, end=end),
             "retention": retention_payload(request, start=start, end=end),
+            "conversion": trial_conversion_payload(request, start=start, end=end),
         },
         "comparison": {
             "date_range": {"from": previous_start.isoformat(), "to": previous_end.isoformat()},
             "summary": summary_payload(request, start=previous_start, end=previous_end),
             "retention": retention_payload(request, start=previous_start, end=previous_end),
+            "conversion": trial_conversion_payload(request, start=previous_start, end=previous_end),
         },
     })
 
@@ -1706,6 +1896,7 @@ def dashboard_monthly_trends_view(request):
     for month_start_value, month_end_value in month_trend_ranges(start):
         summary = summary_payload(request, start=month_start_value, end=month_end_value)
         retention = retention_payload(request, start=month_start_value, end=month_end_value, sample_limit=0)
+        conversion = trial_conversion_payload(request, start=month_start_value, end=month_end_value, row_limit=0)
         totals = summary["totals"]
         rows.append({
             "month": month_start_value.isoformat(),
@@ -1723,6 +1914,14 @@ def dashboard_monthly_trends_view(request):
             "renewal_rate": retention["renewal_rate"],
             "churn_rate": retention["churn_rate"],
             "not_renewed_value": retention["not_renewed_value"],
+            "trial_bookings": conversion["trial_bookings"],
+            "attended_trials": conversion["attended_trials"],
+            "unique_trial_clients": conversion["unique_trial_clients"],
+            "converted_members": conversion["converted_members"],
+            "converted_non_members": conversion["converted_non_members"],
+            "not_converted_clients": conversion["not_converted_clients"],
+            "member_conversion_rate": conversion["member_conversion_rate"],
+            "non_member_conversion_rate": conversion["non_member_conversion_rate"],
         })
     return Response({
         "mode": "monthly",
@@ -1768,12 +1967,14 @@ def dashboard_weekly_view(request):
             "summary": summary_payload(request, start=start, end=end),
             "attendance": attendance_payload(request, start=start, end=end),
             "occupation": occupation_payload(request, start=start, end=end),
+            "conversion": trial_conversion_payload(request, start=start, end=end),
         },
         "comparison": {
             "date_range": {"from": previous_start.isoformat(), "to": previous_end.isoformat()},
             "summary": summary_payload(request, start=previous_start, end=previous_end),
             "attendance": attendance_payload(request, start=previous_start, end=previous_end),
             "occupation": occupation_payload(request, start=previous_start, end=previous_end),
+            "conversion": trial_conversion_payload(request, start=previous_start, end=previous_end),
         },
     })
 
