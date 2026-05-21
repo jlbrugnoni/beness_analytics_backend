@@ -8,6 +8,7 @@ from .models import (
     AttendanceVisit,
     Client,
     ExpectedClassSlot,
+    GroupAccessProfile,
     LoginLog,
     PaymentMethod,
     PricingOption,
@@ -24,6 +25,7 @@ from .models import (
     StudioClosure,
     Studio,
     TrainerAvailabilityRawRow,
+    UserAccessProfile,
     WeeklyRoomTemplate,
 )
 
@@ -74,6 +76,52 @@ class GroupSerializer(serializers.ModelSerializer):
     class Meta:
         model = Group
         fields = ["id", "name"]
+
+
+class GroupAccessProfileSerializer(serializers.ModelSerializer):
+    group_name = serializers.CharField(source="group.name", read_only=True)
+
+    class Meta:
+        model = GroupAccessProfile
+        fields = [
+            "id",
+            "group",
+            "group_name",
+            "can_view_money",
+            "can_upload_data",
+            "can_edit_data",
+            "can_reset_data",
+            "can_manage_users",
+            "can_view_admin_logs",
+        ]
+
+
+class UserAccessProfileSerializer(serializers.ModelSerializer):
+    allowed_site_names = serializers.SerializerMethodField()
+    allowed_studio_names = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserAccessProfile
+        fields = [
+            "id",
+            "user",
+            "allowed_sites",
+            "allowed_site_names",
+            "allowed_studios",
+            "allowed_studio_names",
+            "can_view_money",
+            "can_upload_data",
+            "can_edit_data",
+            "can_reset_data",
+            "can_manage_users",
+            "can_view_admin_logs",
+        ]
+
+    def get_allowed_site_names(self, obj):
+        return [site.name for site in obj.allowed_sites.all()]
+
+    def get_allowed_studio_names(self, obj):
+        return [studio.name for studio in obj.allowed_studios.all()]
 
 
 class SiteSerializer(serializers.ModelSerializer):

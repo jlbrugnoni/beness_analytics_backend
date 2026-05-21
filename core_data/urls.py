@@ -6,6 +6,8 @@ from . import views
 
 router = DefaultRouter()
 router.register(r"users", views.UserViewSet, basename="user")
+router.register(r"group-access-profiles", views.GroupAccessProfileViewSet, basename="group-access-profile")
+router.register(r"user-access-profiles", views.UserAccessProfileViewSet, basename="user-access-profile")
 router.register(r"sites", views.SiteViewSet, basename="site")
 router.register(r"studios", views.StudioViewSet, basename="studio")
 router.register(r"rooms", views.RoomViewSet, basename="room")
@@ -36,6 +38,7 @@ urlpatterns = [
     path("login", views.login_view, name="login"),
     path("validate-token", views.validate_token_view, name="validate-token"),
     path("logout", views.logout_view, name="logout"),
+    path("me/permissions/", views.me_permissions, name="me-permissions"),
     path("all_users/", views.all_users, name="all-users"),
     path("groups/", views.list_groups, name="list-groups"),
     path("health/", views.health_check, name="health-check"),

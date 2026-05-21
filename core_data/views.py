@@ -30,6 +30,7 @@ from .models import (
     AttendanceVisitVersion,
     Client,
     ExpectedClassSlot,
+    GroupAccessProfile,
     LoginLog,
     PaymentMethod,
     PricingOption,
@@ -48,6 +49,7 @@ from .models import (
     StudioClosure,
     Studio,
     TrainerAvailabilityRawRow,
+    UserAccessProfile,
     WeeklyRoomTemplate,
 )
 from .serializers import (
@@ -57,6 +59,7 @@ from .serializers import (
     ChangePasswordSerializer,
     ClientSerializer,
     ExpectedClassSlotSerializer,
+    GroupAccessProfileSerializer,
     GroupSerializer,
     LoginLogSerializer,
     PaymentMethodSerializer,
@@ -74,12 +77,115 @@ from .serializers import (
     StudioClosureSerializer,
     StudioSerializer,
     TrainerAvailabilityRawRowSerializer,
+    UserAccessProfileSerializer,
     UserSerializer,
     WeeklyRoomTemplateSerializer,
 )
 
 
 User = get_user_model()
+
+
+ACCESS_CAPABILITIES = [
+    "can_view_money",
+    "can_upload_data",
+    "can_edit_data",
+    "can_reset_data",
+    "can_manage_users",
+    "can_view_admin_logs",
+]
+
+DEFAULT_GROUP_CAPABILITIES = {
+    "Admin": {
+        "can_view_money": True,
+        "can_upload_data": True,
+        "can_edit_data": True,
+        "can_reset_data": True,
+        "can_manage_users": True,
+        "can_view_admin_logs": True,
+    },
+    "Manager": {
+        "can_view_money": True,
+    },
+    "Data Operator": {
+        "can_upload_data": True,
+        "can_edit_data": True,
+    },
+    "Studio Manager": {},
+    "Viewer": {},
+}
+
+
+def capability_payload(**overrides):
+    payload = {capability: False for capability in ACCESS_CAPABILITIES}
+    payload.update(overrides)
+    return payload
+
+
+def default_capabilities_for_group(group):
+    return capability_payload(**DEFAULT_GROUP_CAPABILITIES.get(group.name, {}))
+
+
+def get_or_create_user_access_profile(user):
+    profile, _ = UserAccessProfile.objects.get_or_create(user=user)
+    return profile
+
+
+def group_capabilities(group):
+    try:
+        profile = group.access_profile
+    except GroupAccessProfile.DoesNotExist:
+        return default_capabilities_for_group(group)
+    return capability_payload(**{
+        capability: getattr(profile, capability)
+        for capability in ACCESS_CAPABILITIES
+    })
+
+
+def resolve_access_payload(user):
+    groups = list(user.groups.all().order_by("name"))
+    profile = get_or_create_user_access_profile(user)
+    capabilities = capability_payload()
+
+    if user.is_superuser or any(group.name == "Admin" for group in groups):
+        capabilities = capability_payload(**{capability: True for capability in ACCESS_CAPABILITIES})
+    else:
+        for group in groups:
+            group_payload = group_capabilities(group)
+            for capability in ACCESS_CAPABILITIES:
+                capabilities[capability] = capabilities[capability] or group_payload[capability]
+        for capability in ACCESS_CAPABILITIES:
+            capabilities[capability] = capabilities[capability] or getattr(profile, capability)
+
+    allowed_sites = list(profile.allowed_sites.all().order_by("name"))
+    allowed_studios = list(profile.allowed_studios.select_related("site").all().order_by("site__name", "name"))
+    has_global_access = user.is_superuser or any(group.name == "Admin" for group in groups)
+
+    return {
+        "user": {
+            "id": user.id,
+            "email": user.email,
+            "username": user.username,
+            "first_name": user.first_name,
+            "last_name": user.last_name,
+            "is_staff": user.is_staff,
+            "is_superuser": user.is_superuser,
+        },
+        "groups": [{"id": group.id, "name": group.name} for group in groups],
+        "capabilities": capabilities,
+        "allowed_sites": [{"id": site.id, "name": site.name} for site in allowed_sites],
+        "allowed_studios": [
+            {
+                "id": studio.id,
+                "name": studio.name,
+                "site": studio.site_id,
+                "site_name": studio.site.name if studio.site else None,
+            }
+            for studio in allowed_studios
+        ],
+        "has_global_access": has_global_access,
+        "django_permissions": list(user.get_all_permissions()),
+    }
 
 
 def get_client_ip(request):
@@ -163,6 +269,18 @@ class UserViewSet(viewsets.ViewSet):
         user.set_password(new_password)
         user.save()
         return Response({"message": "Password updated successfully"})
+
+
+class GroupAccessProfileViewSet(viewsets.ModelViewSet):
+    queryset = GroupAccessProfile.objects.select_related("group").all()
+    serializer_class = GroupAccessProfileSerializer
+    permission_classes = [IsAuthenticated]
+
+
+class UserAccessProfileViewSet(viewsets.ModelViewSet):
+    queryset = UserAccessProfile.objects.select_related("user").prefetch_related("allowed_sites", "allowed_studios").all()
+    serializer_class = UserAccessProfileSerializer
+    permission_classes = [IsAuthenticated]
 
 
 class SiteViewSet(viewsets.ModelViewSet):
@@ -1528,6 +1646,7 @@ def login_view(request):
                 "last_name": user.last_name,
                 "is_staff": user.is_staff,
                 "permissions": list(user.get_all_permissions()),
+                "access": resolve_access_payload(user),
                 "image": user.image,
                 "message": "Login successful",
             }
@@ -1571,6 +1690,12 @@ def logout_view(request):
         success=True,
     )
     return Response({"message": "Logout successful"})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def me_permissions(request):
+    return Response(resolve_access_payload(request.user))
 
 
 @api_view(["GET"])
