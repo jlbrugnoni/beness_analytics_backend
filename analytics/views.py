@@ -11,6 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from analytics.models import MembershipMonthStatus
+from core_data.access import scoped_queryset_for_user, user_has_capability
 from core_data.models import (
     AttendanceClassMatch,
     AttendanceVisit,
@@ -44,6 +45,7 @@ def date_bounds(request, start=None, end=None):
 
 
 def filtered_by_site(queryset, request):
+    queryset = scoped_queryset_for_user(queryset, request.user)
     site_id = request.query_params.get("site")
     if site_id:
         queryset = queryset.filter(site_id=site_id)
@@ -51,7 +53,10 @@ def filtered_by_site(queryset, request):
 
 
 def filtered_attendance(queryset, request):
-    queryset = filtered_by_site(queryset, request)
+    queryset = scoped_queryset_for_user(queryset, request.user, site_field="site_id", studio_field="visit_studio_id")
+    site_id = request.query_params.get("site")
+    if site_id:
+        queryset = queryset.filter(site_id=site_id)
     studio_id = request.query_params.get("studio")
     if studio_id:
         queryset = queryset.filter(visit_studio_id=studio_id)
@@ -59,7 +64,10 @@ def filtered_attendance(queryset, request):
 
 
 def filtered_sales(queryset, request):
-    queryset = filtered_by_site(queryset, request)
+    queryset = scoped_queryset_for_user(queryset, request.user, site_field="site_id", studio_field="studio_id")
+    site_id = request.query_params.get("site")
+    if site_id:
+        queryset = queryset.filter(site_id=site_id)
     studio_id = request.query_params.get("studio")
     if studio_id:
         queryset = queryset.filter(studio_id=studio_id)
@@ -67,7 +75,10 @@ def filtered_sales(queryset, request):
 
 
 def filtered_services(queryset, request):
-    queryset = filtered_by_site(queryset, request)
+    queryset = scoped_queryset_for_user(queryset, request.user, site_field="site_id", studio_field="studio_id")
+    site_id = request.query_params.get("site")
+    if site_id:
+        queryset = queryset.filter(site_id=site_id)
     studio_id = request.query_params.get("studio")
     if studio_id:
         queryset = queryset.filter(studio_id=studio_id)
@@ -75,7 +86,10 @@ def filtered_services(queryset, request):
 
 
 def filtered_schedule(queryset, request):
-    queryset = filtered_by_site(queryset, request)
+    queryset = scoped_queryset_for_user(queryset, request.user, site_field="site_id", studio_field="studio_id")
+    site_id = request.query_params.get("site")
+    if site_id:
+        queryset = queryset.filter(site_id=site_id)
     studio_id = request.query_params.get("studio")
     if studio_id:
         queryset = queryset.filter(studio_id=studio_id)
@@ -83,7 +97,15 @@ def filtered_schedule(queryset, request):
 
 
 def filtered_closures(queryset, request):
-    queryset = filtered_by_site(queryset, request)
+    queryset = scoped_queryset_for_user(
+        queryset,
+        request.user,
+        studio_field="studio_id",
+        include_null_studio=True,
+    )
+    site_id = request.query_params.get("site")
+    if site_id:
+        queryset = queryset.filter(site_id=site_id)
     studio_id = request.query_params.get("studio")
     if studio_id:
         queryset = queryset.filter(Q(studio_id=studio_id) | Q(studio__isnull=True))
@@ -102,6 +124,51 @@ def decimal_value(value):
 
 def ratio_money(numerator, denominator):
     return decimal_value(numerator / denominator) if denominator else 0
+
+
+def can_view_money(request):
+    return user_has_capability(request.user, "can_view_money")
+
+
+def money_value(request, value):
+    return decimal_value(value) if can_view_money(request) else None
+
+
+def money_ratio_value(request, numerator, denominator):
+    return ratio_money(numerator, denominator) if can_view_money(request) else None
+
+
+def money_rows_for_request(request, *args, **kwargs):
+    return money_rows(*args, **kwargs) if can_view_money(request) else []
+
+
+def date_money_rows_for_request(request, *args, **kwargs):
+    return date_money_rows(*args, **kwargs) if can_view_money(request) else []
+
+
+def weekday_money_rows_for_request(request, *args, **kwargs):
+    return weekday_money_rows(*args, **kwargs) if can_view_money(request) else []
+
+
+def item_money_rows_for_request(request, queryset):
+    return item_money_rows(queryset) if can_view_money(request) else []
+
+
+def mask_membership_money_rows(request, rows):
+    if can_view_money(request):
+        return rows
+    money_fields = {
+        "total_amount",
+        "lifetime_membership_value",
+        "post_expiration_revenue",
+    }
+    return [
+        {
+            **row,
+            **{field: None for field in money_fields if field in row},
+        }
+        for row in rows
+    ]
 
 
 def money_annotation(field):
@@ -864,11 +931,11 @@ def summary_payload(request, start=None, end=None):
             "no_show_rate": round(no_shows / attendance_count * 100, 2) if attendance_count else 0,
             "late_cancel_rate": round(late_cancels / attendance_count * 100, 2) if attendance_count else 0,
             "active_clients": active_clients,
-            "sales_revenue": decimal_value(sales_revenue),
-            "service_revenue": decimal_value(service_revenue),
-            "visit_revenue": decimal_value(visit_revenue),
-            "average_ticket": ratio_money(sales_revenue, sale_count),
-            "average_revenue_per_attended_visit": ratio_money(visit_revenue, attended),
+            "sales_revenue": money_value(request, sales_revenue),
+            "service_revenue": money_value(request, service_revenue),
+            "visit_revenue": money_value(request, visit_revenue),
+            "average_ticket": money_ratio_value(request, sales_revenue, sale_count),
+            "average_revenue_per_attended_visit": money_ratio_value(request, visit_revenue, attended),
             "sales_count": sale_count,
             "sale_lines": sales.count(),
             "service_purchases": services.count(),
@@ -889,23 +956,23 @@ def revenue_payload(request, start=None, end=None):
     sale_count = sales.values("sale_number").distinct().count()
     return {
         "studio_filter_limited": bool(request.query_params.get("studio")),
-        "sales_revenue": decimal_value(sales_revenue),
-        "service_revenue": decimal_value(money_sum(services, "total_amount")),
-        "visit_revenue": decimal_value(money_sum(attendance, "revenue")),
-        "discounts": decimal_value(money_sum(sales, "discount_amount")),
-        "taxes": decimal_value(money_sum(sales, "tax")),
+        "sales_revenue": money_value(request, sales_revenue),
+        "service_revenue": money_value(request, money_sum(services, "total_amount")),
+        "visit_revenue": money_value(request, money_sum(attendance, "revenue")),
+        "discounts": money_value(request, money_sum(sales, "discount_amount")),
+        "taxes": money_value(request, money_sum(sales, "tax")),
         "sale_count": sale_count,
-        "average_ticket": ratio_money(sales_revenue, sale_count),
-        "sales_by_date": date_money_rows(sales, "sale_date", "paid_total"),
-        "sales_by_weekday": weekday_money_rows(sales, "sale_date", "paid_total"),
-        "services_by_date": date_money_rows(services, "sale_date", "total_amount"),
-        "services_by_weekday": weekday_money_rows(services, "sale_date", "total_amount"),
-        "visits_by_date": date_money_rows(attendance, "visit_date", "revenue"),
-        "visits_by_weekday": weekday_money_rows(attendance, "visit_date", "revenue"),
-        "by_payment_method": money_rows(sales, "payment_method__name", "paid_total"),
-        "by_studio": money_rows(sales, "studio__name", "paid_total"),
-        "by_item": item_money_rows(sales),
-        "by_service": money_rows(services, "pricing_option__name", "total_amount"),
+        "average_ticket": money_ratio_value(request, sales_revenue, sale_count),
+        "sales_by_date": date_money_rows_for_request(request, sales, "sale_date", "paid_total"),
+        "sales_by_weekday": weekday_money_rows_for_request(request, sales, "sale_date", "paid_total"),
+        "services_by_date": date_money_rows_for_request(request, services, "sale_date", "total_amount"),
+        "services_by_weekday": weekday_money_rows_for_request(request, services, "sale_date", "total_amount"),
+        "visits_by_date": date_money_rows_for_request(request, attendance, "visit_date", "revenue"),
+        "visits_by_weekday": weekday_money_rows_for_request(request, attendance, "visit_date", "revenue"),
+        "by_payment_method": money_rows_for_request(request, sales, "payment_method__name", "paid_total"),
+        "by_studio": money_rows_for_request(request, sales, "studio__name", "paid_total"),
+        "by_item": item_money_rows_for_request(request, sales),
+        "by_service": money_rows_for_request(request, services, "pricing_option__name", "total_amount"),
     }
 
 
@@ -1083,8 +1150,8 @@ def attendance_payload(request, start=None, end=None):
         "no_shows": attendance.filter(no_show=True).count(),
         "late_cancels": attendance.filter(late_cancel=True).count(),
         "zero_revenue": attendance.filter(revenue=0).count(),
-        "visit_revenue": decimal_value(visit_revenue),
-        "average_revenue_per_attended_visit": ratio_money(visit_revenue, attended),
+        "visit_revenue": money_value(request, visit_revenue),
+        "average_revenue_per_attended_visit": money_ratio_value(request, visit_revenue, attended),
         "by_date": date_count_rows(attendance, "visit_date"),
         "attended_by_date": date_count_rows(attended_attendance, "visit_date"),
         "booking_quality_by_date": attendance_status_date_rows(attendance),
@@ -1170,25 +1237,28 @@ def retention_payload(request, start=None, end=None, sample_limit=25):
         "not_renewed_post_expiration_attendance": not_renewed_activity["attendance_count"],
         "not_renewed_post_expiration_unpaid_attendance": not_renewed_activity["unpaid_attendance_count"],
         "not_renewed_post_expiration_paid_attendance": not_renewed_activity["paid_attendance_count"],
-        "not_renewed_post_expiration_revenue": not_renewed_activity["revenue"],
+        "not_renewed_post_expiration_revenue": not_renewed_activity["revenue"] if can_view_money(request) else None,
         "renewal_rate": percentage(retained, previous_members),
         "churn_rate": percentage(not_renewed_count, previous_members),
-        "not_renewed_value": decimal_value(money_sum(not_renewed, "membership_value")),
+        "not_renewed_value": money_value(request, money_sum(not_renewed, "membership_value")),
         "current_month_members_by_month": current_members_by_month,
         "current_member_mix": current_member_mix,
         "not_renewed_members_by_month": not_renewed_members_by_month,
         "not_renewed_unassigned_studio_by_month": not_renewed_unassigned_studio_by_month,
         "renewal_rate_by_month": renewal_rate_by_month,
-        "not_renewed_clients": serialize_membership_status_rows(not_renewed.order_by("month", "client__name")[:sample_limit]),
-        "retained_samples": serialize_membership_status_rows(
+        "not_renewed_clients": mask_membership_money_rows(
+            request,
+            serialize_membership_status_rows(not_renewed.order_by("month", "client__name")[:sample_limit]),
+        ),
+        "retained_samples": mask_membership_money_rows(request, serialize_membership_status_rows(
             statuses.filter(status=MembershipMonthStatus.STATUS_RETAINED).order_by("month", "client__name")[:sample_limit]
-        ),
-        "new_member_samples": serialize_membership_status_rows(
+        )),
+        "new_member_samples": mask_membership_money_rows(request, serialize_membership_status_rows(
             statuses.filter(status=MembershipMonthStatus.STATUS_NEW).order_by("month", "client__name")[:sample_limit]
-        ),
-        "reactivated_samples": serialize_membership_status_rows(
+        )),
+        "reactivated_samples": mask_membership_money_rows(request, serialize_membership_status_rows(
             statuses.filter(status=MembershipMonthStatus.STATUS_REACTIVATED).order_by("month", "client__name")[:sample_limit]
-        ),
+        )),
         "definition": (
             "La retencion mensual usa snapshots. Un cliente cuenta como miembro de un mes si tuvo al menos "
             "15 dias cubiertos por productos marcados con track_retention. Not renewed se cuenta en el mes "
@@ -1217,7 +1287,10 @@ def retention_followup_view(request):
         "not_renewed": MembershipMonthStatus.STATUS_NOT_RENEWED,
     }
     queryset = statuses.filter(status=status_map.get(status_value, MembershipMonthStatus.STATUS_NOT_RENEWED))
-    rows = serialize_membership_status_rows(queryset.order_by("month", "client__name"))
+    rows = mask_membership_money_rows(
+        request,
+        serialize_membership_status_rows(queryset.order_by("month", "client__name")),
+    )
 
     if search:
         rows = [
@@ -1425,7 +1498,7 @@ def candidate_classes_for_match(match):
     return sorted(candidates, key=lambda item: (item.start_time, item.room.name if item.room else "", item.name))
 
 
-def serialize_unresolved_match(match):
+def serialize_unresolved_match(match, request=None):
     visit = match.attendance_visit
     candidates = candidate_classes_for_match(match)
     return {
@@ -1446,7 +1519,7 @@ def serialize_unresolved_match(match):
             "client_mindbody_id": visit.client.mindbody_id,
             "instructor": visit.staff_member.name if visit.staff_member else "N/A",
             "service": visit.pricing_option.name if visit.pricing_option else "N/A",
-            "revenue": decimal_value(visit.revenue),
+            "revenue": money_value(request, visit.revenue) if request else decimal_value(visit.revenue),
         },
         "candidates": [serialize_candidate_class(candidate) for candidate in candidates],
     }
@@ -1482,7 +1555,7 @@ def unresolved_attendance_matches_view(request):
         match.confidence = Decimal("1.00")
         match.notes = "Manually matched from unresolved attendance review."
         match.save()
-        return Response({"matched": serialize_unresolved_match(match)})
+        return Response({"matched": serialize_unresolved_match(match, request)})
 
     start, end = date_bounds(request)
     queryset = AttendanceClassMatch.objects.select_related(
@@ -1523,7 +1596,7 @@ def unresolved_attendance_matches_view(request):
     return Response({
         "date_range": {"from": start.isoformat(), "to": end.isoformat()},
         "count": queryset.count(),
-        "rows": [serialize_unresolved_match(match) for match in rows],
+        "rows": [serialize_unresolved_match(match, request) for match in rows],
     })
 
 
@@ -1945,7 +2018,7 @@ def dashboard_monthly_retention_tables_view(request):
         queryset = statuses.filter(status=status_value).order_by("month", "client__name")
         tables[key] = {
             "count": queryset.count(),
-            "rows": serialize_membership_status_rows(queryset[:limit]),
+            "rows": mask_membership_money_rows(request, serialize_membership_status_rows(queryset[:limit])),
         }
     return Response({
         "mode": "monthly",

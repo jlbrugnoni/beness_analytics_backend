@@ -2,6 +2,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from rest_framework import serializers
 
+from .access import user_has_capability
 from .models import (
     AttendanceRawRow,
     AttendanceClassMatch,
@@ -31,6 +32,39 @@ from .models import (
 
 
 User = get_user_model()
+
+
+class MoneyProtectedSerializerMixin:
+    money_fields = ()
+    payload_money_keys = ()
+
+    def can_view_money(self):
+        request = self.context.get("request")
+        return user_has_capability(request.user, "can_view_money") if request else True
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        if self.can_view_money():
+            return data
+        for field in self.money_fields:
+            if field in data:
+                data[field] = None
+        for payload_field in ("raw_payload", "normalized_payload"):
+            if payload_field not in data or not isinstance(data[payload_field], dict):
+                continue
+            data[payload_field] = {
+                key: (None if key in self.payload_money_keys else value)
+                for key, value in data[payload_field].items()
+            }
+        return data
+
+    def money_safe_payload(self, payload):
+        if self.can_view_money() or not isinstance(payload, dict):
+            return payload
+        return {
+            key: (None if key in self.payload_money_keys else value)
+            for key, value in payload.items()
+        }
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -286,7 +320,9 @@ class ExpectedClassSlotSerializer(serializers.ModelSerializer):
         return obj.scheduled_class.attendance_matches.filter(attendance_visit__late_cancel=True).count()
 
 
-class AttendanceVisitSerializer(serializers.ModelSerializer):
+class AttendanceVisitSerializer(MoneyProtectedSerializerMixin, serializers.ModelSerializer):
+    money_fields = ("revenue",)
+    payload_money_keys = ("_revenue", "Ingresos por visita")
     site_name = serializers.CharField(source="site.name", read_only=True)
     client_name = serializers.CharField(source="client.name", read_only=True)
     client_mindbody_id = serializers.CharField(source="client.mindbody_id", read_only=True)
@@ -302,7 +338,18 @@ class AttendanceVisitSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class SaleLineSerializer(serializers.ModelSerializer):
+class SaleLineSerializer(MoneyProtectedSerializerMixin, serializers.ModelSerializer):
+    money_fields = ("item_total", "discount_amount", "tax", "paid_total")
+    payload_money_keys = (
+        "_item_total",
+        "_discount_amount",
+        "_tax",
+        "_paid_total",
+        "Total del Item",
+        "Desc.",
+        "Impuesto",
+        "Total Pagado con Método de Pago",
+    )
     site_name = serializers.CharField(source="site.name", read_only=True)
     client_name = serializers.CharField(source="client.name", read_only=True)
     client_mindbody_id = serializers.CharField(source="client.mindbody_id", read_only=True)
@@ -314,7 +361,16 @@ class SaleLineSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class ServicePurchaseSerializer(serializers.ModelSerializer):
+class ServicePurchaseSerializer(MoneyProtectedSerializerMixin, serializers.ModelSerializer):
+    money_fields = ("total_amount", "cash_equivalent", "non_cash_equivalent")
+    payload_money_keys = (
+        "_total_amount",
+        "_cash_equivalent",
+        "_non_cash_equivalent",
+        "Cantidad total",
+        "Equivalente en efectivo",
+        "No equivalente de efectivo",
+    )
     site_name = serializers.CharField(source="site.name", read_only=True)
     studio_name = serializers.CharField(source="studio.name", read_only=True)
     client_name = serializers.CharField(source="client.name", read_only=True)
@@ -341,7 +397,8 @@ def payload_summary(payload):
     return " | ".join(parts)
 
 
-class AttendanceRawRowSerializer(serializers.ModelSerializer):
+class AttendanceRawRowSerializer(MoneyProtectedSerializerMixin, serializers.ModelSerializer):
+    payload_money_keys = ("_revenue", "Ingresos por visita")
     site_name = serializers.CharField(source="site.name", read_only=True)
     report_type = serializers.CharField(source="report_import.report_type", read_only=True)
     file_name = serializers.CharField(source="report_import.file_name", read_only=True)
@@ -352,7 +409,7 @@ class AttendanceRawRowSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def get_payload_summary(self, obj):
-        return payload_summary(obj.normalized_payload)
+        return payload_summary(self.money_safe_payload(obj.normalized_payload))
 
 
 class TrainerAvailabilityRawRowSerializer(serializers.ModelSerializer):
@@ -380,7 +437,17 @@ class AttendanceClassMatchSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
 
-class SaleRawRowSerializer(serializers.ModelSerializer):
+class SaleRawRowSerializer(MoneyProtectedSerializerMixin, serializers.ModelSerializer):
+    payload_money_keys = (
+        "_item_total",
+        "_discount_amount",
+        "_tax",
+        "_paid_total",
+        "Total del Item",
+        "Desc.",
+        "Impuesto",
+        "Total Pagado con Método de Pago",
+    )
     site_name = serializers.CharField(source="site.name", read_only=True)
     report_type = serializers.CharField(source="report_import.report_type", read_only=True)
     file_name = serializers.CharField(source="report_import.file_name", read_only=True)
@@ -391,10 +458,18 @@ class SaleRawRowSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def get_payload_summary(self, obj):
-        return payload_summary(obj.normalized_payload)
+        return payload_summary(self.money_safe_payload(obj.normalized_payload))
 
 
-class ServicePurchaseRawRowSerializer(serializers.ModelSerializer):
+class ServicePurchaseRawRowSerializer(MoneyProtectedSerializerMixin, serializers.ModelSerializer):
+    payload_money_keys = (
+        "_total_amount",
+        "_cash_equivalent",
+        "_non_cash_equivalent",
+        "Cantidad total",
+        "Equivalente en efectivo",
+        "No equivalente de efectivo",
+    )
     site_name = serializers.CharField(source="site.name", read_only=True)
     studio_name = serializers.CharField(source="studio.name", read_only=True)
     report_type = serializers.CharField(source="report_import.report_type", read_only=True)
@@ -406,7 +481,7 @@ class ServicePurchaseRawRowSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def get_payload_summary(self, obj):
-        return payload_summary(obj.normalized_payload)
+        return payload_summary(self.money_safe_payload(obj.normalized_payload))
 
 
 class LoginLogSerializer(serializers.ModelSerializer):

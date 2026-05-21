@@ -7,6 +7,7 @@ from .models import (
     AttendanceVisitVersion,
     Client,
     CustomUser,
+    GroupAccessProfile,
     LoginLog,
     PaymentMethod,
     PricingOption,
@@ -21,12 +22,45 @@ from .models import (
     Site,
     StaffMember,
     Studio,
+    UserAccessProfile,
 )
+
+
+class UserAccessProfileInline(admin.StackedInline):
+    model = UserAccessProfile
+    can_delete = False
+    extra = 0
+    filter_horizontal = ("allowed_sites", "allowed_studios")
+    fieldsets = (
+        (
+            "Data Scope",
+            {
+                "fields": (
+                    "allowed_sites",
+                    "allowed_studios",
+                )
+            },
+        ),
+        (
+            "Extra Capabilities",
+            {
+                "fields": (
+                    "can_view_money",
+                    "can_upload_data",
+                    "can_edit_data",
+                    "can_reset_data",
+                    "can_manage_users",
+                    "can_view_admin_logs",
+                )
+            },
+        ),
+    )
 
 
 @admin.register(CustomUser)
 class CustomUserAdmin(UserAdmin):
     model = CustomUser
+    inlines = (UserAccessProfileInline,)
     fieldsets = (
         (None, {"fields": ("email", "password")}),
         ("Personal Info", {"fields": ("first_name", "last_name", "username", "image")}),
@@ -57,6 +91,53 @@ class CustomUserAdmin(UserAdmin):
     search_fields = ("email", "first_name", "last_name")
     ordering = ("email",)
     readonly_fields = ("last_login", "date_joined")
+
+
+@admin.register(GroupAccessProfile)
+class GroupAccessProfileAdmin(admin.ModelAdmin):
+    list_display = (
+        "group",
+        "can_view_money",
+        "can_upload_data",
+        "can_edit_data",
+        "can_reset_data",
+        "can_manage_users",
+        "can_view_admin_logs",
+    )
+    list_filter = (
+        "can_view_money",
+        "can_upload_data",
+        "can_edit_data",
+        "can_reset_data",
+        "can_manage_users",
+        "can_view_admin_logs",
+    )
+    search_fields = ("group__name",)
+
+
+@admin.register(UserAccessProfile)
+class UserAccessProfileAdmin(admin.ModelAdmin):
+    filter_horizontal = ("allowed_sites", "allowed_studios")
+    list_display = (
+        "user",
+        "can_view_money",
+        "can_upload_data",
+        "can_edit_data",
+        "can_reset_data",
+        "can_manage_users",
+        "can_view_admin_logs",
+    )
+    list_filter = (
+        "can_view_money",
+        "can_upload_data",
+        "can_edit_data",
+        "can_reset_data",
+        "can_manage_users",
+        "can_view_admin_logs",
+        "allowed_sites",
+        "allowed_studios",
+    )
+    search_fields = ("user__email", "user__first_name", "user__last_name")
 
 
 admin.site.register(ReportImport)

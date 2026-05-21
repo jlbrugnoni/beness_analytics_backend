@@ -23,6 +23,7 @@ from .importers import (
     preview_report,
 )
 from .schedule_reconciliation import reconcile_scheduled_classes_from_templates
+from .access import resolve_access_payload, scoped_queryset_for_user
 from .models import (
     AttendanceRawRow,
     AttendanceClassMatch,
@@ -84,108 +85,6 @@ from .serializers import (
 
 
 User = get_user_model()
-
-
-ACCESS_CAPABILITIES = [
-    "can_view_money",
-    "can_upload_data",
-    "can_edit_data",
-    "can_reset_data",
-    "can_manage_users",
-    "can_view_admin_logs",
-]
-
-DEFAULT_GROUP_CAPABILITIES = {
-    "Admin": {
-        "can_view_money": True,
-        "can_upload_data": True,
-        "can_edit_data": True,
-        "can_reset_data": True,
-        "can_manage_users": True,
-        "can_view_admin_logs": True,
-    },
-    "Manager": {
-        "can_view_money": True,
-    },
-    "Data Operator": {
-        "can_upload_data": True,
-        "can_edit_data": True,
-    },
-    "Studio Manager": {},
-    "Viewer": {},
-}
-
-
-def capability_payload(**overrides):
-    payload = {capability: False for capability in ACCESS_CAPABILITIES}
-    payload.update(overrides)
-    return payload
-
-
-def default_capabilities_for_group(group):
-    return capability_payload(**DEFAULT_GROUP_CAPABILITIES.get(group.name, {}))
-
-
-def get_or_create_user_access_profile(user):
-    profile, _ = UserAccessProfile.objects.get_or_create(user=user)
-    return profile
-
-
-def group_capabilities(group):
-    try:
-        profile = group.access_profile
-    except GroupAccessProfile.DoesNotExist:
-        return default_capabilities_for_group(group)
-    return capability_payload(**{
-        capability: getattr(profile, capability)
-        for capability in ACCESS_CAPABILITIES
-    })
-
-
-def resolve_access_payload(user):
-    groups = list(user.groups.all().order_by("name"))
-    profile = get_or_create_user_access_profile(user)
-    capabilities = capability_payload()
-
-    if user.is_superuser or any(group.name == "Admin" for group in groups):
-        capabilities = capability_payload(**{capability: True for capability in ACCESS_CAPABILITIES})
-    else:
-        for group in groups:
-            group_payload = group_capabilities(group)
-            for capability in ACCESS_CAPABILITIES:
-                capabilities[capability] = capabilities[capability] or group_payload[capability]
-        for capability in ACCESS_CAPABILITIES:
-            capabilities[capability] = capabilities[capability] or getattr(profile, capability)
-
-    allowed_sites = list(profile.allowed_sites.all().order_by("name"))
-    allowed_studios = list(profile.allowed_studios.select_related("site").all().order_by("site__name", "name"))
-    has_global_access = user.is_superuser or any(group.name == "Admin" for group in groups)
-
-    return {
-        "user": {
-            "id": user.id,
-            "email": user.email,
-            "username": user.username,
-            "first_name": user.first_name,
-            "last_name": user.last_name,
-            "is_staff": user.is_staff,
-            "is_superuser": user.is_superuser,
-        },
-        "groups": [{"id": group.id, "name": group.name} for group in groups],
-        "capabilities": capabilities,
-        "allowed_sites": [{"id": site.id, "name": site.name} for site in allowed_sites],
-        "allowed_studios": [
-            {
-                "id": studio.id,
-                "name": studio.name,
-                "site": studio.site_id,
-                "site_name": studio.site.name if studio.site else None,
-            }
-            for studio in allowed_studios
-        ],
-        "has_global_access": has_global_access,
-        "django_permissions": list(user.get_all_permissions()),
-    }
 
 
 def get_client_ip(request):
@@ -284,15 +183,23 @@ class UserAccessProfileViewSet(viewsets.ModelViewSet):
 
 
 class SiteViewSet(viewsets.ModelViewSet):
-    queryset = Site.objects.all()
     serializer_class = SiteSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        return scoped_queryset_for_user(Site.objects.all(), self.request.user, site_field="id")
+
 
 class StudioViewSet(viewsets.ModelViewSet):
-    queryset = Studio.objects.select_related("site").all()
     serializer_class = StudioSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return scoped_queryset_for_user(
+            Studio.objects.select_related("site").all(),
+            self.request.user,
+            studio_field="id",
+        )
 
 
 class RoomViewSet(viewsets.ModelViewSet):
@@ -301,6 +208,7 @@ class RoomViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = Room.objects.select_related("site", "studio").all()
+        queryset = scoped_queryset_for_user(queryset, self.request.user, studio_field="studio_id")
         site = self.request.query_params.get("site")
         studio = self.request.query_params.get("studio")
         search = self.request.query_params.get("search")
@@ -314,33 +222,46 @@ class RoomViewSet(viewsets.ModelViewSet):
 
 
 class ClientViewSet(viewsets.ModelViewSet):
-    queryset = Client.objects.select_related("site").all()
     serializer_class = ClientSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        return scoped_queryset_for_user(Client.objects.select_related("site").all(), self.request.user)
+
 
 class StaffMemberViewSet(viewsets.ModelViewSet):
-    queryset = StaffMember.objects.select_related("site").all()
     serializer_class = StaffMemberSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        return scoped_queryset_for_user(StaffMember.objects.select_related("site").all(), self.request.user)
+
 
 class ServiceCategoryViewSet(viewsets.ModelViewSet):
-    queryset = ServiceCategory.objects.select_related("site").all()
     serializer_class = ServiceCategorySerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        return scoped_queryset_for_user(ServiceCategory.objects.select_related("site").all(), self.request.user)
+
 
 class PricingOptionViewSet(viewsets.ModelViewSet):
-    queryset = PricingOption.objects.select_related("site", "service_category").all()
     serializer_class = PricingOptionSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_queryset(self):
+        return scoped_queryset_for_user(
+            PricingOption.objects.select_related("site", "service_category").all(),
+            self.request.user,
+        )
+
 
 class PaymentMethodViewSet(viewsets.ModelViewSet):
-    queryset = PaymentMethod.objects.select_related("site").all()
     serializer_class = PaymentMethodSerializer
     permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        return scoped_queryset_for_user(PaymentMethod.objects.select_related("site").all(), self.request.user)
 
 
 def parse_iso_date(value):
@@ -631,6 +552,7 @@ class WeeklyRoomTemplateViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = WeeklyRoomTemplate.objects.select_related("site", "studio", "room", "staff_member").all()
+        queryset = scoped_queryset_for_user(queryset, self.request.user, studio_field="studio_id")
         site = self.request.query_params.get("site")
         studio = self.request.query_params.get("studio")
         room = self.request.query_params.get("room")
@@ -715,6 +637,7 @@ class ExpectedClassSlotViewSet(viewsets.ModelViewSet):
             "scheduled_class",
             "staff_member",
         ).all()
+        queryset = scoped_queryset_for_user(queryset, self.request.user, studio_field="studio_id")
         site = self.request.query_params.get("site")
         studio = self.request.query_params.get("studio")
         room = self.request.query_params.get("room")
@@ -940,6 +863,12 @@ class StudioClosureViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         queryset = StudioClosure.objects.select_related("site", "studio", "room").all()
+        queryset = scoped_queryset_for_user(
+            queryset,
+            self.request.user,
+            studio_field="studio_id",
+            include_null_studio=True,
+        )
         site = self.request.query_params.get("site")
         studio = self.request.query_params.get("studio")
         room = self.request.query_params.get("room")
@@ -1365,8 +1294,16 @@ class ReportImportViewSet(viewsets.ModelViewSet):
 class ImportedDataFilterMixin:
     search_fields = []
     date_field = None
+    scope_site_field = "site_id"
+    scope_studio_field = None
 
     def filter_queryset(self, queryset):
+        queryset = scoped_queryset_for_user(
+            queryset,
+            self.request.user,
+            site_field=self.scope_site_field,
+            studio_field=self.scope_studio_field,
+        )
         site = self.request.query_params.get("site")
         client = self.request.query_params.get("client")
         date_from = self.request.query_params.get("date_from")
@@ -1400,6 +1337,7 @@ class AttendanceVisitViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelView
     serializer_class = AttendanceVisitSerializer
     permission_classes = [IsAuthenticated]
     date_field = "visit_date"
+    scope_studio_field = "visit_studio_id"
     search_fields = ["client__name", "client__mindbody_id", "staff_member__name", "pricing_option__name"]
 
     def get_queryset(self):
@@ -1421,6 +1359,7 @@ class ScheduledClassViewSet(ImportedDataFilterMixin, viewsets.ModelViewSet):
     serializer_class = ScheduledClassSerializer
     permission_classes = [IsAuthenticated]
     date_field = "class_date"
+    scope_studio_field = "studio_id"
     search_fields = ["name", "studio__name", "room__name", "staff_member__name"]
 
     def get_queryset(self):
@@ -1505,6 +1444,7 @@ class SaleLineViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = SaleLineSerializer
     permission_classes = [IsAuthenticated]
     date_field = "sale_date"
+    scope_studio_field = "studio_id"
     search_fields = ["client__name", "client__mindbody_id", "sale_number", "item_name", "payment_method__name"]
 
     def get_queryset(self):
@@ -1521,6 +1461,7 @@ class ServicePurchaseViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelView
     serializer_class = ServicePurchaseSerializer
     permission_classes = [IsAuthenticated]
     date_field = "sale_date"
+    scope_studio_field = "studio_id"
     search_fields = ["client__name", "client__mindbody_id", "pricing_option__name", "service_category__name"]
 
     def get_queryset(self):
@@ -1534,7 +1475,16 @@ class ServicePurchaseViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelView
 
 
 class RawRowFilterMixin:
+    scope_site_field = "site_id"
+    scope_studio_field = None
+
     def filter_queryset(self, queryset):
+        queryset = scoped_queryset_for_user(
+            queryset,
+            self.request.user,
+            site_field=self.scope_site_field,
+            studio_field=self.scope_studio_field,
+        )
         site = self.request.query_params.get("site")
         report_import = self.request.query_params.get("report_import")
         is_valid = self.request.query_params.get("is_valid")
@@ -1578,6 +1528,12 @@ class AttendanceClassMatchViewSet(viewsets.ReadOnlyModelViewSet):
             "attendance_visit__client",
             "scheduled_class",
         ).all()
+        queryset = scoped_queryset_for_user(
+            queryset,
+            self.request.user,
+            site_field="scheduled_class__site_id",
+            studio_field="scheduled_class__studio_id",
+        )
         scheduled_class = self.request.query_params.get("scheduled_class")
         match_method = self.request.query_params.get("match_method")
         if scheduled_class:
@@ -1598,6 +1554,7 @@ class SaleRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
 class ServicePurchaseRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = ServicePurchaseRawRowSerializer
     permission_classes = [IsAuthenticated]
+    scope_studio_field = "studio_id"
 
     def get_queryset(self):
         queryset = self.filter_queryset(ServicePurchaseRawRow.objects.select_related("site", "studio", "report_import").all())
