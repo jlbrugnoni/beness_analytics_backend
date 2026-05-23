@@ -210,10 +210,20 @@ class GroupAccessProfileViewSet(viewsets.ModelViewSet):
 
 
 class UserAccessProfileViewSet(viewsets.ModelViewSet):
-    queryset = UserAccessProfile.objects.select_related("user").prefetch_related("allowed_sites", "allowed_studios").all()
     serializer_class = UserAccessProfileSerializer
     permission_classes = [IsAuthenticated, CapabilityPermission]
     required_capability = "can_manage_users"
+
+    def get_queryset(self):
+        queryset = (
+            UserAccessProfile.objects.select_related("user")
+            .prefetch_related("allowed_sites", "allowed_studios")
+            .order_by("user__email")
+        )
+        user_id = self.request.query_params.get("user")
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+        return queryset
 
 
 class SiteViewSet(viewsets.ModelViewSet):
@@ -1731,6 +1741,8 @@ def me_permissions(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def all_users(request):
+    if not user_has_capability(request.user, "can_manage_users"):
+        return Response({"error": "You do not have permission to perform this action."}, status=status.HTTP_403_FORBIDDEN)
     users = User.objects.filter(is_active=True).order_by("first_name", "last_name", "email")
     return Response(UserSerializer(users, many=True).data)
 
@@ -1738,6 +1750,8 @@ def all_users(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def list_groups(request):
+    if not user_has_capability(request.user, "can_manage_users"):
+        return Response({"error": "You do not have permission to perform this action."}, status=status.HTTP_403_FORBIDDEN)
     return Response(GroupSerializer(Group.objects.all().order_by("name"), many=True).data)
 
 
