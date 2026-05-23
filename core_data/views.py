@@ -1647,10 +1647,36 @@ class ServicePurchaseRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelView
 
 
 class LoginLogViewSet(viewsets.ReadOnlyModelViewSet):
-    queryset = LoginLog.objects.select_related("user").all()
     serializer_class = LoginLogSerializer
     permission_classes = [IsAuthenticated, CapabilityPermission]
     required_capability = "can_view_admin_logs"
+
+    def get_queryset(self):
+        queryset = LoginLog.objects.select_related("user").all()
+        user_id = self.request.query_params.get("user")
+        login_type = self.request.query_params.get("login_type")
+        success = self.request.query_params.get("success")
+        date_from = self.request.query_params.get("date_from")
+        date_to = self.request.query_params.get("date_to")
+        search = self.request.query_params.get("search")
+        if user_id:
+            queryset = queryset.filter(user_id=user_id)
+        if login_type:
+            queryset = queryset.filter(login_type=login_type)
+        if success in ("true", "false"):
+            queryset = queryset.filter(success=success == "true")
+        if date_from:
+            queryset = queryset.filter(created_at__date__gte=date_from)
+        if date_to:
+            queryset = queryset.filter(created_at__date__lte=date_to)
+        if search:
+            queryset = queryset.filter(
+                Q(user__email__icontains=search)
+                | Q(user__first_name__icontains=search)
+                | Q(user__last_name__icontains=search)
+                | Q(ip_address__icontains=search)
+            )
+        return queryset
 
 
 @api_view(["POST"])
