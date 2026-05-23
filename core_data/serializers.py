@@ -71,6 +71,7 @@ class UserSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=False)
     groups = serializers.PrimaryKeyRelatedField(queryset=Group.objects.all(), many=True, required=False)
     group_name = serializers.SerializerMethodField()
+    group_names = serializers.SerializerMethodField()
 
     class Meta:
         model = User
@@ -87,6 +88,7 @@ class UserSerializer(serializers.ModelSerializer):
             "password",
             "groups",
             "group_name",
+            "group_names",
             "image",
         ]
         read_only_fields = ["date_joined"]
@@ -94,6 +96,9 @@ class UserSerializer(serializers.ModelSerializer):
     def get_group_name(self, obj):
         first_group = obj.groups.first()
         return first_group.name if first_group else None
+
+    def get_group_names(self, obj):
+        return list(obj.groups.order_by("name").values_list("name", flat=True))
 
 
 class ChangePasswordSerializer(serializers.Serializer):

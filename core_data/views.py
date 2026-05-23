@@ -130,7 +130,7 @@ class UserViewSet(viewsets.ViewSet):
     required_capability = "can_manage_users"
 
     def list(self, request):
-        users = User.objects.filter(is_superuser=False).order_by("first_name", "last_name", "email")
+        users = User.objects.all().order_by("first_name", "last_name", "email")
         serializer = UserSerializer(users, many=True)
         return Response(serializer.data)
 
@@ -163,6 +163,12 @@ class UserViewSet(viewsets.ViewSet):
             user = User.objects.get(pk=pk)
         except User.DoesNotExist:
             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        if user.is_superuser and not request.user.is_superuser:
+            return Response({"error": "Only a superuser can edit another superuser."}, status=status.HTTP_403_FORBIDDEN)
+        if user.is_superuser:
+            protected_fields = {"is_superuser", "is_staff", "is_active", "groups"}
+            if protected_fields.intersection(request.data.keys()):
+                return Response({"error": "Superuser role fields are protected in the app."}, status=status.HTTP_403_FORBIDDEN)
 
         serializer = UserSerializer(user, data=request.data, partial=True)
         serializer.is_valid(raise_exception=True)
@@ -179,6 +185,8 @@ class UserViewSet(viewsets.ViewSet):
             user = User.objects.get(pk=pk)
         except User.DoesNotExist:
             return Response({"error": "User not found"}, status=status.HTTP_404_NOT_FOUND)
+        if user.is_superuser:
+            return Response({"error": "Superusers cannot be deleted from the app."}, status=status.HTTP_403_FORBIDDEN)
         user.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -952,6 +960,7 @@ class ReportImportViewSet(viewsets.ModelViewSet):
     serializer_class = ReportImportSerializer
     permission_classes = [IsAuthenticated, CapabilityPermission]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
+    read_capability = "can_upload_data"
     write_capability = "can_upload_data"
     capability_by_action = {
         "create": "can_upload_data",
@@ -1413,7 +1422,8 @@ class ImportedDataFilterMixin:
 
 class AttendanceVisitViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = AttendanceVisitSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    read_capability = "can_upload_data"
     date_field = "visit_date"
     scope_studio_field = "visit_studio_id"
     search_fields = ["client__name", "client__mindbody_id", "staff_member__name", "pricing_option__name"]
@@ -1524,7 +1534,8 @@ class ScheduledClassViewSet(ImportedDataFilterMixin, viewsets.ModelViewSet):
 
 class SaleLineViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = SaleLineSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    read_capability = "can_upload_data"
     date_field = "sale_date"
     scope_studio_field = "studio_id"
     search_fields = ["client__name", "client__mindbody_id", "sale_number", "item_name", "payment_method__name"]
@@ -1541,7 +1552,8 @@ class SaleLineViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelViewSet):
 
 class ServicePurchaseViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = ServicePurchaseSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    read_capability = "can_upload_data"
     date_field = "sale_date"
     scope_studio_field = "studio_id"
     search_fields = ["client__name", "client__mindbody_id", "pricing_option__name", "service_category__name"]
@@ -1584,7 +1596,8 @@ class RawRowFilterMixin:
 
 class AttendanceRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = AttendanceRawRowSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    read_capability = "can_upload_data"
 
     def get_queryset(self):
         return self.filter_queryset(AttendanceRawRow.objects.select_related("site", "report_import").all())
@@ -1592,7 +1605,8 @@ class AttendanceRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
 
 class TrainerAvailabilityRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = TrainerAvailabilityRawRowSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    read_capability = "can_upload_data"
 
     def get_queryset(self):
         return self.filter_queryset(
@@ -1627,7 +1641,8 @@ class AttendanceClassMatchViewSet(viewsets.ReadOnlyModelViewSet):
 
 class SaleRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = SaleRawRowSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    read_capability = "can_upload_data"
 
     def get_queryset(self):
         return self.filter_queryset(SaleRawRow.objects.select_related("site", "report_import").all())
@@ -1635,7 +1650,8 @@ class SaleRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
 
 class ServicePurchaseRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelViewSet):
     serializer_class = ServicePurchaseRawRowSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    read_capability = "can_upload_data"
     scope_studio_field = "studio_id"
 
     def get_queryset(self):
