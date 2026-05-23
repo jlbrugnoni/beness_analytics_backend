@@ -144,6 +144,7 @@ class UserAccessProfileSerializer(serializers.ModelSerializer):
         fields = [
             "id",
             "user",
+            "language",
             "allowed_sites",
             "allowed_site_names",
             "allowed_studios",

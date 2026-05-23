@@ -23,7 +23,7 @@ from .importers import (
     preview_report,
 )
 from .schedule_reconciliation import reconcile_scheduled_classes_from_templates
-from .access import resolve_access_payload, scoped_queryset_for_user, user_has_capability
+from .access import get_or_create_user_access_profile, resolve_access_payload, scoped_queryset_for_user, user_has_capability
 from .permissions import CapabilityPermission
 from .models import (
     AttendanceRawRow,
@@ -1777,6 +1777,20 @@ def logout_view(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def me_permissions(request):
+    return Response(resolve_access_payload(request.user))
+
+
+@api_view(["PATCH"])
+@permission_classes([IsAuthenticated])
+def me_language(request):
+    language = request.data.get("language")
+    valid_languages = {choice[0] for choice in UserAccessProfile.LANGUAGE_CHOICES}
+    if language not in valid_languages:
+        return Response({"error": "Invalid language."}, status=status.HTTP_400_BAD_REQUEST)
+
+    profile = get_or_create_user_access_profile(request.user)
+    profile.language = language
+    profile.save(update_fields=["language"])
     return Response(resolve_access_payload(request.user))
 
 

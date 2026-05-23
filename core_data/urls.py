@@ -39,6 +39,7 @@ urlpatterns = [
     path("validate-token", views.validate_token_view, name="validate-token"),
     path("logout", views.logout_view, name="logout"),
     path("me/permissions/", views.me_permissions, name="me-permissions"),
+    path("me/language/", views.me_language, name="me-language"),
     path("all_users/", views.all_users, name="all-users"),
     path("groups/", views.list_groups, name="list-groups"),
     path("health/", views.health_check, name="health-check"),
