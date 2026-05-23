@@ -48,6 +48,34 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
         return self.email
 
 
+class GroupAccessProfile(models.Model):
+    group = models.OneToOneField(Group, on_delete=models.CASCADE, related_name="access_profile")
+    can_view_money = models.BooleanField(default=False)
+    can_upload_data = models.BooleanField(default=False)
+    can_edit_data = models.BooleanField(default=False)
+    can_reset_data = models.BooleanField(default=False)
+    can_manage_users = models.BooleanField(default=False)
+    can_view_admin_logs = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Access profile for {self.group.name}"
+
+
+class UserAccessProfile(models.Model):
+    user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="access_profile")
+    allowed_sites = models.ManyToManyField("Site", blank=True, related_name="allowed_user_profiles")
+    allowed_studios = models.ManyToManyField("Studio", blank=True, related_name="allowed_user_profiles")
+    can_view_money = models.BooleanField(default=False)
+    can_upload_data = models.BooleanField(default=False)
+    can_edit_data = models.BooleanField(default=False)
+    can_reset_data = models.BooleanField(default=False)
+    can_manage_users = models.BooleanField(default=False)
+    can_view_admin_logs = models.BooleanField(default=False)
+
+    def __str__(self):
+        return f"Access profile for {self.user.email}"
+
+
 class BaseModel(models.Model):
     name = models.CharField(max_length=150)
     slug = models.SlugField(max_length=200, blank=True, editable=False)
