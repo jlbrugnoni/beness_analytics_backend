@@ -62,9 +62,18 @@ class GroupAccessProfile(models.Model):
 
 
 class UserAccessProfile(models.Model):
+    LANGUAGE_ENGLISH = "en"
+    LANGUAGE_SPANISH = "es"
+
+    LANGUAGE_CHOICES = [
+        (LANGUAGE_ENGLISH, "English"),
+        (LANGUAGE_SPANISH, "Spanish"),
+    ]
+
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="access_profile")
     allowed_sites = models.ManyToManyField("Site", blank=True, related_name="allowed_user_profiles")
     allowed_studios = models.ManyToManyField("Studio", blank=True, related_name="allowed_user_profiles")
+    language = models.CharField(max_length=2, choices=LANGUAGE_CHOICES, default=LANGUAGE_ENGLISH)
     can_view_money = models.BooleanField(default=False)
     can_upload_data = models.BooleanField(default=False)
     can_edit_data = models.BooleanField(default=False)

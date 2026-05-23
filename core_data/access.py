@@ -96,6 +96,7 @@ def resolve_access_payload(user):
             "is_staff": user.is_staff,
             "is_superuser": user.is_superuser,
         },
+        "language": profile.language,
         "groups": [{"id": group.id, "name": group.name} for group in groups],
         "capabilities": capabilities,
         "allowed_sites": [{"id": site.id, "name": site.name} for site in allowed_sites],

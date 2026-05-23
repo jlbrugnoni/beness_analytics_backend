@@ -36,6 +36,7 @@ class UserAccessProfileInline(admin.StackedInline):
             "Data Scope",
             {
                 "fields": (
+                    "language",
                     "allowed_sites",
                     "allowed_studios",
                 )
@@ -120,6 +121,7 @@ class UserAccessProfileAdmin(admin.ModelAdmin):
     filter_horizontal = ("allowed_sites", "allowed_studios")
     list_display = (
         "user",
+        "language",
         "can_view_money",
         "can_upload_data",
         "can_edit_data",
@@ -134,6 +136,7 @@ class UserAccessProfileAdmin(admin.ModelAdmin):
         "can_reset_data",
         "can_manage_users",
         "can_view_admin_logs",
+        "language",
         "allowed_sites",
         "allowed_studios",
     )
