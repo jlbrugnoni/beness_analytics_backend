@@ -130,6 +130,12 @@ def can_view_money(request):
     return user_has_capability(request.user, "can_view_money")
 
 
+def capability_error(request, capability):
+    if user_has_capability(request.user, capability):
+        return None
+    return Response({"error": "You do not have permission to perform this action."}, status=403)
+
+
 def money_value(request, value):
     return decimal_value(value) if can_view_money(request) else None
 
@@ -1312,6 +1318,10 @@ def retention_followup_view(request):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def rebuild_membership_months_view(request):
+    denied = capability_error(request, "can_edit_data")
+    if denied:
+        return denied
+
     start = parse_date(request.data.get("date_from") or request.query_params.get("date_from"))
     end = parse_date(request.data.get("date_to") or request.query_params.get("date_to"))
     month_value = request.data.get("month") or request.query_params.get("month")
@@ -1322,7 +1332,9 @@ def rebuild_membership_months_view(request):
         start, end = date_bounds(request)
 
     site_id = request.data.get("site") or request.query_params.get("site")
-    sites = Site.objects.filter(id=site_id) if site_id else Site.objects.all()
+    sites = scoped_queryset_for_user(Site.objects.all(), request.user, site_field="id")
+    if site_id:
+        sites = sites.filter(id=site_id)
     months = months_between(start, end)
     results = []
     for site in sites:
@@ -1448,6 +1460,10 @@ def rebuild_attendance_class_matches(site_id=None, start=None, end=None):
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def rebuild_attendance_class_matches_view(request):
+    denied = capability_error(request, "can_edit_data")
+    if denied:
+        return denied
+
     start = parse_date(request.data.get("date_from") or request.query_params.get("date_from"))
     end = parse_date(request.data.get("date_to") or request.query_params.get("date_to"))
     if not start or not end:
@@ -1529,14 +1545,30 @@ def serialize_unresolved_match(match, request=None):
 @permission_classes([IsAuthenticated])
 def unresolved_attendance_matches_view(request):
     if request.method == "POST":
+        denied = capability_error(request, "can_edit_data")
+        if denied:
+            return denied
+
         match_id = request.data.get("match")
         scheduled_class_id = request.data.get("scheduled_class")
         if not match_id or not scheduled_class_id:
             return Response({"error": "match and scheduled_class are required."}, status=400)
 
         try:
-            match = AttendanceClassMatch.objects.select_related("attendance_visit").get(id=match_id)
-            scheduled_class = ScheduledClass.objects.get(id=scheduled_class_id)
+            match_queryset = scoped_queryset_for_user(
+                AttendanceClassMatch.objects.select_related("attendance_visit"),
+                request.user,
+                site_field="attendance_visit__site_id",
+                studio_field="attendance_visit__visit_studio_id",
+            )
+            scheduled_queryset = scoped_queryset_for_user(
+                ScheduledClass.objects.all(),
+                request.user,
+                site_field="site_id",
+                studio_field="studio_id",
+            )
+            match = match_queryset.get(id=match_id)
+            scheduled_class = scheduled_queryset.get(id=scheduled_class_id)
         except (AttendanceClassMatch.DoesNotExist, ScheduledClass.DoesNotExist):
             return Response({"error": "Match or scheduled class not found."}, status=404)
 
@@ -1573,6 +1605,12 @@ def unresolved_attendance_matches_view(request):
             AttendanceClassMatch.METHOD_AMBIGUOUS,
             AttendanceClassMatch.METHOD_UNMATCHED,
         ],
+    )
+    queryset = scoped_queryset_for_user(
+        queryset,
+        request.user,
+        site_field="attendance_visit__site_id",
+        studio_field="attendance_visit__visit_studio_id",
     )
     site_id = request.query_params.get("site")
     studio_id = request.query_params.get("studio")

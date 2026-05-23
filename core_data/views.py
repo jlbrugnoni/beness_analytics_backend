@@ -23,7 +23,8 @@ from .importers import (
     preview_report,
 )
 from .schedule_reconciliation import reconcile_scheduled_classes_from_templates
-from .access import resolve_access_payload, scoped_queryset_for_user
+from .access import resolve_access_payload, scoped_queryset_for_user, user_has_capability
+from .permissions import CapabilityPermission
 from .models import (
     AttendanceRawRow,
     AttendanceClassMatch,
@@ -94,8 +95,39 @@ def get_client_ip(request):
     return request.META.get("REMOTE_ADDR")
 
 
+def mask_preview_money(request, payload):
+    if user_has_capability(request.user, "can_view_money"):
+        return payload
+    if not isinstance(payload, dict):
+        return payload
+    preview = dict(payload)
+    if isinstance(preview.get("revenue"), dict):
+        preview["revenue"] = {
+            **preview["revenue"],
+            "total": None,
+            "zero_revenue_rows": None,
+        }
+    if isinstance(preview.get("sales"), dict):
+        preview["sales"] = {
+            **preview["sales"],
+            "paid_total": None,
+            "gross_item_total": None,
+            "discount_total": None,
+            "tax_total": None,
+        }
+    if isinstance(preview.get("services"), dict):
+        preview["services"] = {
+            **preview["services"],
+            "total_amount": None,
+            "cash_equivalent": None,
+            "non_cash_equivalent": None,
+        }
+    return preview
+
+
 class UserViewSet(viewsets.ViewSet):
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    required_capability = "can_manage_users"
 
     def list(self, request):
         users = User.objects.filter(is_superuser=False).order_by("first_name", "last_name", "email")
@@ -173,18 +205,21 @@ class UserViewSet(viewsets.ViewSet):
 class GroupAccessProfileViewSet(viewsets.ModelViewSet):
     queryset = GroupAccessProfile.objects.select_related("group").all()
     serializer_class = GroupAccessProfileSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    required_capability = "can_manage_users"
 
 
 class UserAccessProfileViewSet(viewsets.ModelViewSet):
     queryset = UserAccessProfile.objects.select_related("user").prefetch_related("allowed_sites", "allowed_studios").all()
     serializer_class = UserAccessProfileSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    required_capability = "can_manage_users"
 
 
 class SiteViewSet(viewsets.ModelViewSet):
     serializer_class = SiteSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    write_capability = "can_edit_data"
 
     def get_queryset(self):
         return scoped_queryset_for_user(Site.objects.all(), self.request.user, site_field="id")
@@ -192,7 +227,8 @@ class SiteViewSet(viewsets.ModelViewSet):
 
 class StudioViewSet(viewsets.ModelViewSet):
     serializer_class = StudioSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    write_capability = "can_edit_data"
 
     def get_queryset(self):
         return scoped_queryset_for_user(
@@ -204,7 +240,8 @@ class StudioViewSet(viewsets.ModelViewSet):
 
 class RoomViewSet(viewsets.ModelViewSet):
     serializer_class = RoomSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    write_capability = "can_edit_data"
 
     def get_queryset(self):
         queryset = Room.objects.select_related("site", "studio").all()
@@ -223,7 +260,8 @@ class RoomViewSet(viewsets.ModelViewSet):
 
 class ClientViewSet(viewsets.ModelViewSet):
     serializer_class = ClientSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    write_capability = "can_edit_data"
 
     def get_queryset(self):
         return scoped_queryset_for_user(Client.objects.select_related("site").all(), self.request.user)
@@ -231,7 +269,8 @@ class ClientViewSet(viewsets.ModelViewSet):
 
 class StaffMemberViewSet(viewsets.ModelViewSet):
     serializer_class = StaffMemberSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    write_capability = "can_edit_data"
 
     def get_queryset(self):
         return scoped_queryset_for_user(StaffMember.objects.select_related("site").all(), self.request.user)
@@ -239,7 +278,8 @@ class StaffMemberViewSet(viewsets.ModelViewSet):
 
 class ServiceCategoryViewSet(viewsets.ModelViewSet):
     serializer_class = ServiceCategorySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    write_capability = "can_edit_data"
 
     def get_queryset(self):
         return scoped_queryset_for_user(ServiceCategory.objects.select_related("site").all(), self.request.user)
@@ -247,7 +287,8 @@ class ServiceCategoryViewSet(viewsets.ModelViewSet):
 
 class PricingOptionViewSet(viewsets.ModelViewSet):
     serializer_class = PricingOptionSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    write_capability = "can_edit_data"
 
     def get_queryset(self):
         return scoped_queryset_for_user(
@@ -258,7 +299,8 @@ class PricingOptionViewSet(viewsets.ModelViewSet):
 
 class PaymentMethodViewSet(viewsets.ModelViewSet):
     serializer_class = PaymentMethodSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    write_capability = "can_edit_data"
 
     def get_queryset(self):
         return scoped_queryset_for_user(PaymentMethod.objects.select_related("site").all(), self.request.user)
@@ -548,7 +590,11 @@ def automate_schedule_after_import(site, import_result, report_type):
 
 class WeeklyRoomTemplateViewSet(viewsets.ModelViewSet):
     serializer_class = WeeklyRoomTemplateSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    write_capability = "can_edit_data"
+    capability_by_action = {
+        "sync_capacity_from_rooms": "can_edit_data",
+    }
 
     def get_queryset(self):
         queryset = WeeklyRoomTemplate.objects.select_related("site", "studio", "room", "staff_member").all()
@@ -574,9 +620,6 @@ class WeeklyRoomTemplateViewSet(viewsets.ModelViewSet):
                 {"error": "Schedule maintenance actions are disabled for this environment."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        if not (request.user.is_staff or request.user.is_superuser):
-            return Response({"error": "Only staff users can update schedule templates."}, status=status.HTTP_403_FORBIDDEN)
-
         site_id = request.data.get("site") or request.query_params.get("site")
         if not site_id:
             return Response({"error": "site is required."}, status=status.HTTP_400_BAD_REQUEST)
@@ -626,7 +669,15 @@ class WeeklyRoomTemplateViewSet(viewsets.ModelViewSet):
 
 class ExpectedClassSlotViewSet(viewsets.ModelViewSet):
     serializer_class = ExpectedClassSlotSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    write_capability = "can_edit_data"
+    capability_by_action = {
+        "generate": "can_edit_data",
+        "rematch": "can_edit_data",
+        "reset_scoped": "can_reset_data",
+        "create_scheduled_class": "can_edit_data",
+        "resolve": "can_edit_data",
+    }
 
     def get_queryset(self):
         queryset = ExpectedClassSlot.objects.select_related(
@@ -728,8 +779,6 @@ class ExpectedClassSlotViewSet(viewsets.ModelViewSet):
                 {"error": "Schedule reset is disabled for this environment."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        if not (request.user.is_staff or request.user.is_superuser):
-            return Response({"error": "Only staff users can reset schedule data."}, status=status.HTTP_403_FORBIDDEN)
         if request.data.get("confirmation") != "RESET SCHEDULE DATA":
             return Response({"error": "Invalid confirmation phrase."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -859,7 +908,8 @@ class ExpectedClassSlotViewSet(viewsets.ModelViewSet):
 
 class StudioClosureViewSet(viewsets.ModelViewSet):
     serializer_class = StudioClosureSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    write_capability = "can_edit_data"
 
     def get_queryset(self):
         queryset = StudioClosure.objects.select_related("site", "studio", "room").all()
@@ -890,11 +940,26 @@ class StudioClosureViewSet(viewsets.ModelViewSet):
 class ReportImportViewSet(viewsets.ModelViewSet):
     queryset = ReportImport.objects.select_related("uploaded_by").all()
     serializer_class = ReportImportSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
     parser_classes = [JSONParser, MultiPartParser, FormParser]
+    write_capability = "can_upload_data"
+    capability_by_action = {
+        "create": "can_upload_data",
+        "preview": "can_upload_data",
+        "import_file": "can_upload_data",
+        "rollback": "can_reset_data",
+        "reset_analytics_data": "can_reset_data",
+        "destroy": "can_reset_data",
+    }
 
     def get_queryset(self):
         queryset = ReportImport.objects.select_related("uploaded_by", "studio").all()
+        queryset = scoped_queryset_for_user(
+            queryset,
+            self.request.user,
+            site_field="studio__site_id",
+            studio_field="studio_id",
+        )
         report_type = self.request.query_params.get("report_type")
         status_value = self.request.query_params.get("status")
         studio = self.request.query_params.get("studio")
@@ -1023,8 +1088,6 @@ class ReportImportViewSet(viewsets.ModelViewSet):
                 {"error": "Report rollback is disabled for this environment."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        if not (request.user.is_staff or request.user.is_superuser):
-            return Response({"error": "Only staff users can rollback imports."}, status=status.HTTP_403_FORBIDDEN)
         if request.data.get("confirmation") != "DELETE REPORT DATA":
             return Response({"error": "Invalid confirmation phrase."}, status=status.HTTP_400_BAD_REQUEST)
 
@@ -1129,11 +1192,6 @@ class ReportImportViewSet(viewsets.ModelViewSet):
                 {"error": "Analytics reset is disabled for this environment."},
                 status=status.HTTP_403_FORBIDDEN,
             )
-        if not (request.user.is_staff or request.user.is_superuser):
-            return Response(
-                {"error": "Only staff users can reset analytics data."},
-                status=status.HTTP_403_FORBIDDEN,
-            )
         if request.data.get("confirmation") != "RESET ANALYTICS DATA":
             return Response(
                 {"error": "Invalid confirmation phrase."},
@@ -1201,7 +1259,7 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            site = Site.objects.get(pk=site_id)
+            site = scoped_queryset_for_user(Site.objects.all(), request.user, site_field="id").get(pk=site_id)
         except Site.DoesNotExist:
             return Response({"error": "Site not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1213,7 +1271,11 @@ class ReportImportViewSet(viewsets.ModelViewSet):
                     status=status.HTTP_400_BAD_REQUEST,
                 )
             try:
-                studio = Studio.objects.get(pk=studio_id, site=site)
+                studio = scoped_queryset_for_user(
+                    Studio.objects.filter(site=site),
+                    request.user,
+                    studio_field="id",
+                ).get(pk=studio_id)
             except Studio.DoesNotExist:
                 return Response(
                     {"error": "Studio not found for selected site."},
@@ -1226,7 +1288,7 @@ class ReportImportViewSet(viewsets.ModelViewSet):
         except Exception as exc:
             return Response({"error": f"Could not parse file: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
 
-        return Response(preview)
+        return Response(mask_preview_money(request, preview))
 
     @action(detail=False, methods=["post"], url_path="import-file")
     def import_file(self, request):
@@ -1246,7 +1308,7 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             )
 
         try:
-            site = Site.objects.get(pk=site_id)
+            site = scoped_queryset_for_user(Site.objects.all(), request.user, site_field="id").get(pk=site_id)
         except Site.DoesNotExist:
             return Response({"error": "Site not found."}, status=status.HTTP_404_NOT_FOUND)
 
@@ -1259,7 +1321,11 @@ class ReportImportViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
                 try:
-                    studio = Studio.objects.get(pk=studio_id, site=site)
+                    studio = scoped_queryset_for_user(
+                        Studio.objects.filter(site=site),
+                        request.user,
+                        studio_field="id",
+                    ).get(pk=studio_id)
                 except Studio.DoesNotExist:
                     return Response(
                         {"error": "Studio not found for selected site."},
@@ -1288,6 +1354,8 @@ class ReportImportViewSet(viewsets.ModelViewSet):
         except Exception as exc:
             return Response({"error": f"Could not import file: {exc}"}, status=status.HTTP_400_BAD_REQUEST)
 
+        if "preview" in result:
+            result["preview"] = mask_preview_money(request, result["preview"])
         return Response(result, status=status.HTTP_201_CREATED)
 
 
@@ -1357,9 +1425,13 @@ class AttendanceVisitViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelView
 
 class ScheduledClassViewSet(ImportedDataFilterMixin, viewsets.ModelViewSet):
     serializer_class = ScheduledClassSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
     date_field = "class_date"
     scope_studio_field = "studio_id"
+    write_capability = "can_edit_data"
+    capability_by_action = {
+        "reconcile_from_templates": "can_edit_data",
+    }
     search_fields = ["name", "studio__name", "room__name", "staff_member__name"]
 
     def get_queryset(self):
@@ -1567,7 +1639,8 @@ class ServicePurchaseRawRowViewSet(RawRowFilterMixin, viewsets.ReadOnlyModelView
 class LoginLogViewSet(viewsets.ReadOnlyModelViewSet):
     queryset = LoginLog.objects.select_related("user").all()
     serializer_class = LoginLogSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAuthenticated, CapabilityPermission]
+    required_capability = "can_view_admin_logs"
 
 
 @api_view(["POST"])
