@@ -605,12 +605,41 @@ def membership_data_for_month(site_id, target_month):
 
 
 def historical_member_ids(site_id, before_month):
-    purchases = ServicePurchase.objects.filter(
-        site_id=site_id,
-        pricing_option__track_retention=True,
-        sale_date__lt=before_month,
-    ).values_list("client_id", flat=True)
-    return set(purchases)
+    purchases = (
+        ServicePurchase.objects.filter(
+            site_id=site_id,
+            pricing_option__track_retention=True,
+        )
+        .filter(
+            Q(activation_date__lt=before_month)
+            | Q(activation_date__isnull=True, sale_date__lt=before_month)
+        )
+        .order_by("client_id", "sale_date", "id")
+    )
+    intervals_by_client = {}
+    for purchase in purchases:
+        active_start = purchase.activation_date or purchase.sale_date
+        if not active_start or active_start >= before_month:
+            continue
+        active_end = purchase.expiration_date or before_month - timedelta(days=1)
+        active_end = min(active_end, before_month - timedelta(days=1))
+        if active_start <= active_end:
+            intervals_by_client.setdefault(purchase.client_id, []).append((active_start, active_end))
+
+    historical_members = set()
+    for client_id, intervals in intervals_by_client.items():
+        first_month = min(month_start(start) for start, _ in intervals)
+        for target_month in months_between(first_month, add_months(before_month, -1)):
+            target_end = month_end(target_month)
+            covered_intervals = [
+                (max(start, target_month), min(end, target_end))
+                for start, end in intervals
+                if start <= target_end and end >= target_month
+            ]
+            if union_days(covered_intervals) >= 15:
+                historical_members.add(client_id)
+                break
+    return historical_members
 
 
 def rebuild_membership_month(site_id, target_month):
@@ -709,6 +738,20 @@ def membership_history_for_statuses(statuses):
         (row["site_id"], row["client_id"]): row
         for row in rows
     }
+    purchases = (
+        ServicePurchase.objects.filter(
+            site_id__in=site_ids,
+            client_id__in=client_ids,
+            pricing_option__track_retention=True,
+        )
+        .values("id", "site_id", "client_id", "sale_date")
+        .order_by("site_id", "client_id", "sale_date", "id")
+    )
+    for purchase in purchases:
+        history.setdefault(
+            (purchase["site_id"], purchase["client_id"]),
+            {},
+        ).setdefault("_purchases", []).append(purchase)
     return status_rows, history
 
 
@@ -809,6 +852,16 @@ def serialize_membership_status(status, membership_history=None, not_renewed_act
     activity = (not_renewed_activity or {}).get(status.id, default_not_renewed_activity(status))
     first_sale_date = history.get("first_sale_date")
     last_sale_date = history.get("last_sale_date")
+    previous_sale_date = None
+    if purchase and purchase.sale_date:
+        source_key = (purchase.sale_date, purchase.id)
+        previous_purchases = [
+            item
+            for item in history.get("_purchases", [])
+            if item["sale_date"] and (item["sale_date"], item["id"]) < source_key
+        ]
+        if previous_purchases:
+            previous_sale_date = previous_purchases[-1]["sale_date"]
     return {
         "id": status.id,
         "month": status.month.isoformat(),
@@ -831,6 +884,7 @@ def serialize_membership_status(status, membership_history=None, not_renewed_act
         "tracked_membership_purchase_count": history.get("purchase_count", 0),
         "first_membership_purchase_date": first_sale_date.isoformat() if first_sale_date else None,
         "last_membership_purchase_date": last_sale_date.isoformat() if last_sale_date else None,
+        "previous_membership_purchase_date": previous_sale_date.isoformat() if previous_sale_date else None,
         "lifetime_membership_value": decimal_value(history.get("lifetime_value")),
         **activity,
     }
