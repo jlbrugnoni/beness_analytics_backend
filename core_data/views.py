@@ -1361,6 +1361,19 @@ class ReportImportViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
             result = import_report(uploaded_file, site, report_type, uploaded_by=request.user, options=options)
+            if report_type == "sales_by_service":
+                try:
+                    from analytics.views import rebuild_membership_months_after_import
+
+                    result["retention_automation"] = rebuild_membership_months_after_import(
+                        site.id,
+                        result["import"]["report_import_id"],
+                    )
+                except Exception as exc:
+                    result["retention_automation"] = {
+                        "skipped": True,
+                        "error": f"Retention snapshot automation failed after import: {exc}",
+                    }
             auto_reconcile = request.data.get("auto_schedule_reconcile", "true")
             if auto_reconcile in (True, "true", "True", "1", 1):
                 try:

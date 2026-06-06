@@ -4,8 +4,19 @@ from decimal import Decimal
 from django.test import TestCase
 
 from analytics.models import MembershipMonthStatus
-from analytics.views import rebuild_membership_month, serialize_membership_status_rows
-from core_data.models import Client, PricingOption, ServiceCategory, ServicePurchase, Site
+from analytics.views import (
+    rebuild_membership_month,
+    rebuild_membership_months_after_import,
+    serialize_membership_status_rows,
+)
+from core_data.models import (
+    Client,
+    PricingOption,
+    ReportImport,
+    ServiceCategory,
+    ServicePurchase,
+    Site,
+)
 
 
 class ReactivatedMembershipHistoryTests(TestCase):
@@ -138,3 +149,53 @@ class ReactivatedMembershipHistoryTests(TestCase):
             month=date(2026, 5, 1),
         )
         self.assertEqual(status.status, MembershipMonthStatus.STATUS_REACTIVATED)
+
+    def test_sales_by_service_import_rebuilds_coverage_and_following_month(self):
+        site = Site.objects.create(name="Barcelona", country_code=Site.COUNTRY_SPAIN)
+        client = Client.objects.create(site=site, name="Imported Client", mindbody_id="imported-1")
+        category = ServiceCategory.objects.create(site=site, name="Memberships")
+        option = PricingOption.objects.create(
+            site=site,
+            name="Monthly",
+            service_category=category,
+            track_retention=True,
+        )
+        report_import = ReportImport.objects.create(
+            report_type="sales_by_service",
+            file_name="memberships.xlsx",
+            status=ReportImport.STATUS_COMPLETED,
+        )
+        purchase = ServicePurchase.objects.create(
+            site=site,
+            natural_key="imported-membership",
+            current_row_hash="imported-membership-hash",
+            client=client,
+            pricing_option=option,
+            sale_date=date(2026, 4, 20),
+            activation_date=date(2026, 5, 1),
+            expiration_date=date(2026, 5, 31),
+            total_amount=Decimal("100.00"),
+            first_seen_import=report_import,
+            last_seen_import=report_import,
+        )
+
+        result = rebuild_membership_months_after_import(site.id, report_import.id)
+
+        self.assertFalse(result["skipped"])
+        self.assertEqual(
+            [row["month"] for row in result["rebuilt"]],
+            ["2026-05-01", "2026-06-01"],
+        )
+        may_status = MembershipMonthStatus.objects.get(
+            site=site,
+            client=client,
+            month=date(2026, 5, 1),
+        )
+        june_status = MembershipMonthStatus.objects.get(
+            site=site,
+            client=client,
+            month=date(2026, 6, 1),
+        )
+        self.assertEqual(may_status.status, MembershipMonthStatus.STATUS_NEW)
+        self.assertEqual(june_status.status, MembershipMonthStatus.STATUS_NOT_RENEWED)
+        self.assertEqual(may_status.source_purchase, purchase)

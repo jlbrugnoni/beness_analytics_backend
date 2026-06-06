@@ -696,6 +696,53 @@ def rebuild_membership_month(site_id, target_month):
     return len(rows)
 
 
+def rebuild_membership_months_after_import(site_id, report_import_id):
+    purchases = ServicePurchase.objects.filter(
+        site_id=site_id,
+        last_seen_import_id=report_import_id,
+        pricing_option__track_retention=True,
+    ).values("sale_date", "activation_date", "expiration_date")
+    coverage_ranges = [
+        (
+            purchase["activation_date"] or purchase["sale_date"],
+            purchase["expiration_date"] or purchase["activation_date"] or purchase["sale_date"],
+        )
+        for purchase in purchases
+        if purchase["activation_date"] or purchase["sale_date"]
+    ]
+    if not coverage_ranges:
+        return {
+            "skipped": True,
+            "reason": "The report did not contain tracked retention purchases.",
+            "rebuilt": [],
+            "total_rows": 0,
+        }
+
+    first_month = min(month_start(start) for start, _ in coverage_ranges)
+    last_coverage_month = max(month_start(end) for _, end in coverage_ranges)
+    last_required_month = add_months(last_coverage_month, 1)
+    latest_snapshot = (
+        MembershipMonthStatus.objects.filter(site_id=site_id)
+        .aggregate(latest=Max("month"))
+        .get("latest")
+    )
+    if latest_snapshot:
+        last_required_month = max(last_required_month, latest_snapshot)
+
+    rebuilt = [
+        {
+            "month": target_month.isoformat(),
+            "rows": rebuild_membership_month(site_id, target_month),
+        }
+        for target_month in months_between(first_month, last_required_month)
+    ]
+    return {
+        "skipped": False,
+        "rebuilt": rebuilt,
+        "total_rows": sum(row["rows"] for row in rebuilt),
+    }
+
+
 def membership_status_queryset(request, start=None, end=None):
     start, end = date_bounds(request, start=start, end=end)
     months = months_between(start, end)
