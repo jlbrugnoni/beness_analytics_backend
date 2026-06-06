@@ -16,6 +16,7 @@ from core_data.models import (
     ServiceCategory,
     ServicePurchase,
     Site,
+    Studio,
 )
 
 
@@ -149,6 +150,44 @@ class ReactivatedMembershipHistoryTests(TestCase):
             month=date(2026, 5, 1),
         )
         self.assertEqual(status.status, MembershipMonthStatus.STATUS_REACTIVATED)
+
+    def test_membership_snapshot_uses_purchase_studio_not_attendance(self):
+        site = Site.objects.create(name="Studio Site", country_code=Site.COUNTRY_SPAIN)
+        purchase_studio = Studio.objects.create(site=site, name="Purchase Studio")
+        client = Client.objects.create(site=site, name="Studio Client", mindbody_id="studio-client")
+        category = ServiceCategory.objects.create(site=site, name="Memberships")
+        option = PricingOption.objects.create(
+            site=site,
+            name="Monthly",
+            service_category=category,
+            track_retention=True,
+        )
+        purchase = ServicePurchase.objects.create(
+            site=site,
+            studio=purchase_studio,
+            natural_key="studio-membership",
+            current_row_hash="studio-membership-hash",
+            client=client,
+            pricing_option=option,
+            sale_date=date(2026, 5, 1),
+            activation_date=date(2026, 5, 1),
+            expiration_date=date(2026, 5, 31),
+            total_amount=Decimal("100.00"),
+        )
+
+        rebuild_membership_month(site.id, date(2026, 5, 1))
+
+        status = MembershipMonthStatus.objects.get(
+            site=site,
+            client=client,
+            month=date(2026, 5, 1),
+        )
+        self.assertEqual(status.source_purchase, purchase)
+        self.assertEqual(status.studio, purchase_studio)
+        self.assertEqual(
+            status.studio_inference_method,
+            MembershipMonthStatus.STUDIO_METHOD_PURCHASE,
+        )
 
     def test_sales_by_service_import_rebuilds_coverage_and_following_month(self):
         site = Site.objects.create(name="Barcelona", country_code=Site.COUNTRY_SPAIN)

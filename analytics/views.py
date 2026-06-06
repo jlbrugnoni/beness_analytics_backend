@@ -558,7 +558,7 @@ def membership_data_for_month(site_id, target_month):
     end = month_end(target_month)
     month_days = (end - start).days + 1
     purchases = (
-        ServicePurchase.objects.select_related("client", "pricing_option")
+        ServicePurchase.objects.select_related("client", "pricing_option", "studio")
         .filter(
             site_id=site_id,
             pricing_option__track_retention=True,
@@ -593,11 +593,16 @@ def membership_data_for_month(site_id, target_month):
     for client_id, row in grouped.items():
         days = min(union_days(row["intervals"]), month_days)
         if days >= 15:
-            studio_id, method = infer_membership_studio(site_id, client_id, target_month)
+            source_purchase = row["source_purchase"]
+            if source_purchase.studio_id:
+                studio_id = source_purchase.studio_id
+                method = MembershipMonthStatus.STUDIO_METHOD_PURCHASE
+            else:
+                studio_id, method = infer_membership_studio(site_id, client_id, target_month)
             members[client_id] = {
                 "days": days,
                 "value": row["value"],
-                "source_purchase": row["source_purchase"],
+                "source_purchase": source_purchase,
                 "studio_id": studio_id,
                 "studio_method": method,
             }
@@ -656,7 +661,7 @@ def rebuild_membership_month(site_id, target_month):
         if current and previous:
             status = MembershipMonthStatus.STATUS_RETAINED
             studio_id = current["studio_id"] or previous["studio_id"]
-            studio_method = current["studio_method"] if current["studio_id"] else MembershipMonthStatus.STUDIO_METHOD_PREVIOUS_MONTH
+            studio_method = current["studio_method"] if current["studio_id"] else previous["studio_method"]
         elif current:
             status = (
                 MembershipMonthStatus.STATUS_REACTIVATED
@@ -668,11 +673,7 @@ def rebuild_membership_month(site_id, target_month):
         else:
             status = MembershipMonthStatus.STATUS_NOT_RENEWED
             studio_id = previous["studio_id"]
-            studio_method = (
-                MembershipMonthStatus.STUDIO_METHOD_PREVIOUS_MONTH
-                if previous["studio_id"]
-                else MembershipMonthStatus.STUDIO_METHOD_UNKNOWN
-            )
+            studio_method = previous["studio_method"]
 
         source = (current or previous)["source_purchase"]
         rows.append(MembershipMonthStatus(

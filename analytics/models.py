@@ -17,9 +17,11 @@ class MembershipMonthStatus(models.Model):
     STUDIO_METHOD_ATTENDANCE_MONTH = "attendance_month"
     STUDIO_METHOD_RECENT_ATTENDANCE = "recent_attendance"
     STUDIO_METHOD_PREVIOUS_MONTH = "previous_month"
+    STUDIO_METHOD_PURCHASE = "purchase"
     STUDIO_METHOD_UNKNOWN = "unknown"
 
     STUDIO_METHOD_CHOICES = [
+        (STUDIO_METHOD_PURCHASE, "Membership Purchase"),
         (STUDIO_METHOD_ATTENDANCE_MONTH, "Attendance in Month"),
         (STUDIO_METHOD_RECENT_ATTENDANCE, "Recent Attendance"),
         (STUDIO_METHOD_PREVIOUS_MONTH, "Previous Month"),
