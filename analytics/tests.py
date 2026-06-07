@@ -525,3 +525,179 @@ class RetentionFollowupActivityTests(TestCase):
         self.assertEqual(filtered_response.status_code, 200)
         self.assertEqual(filtered_response.data["count"], 1)
         self.assertEqual(filtered_response.data["rows"][0]["client"], "Paid Client")
+
+        retention_response = self.api.get(
+            reverse("analytics-retention"),
+            {
+                "date_from": "2026-04-01",
+                "date_to": "2026-04-30",
+            },
+        )
+        self.assertEqual(
+            [row["client"] for row in retention_response.data["not_renewed_clients"]],
+            ["Unpaid Client", "Paid Client", "Follow-up Client"],
+        )
+
+        tables_response = self.api.get(
+            reverse("analytics-dashboard-monthly-retention-tables"),
+            {
+                "date_from": "2026-04-01",
+                "date_to": "2026-04-30",
+            },
+        )
+        self.assertEqual(
+            [
+                row["client"]
+                for row in tables_response.data["tables"]["not_renewed"]["rows"]
+            ],
+            ["Unpaid Client", "Paid Client", "Follow-up Client"],
+        )
+
+    def test_new_non_members_use_first_non_trial_purchase(self):
+        trial_option = PricingOption.objects.create(
+            site=self.site,
+            name="Trial",
+            service_category=self.drop_in.service_category,
+            is_trial_class=True,
+        )
+        non_member = Client.objects.create(
+            site=self.site,
+            name="New Non-member",
+            mindbody_id="new-non-member",
+        )
+        trial_then_non_member = Client.objects.create(
+            site=self.site,
+            name="Trial Then Non-member",
+            mindbody_id="trial-then-non-member",
+        )
+        new_member = Client.objects.create(
+            site=self.site,
+            name="New Member",
+            mindbody_id="new-member",
+        )
+        existing_client = Client.objects.create(
+            site=self.site,
+            name="Existing Client",
+            mindbody_id="existing-client",
+        )
+        ServicePurchase.objects.create(
+            site=self.site,
+            studio=self.studio,
+            natural_key="new-non-member-first",
+            current_row_hash="new-non-member-first-hash",
+            client=non_member,
+            pricing_option=self.drop_in,
+            sale_date=date(2026, 4, 5),
+            total_amount=Decimal("25.00"),
+        )
+        ServicePurchase.objects.create(
+            site=self.site,
+            studio=self.studio,
+            natural_key="trial-first",
+            current_row_hash="trial-first-hash",
+            client=trial_then_non_member,
+            pricing_option=trial_option,
+            sale_date=date(2026, 4, 2),
+            total_amount=Decimal("0.00"),
+        )
+        ServicePurchase.objects.create(
+            site=self.site,
+            studio=self.studio,
+            natural_key="trial-then-drop-in",
+            current_row_hash="trial-then-drop-in-hash",
+            client=trial_then_non_member,
+            pricing_option=self.drop_in,
+            sale_date=date(2026, 4, 8),
+            total_amount=Decimal("25.00"),
+        )
+        member_purchase = ServicePurchase.objects.create(
+            site=self.site,
+            studio=self.studio,
+            natural_key="new-member-first",
+            current_row_hash="new-member-first-hash",
+            client=new_member,
+            pricing_option=self.membership,
+            sale_date=date(2026, 4, 6),
+            activation_date=date(2026, 4, 1),
+            expiration_date=date(2026, 4, 30),
+            total_amount=Decimal("100.00"),
+        )
+        MembershipMonthStatus.objects.create(
+            site=self.site,
+            studio=self.studio,
+            month=date(2026, 4, 1),
+            client=new_member,
+            status=MembershipMonthStatus.STATUS_NEW,
+            current_month_member=True,
+            membership_days=30,
+            membership_value=member_purchase.total_amount,
+            source_purchase=member_purchase,
+            studio_inference_method=MembershipMonthStatus.STUDIO_METHOD_PURCHASE,
+        )
+        ServicePurchase.objects.create(
+            site=self.site,
+            studio=self.studio,
+            natural_key="existing-client-march",
+            current_row_hash="existing-client-march-hash",
+            client=existing_client,
+            pricing_option=self.drop_in,
+            sale_date=date(2026, 3, 15),
+            total_amount=Decimal("25.00"),
+        )
+        ServicePurchase.objects.create(
+            site=self.site,
+            studio=self.studio,
+            natural_key="existing-client-april",
+            current_row_hash="existing-client-april-hash",
+            client=existing_client,
+            pricing_option=self.drop_in,
+            sale_date=date(2026, 4, 15),
+            total_amount=Decimal("25.00"),
+        )
+
+        response = self.api.get(
+            reverse("analytics-retention-followup"),
+            {
+                "date_from": "2026-04-01",
+                "date_to": "2026-04-30",
+                "status": "new_non_members",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 2)
+        self.assertEqual(
+            [row["client"] for row in response.data["rows"]],
+            ["New Non-member", "Trial Then Non-member"],
+        )
+        self.assertEqual(response.data["rows"][1]["sale_date"], "2026-04-08")
+
+        retention_response = self.api.get(
+            reverse("analytics-retention"),
+            {
+                "date_from": "2026-04-01",
+                "date_to": "2026-04-30",
+            },
+        )
+        self.assertEqual(retention_response.status_code, 200)
+        self.assertEqual(retention_response.data["new_non_members"], 2)
+        self.assertEqual(len(retention_response.data["new_non_member_samples"]), 2)
+
+        tables_response = self.api.get(
+            reverse("analytics-dashboard-monthly-retention-tables"),
+            {
+                "date_from": "2026-04-01",
+                "date_to": "2026-04-30",
+            },
+        )
+        self.assertEqual(tables_response.status_code, 200)
+        self.assertEqual(tables_response.data["tables"]["new_non_members"]["count"], 2)
+
+        history_response = self.api.get(
+            reverse(
+                "analytics-retention-client-purchase-history",
+                kwargs={"client_id": trial_then_non_member.id},
+            )
+        )
+        self.assertEqual(history_response.status_code, 200)
+        self.assertEqual(history_response.data["count"], 2)
