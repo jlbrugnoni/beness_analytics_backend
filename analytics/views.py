@@ -2508,7 +2508,8 @@ def dashboard_monthly_trends_view(request):
 @permission_classes([IsAuthenticated])
 def dashboard_monthly_retention_tables_view(request):
     start, end, _, statuses = membership_status_queryset(request)
-    limit = int(request.query_params.get("limit") or 200)
+    limit_value = request.query_params.get("limit")
+    limit = int(limit_value) if limit_value else None
     status_filters = {
         "not_renewed": MembershipMonthStatus.STATUS_NOT_RENEWED,
         "retained": MembershipMonthStatus.STATUS_RETAINED,
@@ -2523,7 +2524,10 @@ def dashboard_monthly_retention_tables_view(request):
             rows = sort_not_renewed_rows(rows)
         tables[key] = {
             "count": queryset.count(),
-            "rows": mask_membership_money_rows(request, rows[:limit]),
+            "rows": mask_membership_money_rows(
+                request,
+                rows[:limit] if limit is not None else rows,
+            ),
         }
     new_non_member_rows = new_non_member_purchase_rows(
         request,
@@ -2535,7 +2539,11 @@ def dashboard_monthly_retention_tables_view(request):
     )
     tables["new_non_members"] = {
         "count": len(new_non_member_rows),
-        "rows": new_non_member_rows[:limit],
+        "rows": (
+            new_non_member_rows[:limit]
+            if limit is not None
+            else new_non_member_rows
+        ),
     }
     return Response({
         "mode": "monthly",

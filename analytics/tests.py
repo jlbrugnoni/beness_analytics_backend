@@ -553,6 +553,19 @@ class RetentionFollowupActivityTests(TestCase):
             ["Unpaid Client", "Paid Client", "Follow-up Client"],
         )
 
+        limited_tables_response = self.api.get(
+            reverse("analytics-dashboard-monthly-retention-tables"),
+            {
+                "date_from": "2026-04-01",
+                "date_to": "2026-04-30",
+                "limit": 1,
+            },
+        )
+        self.assertEqual(
+            len(limited_tables_response.data["tables"]["not_renewed"]["rows"]),
+            1,
+        )
+
     def test_new_non_members_use_first_non_trial_purchase(self):
         trial_option = PricingOption.objects.create(
             site=self.site,
