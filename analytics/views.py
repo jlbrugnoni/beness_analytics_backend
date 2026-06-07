@@ -4,8 +4,9 @@ from decimal import Decimal
 import re
 
 from django.db import transaction
-from django.db.models import Count, DecimalField, Max, Min, Q, Sum
+from django.db.models import Count, DecimalField, F, Max, Min, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Coalesce, TruncDate
+from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -558,7 +559,7 @@ def membership_data_for_month(site_id, target_month):
     end = month_end(target_month)
     month_days = (end - start).days + 1
     purchases = (
-        ServicePurchase.objects.select_related("client", "pricing_option")
+        ServicePurchase.objects.select_related("client", "pricing_option", "studio")
         .filter(
             site_id=site_id,
             pricing_option__track_retention=True,
@@ -593,11 +594,16 @@ def membership_data_for_month(site_id, target_month):
     for client_id, row in grouped.items():
         days = min(union_days(row["intervals"]), month_days)
         if days >= 15:
-            studio_id, method = infer_membership_studio(site_id, client_id, target_month)
+            source_purchase = row["source_purchase"]
+            if source_purchase.studio_id:
+                studio_id = source_purchase.studio_id
+                method = MembershipMonthStatus.STUDIO_METHOD_PURCHASE
+            else:
+                studio_id, method = infer_membership_studio(site_id, client_id, target_month)
             members[client_id] = {
                 "days": days,
                 "value": row["value"],
-                "source_purchase": row["source_purchase"],
+                "source_purchase": source_purchase,
                 "studio_id": studio_id,
                 "studio_method": method,
             }
@@ -605,12 +611,41 @@ def membership_data_for_month(site_id, target_month):
 
 
 def historical_member_ids(site_id, before_month):
-    purchases = ServicePurchase.objects.filter(
-        site_id=site_id,
-        pricing_option__track_retention=True,
-        sale_date__lt=before_month,
-    ).values_list("client_id", flat=True)
-    return set(purchases)
+    purchases = (
+        ServicePurchase.objects.filter(
+            site_id=site_id,
+            pricing_option__track_retention=True,
+        )
+        .filter(
+            Q(activation_date__lt=before_month)
+            | Q(activation_date__isnull=True, sale_date__lt=before_month)
+        )
+        .order_by("client_id", "sale_date", "id")
+    )
+    intervals_by_client = {}
+    for purchase in purchases:
+        active_start = purchase.activation_date or purchase.sale_date
+        if not active_start or active_start >= before_month:
+            continue
+        active_end = purchase.expiration_date or before_month - timedelta(days=1)
+        active_end = min(active_end, before_month - timedelta(days=1))
+        if active_start <= active_end:
+            intervals_by_client.setdefault(purchase.client_id, []).append((active_start, active_end))
+
+    historical_members = set()
+    for client_id, intervals in intervals_by_client.items():
+        first_month = min(month_start(start) for start, _ in intervals)
+        for target_month in months_between(first_month, add_months(before_month, -1)):
+            target_end = month_end(target_month)
+            covered_intervals = [
+                (max(start, target_month), min(end, target_end))
+                for start, end in intervals
+                if start <= target_end and end >= target_month
+            ]
+            if union_days(covered_intervals) >= 15:
+                historical_members.add(client_id)
+                break
+    return historical_members
 
 
 def rebuild_membership_month(site_id, target_month):
@@ -627,7 +662,7 @@ def rebuild_membership_month(site_id, target_month):
         if current and previous:
             status = MembershipMonthStatus.STATUS_RETAINED
             studio_id = current["studio_id"] or previous["studio_id"]
-            studio_method = current["studio_method"] if current["studio_id"] else MembershipMonthStatus.STUDIO_METHOD_PREVIOUS_MONTH
+            studio_method = current["studio_method"] if current["studio_id"] else previous["studio_method"]
         elif current:
             status = (
                 MembershipMonthStatus.STATUS_REACTIVATED
@@ -639,11 +674,7 @@ def rebuild_membership_month(site_id, target_month):
         else:
             status = MembershipMonthStatus.STATUS_NOT_RENEWED
             studio_id = previous["studio_id"]
-            studio_method = (
-                MembershipMonthStatus.STUDIO_METHOD_PREVIOUS_MONTH
-                if previous["studio_id"]
-                else MembershipMonthStatus.STUDIO_METHOD_UNKNOWN
-            )
+            studio_method = previous["studio_method"]
 
         source = (current or previous)["source_purchase"]
         rows.append(MembershipMonthStatus(
@@ -665,6 +696,53 @@ def rebuild_membership_month(site_id, target_month):
         MembershipMonthStatus.objects.filter(site_id=site_id, month=target_month).delete()
         MembershipMonthStatus.objects.bulk_create(rows)
     return len(rows)
+
+
+def rebuild_membership_months_after_import(site_id, report_import_id):
+    purchases = ServicePurchase.objects.filter(
+        site_id=site_id,
+        last_seen_import_id=report_import_id,
+        pricing_option__track_retention=True,
+    ).values("sale_date", "activation_date", "expiration_date")
+    coverage_ranges = [
+        (
+            purchase["activation_date"] or purchase["sale_date"],
+            purchase["expiration_date"] or purchase["activation_date"] or purchase["sale_date"],
+        )
+        for purchase in purchases
+        if purchase["activation_date"] or purchase["sale_date"]
+    ]
+    if not coverage_ranges:
+        return {
+            "skipped": True,
+            "reason": "The report did not contain tracked retention purchases.",
+            "rebuilt": [],
+            "total_rows": 0,
+        }
+
+    first_month = min(month_start(start) for start, _ in coverage_ranges)
+    last_coverage_month = max(month_start(end) for _, end in coverage_ranges)
+    last_required_month = add_months(last_coverage_month, 1)
+    latest_snapshot = (
+        MembershipMonthStatus.objects.filter(site_id=site_id)
+        .aggregate(latest=Max("month"))
+        .get("latest")
+    )
+    if latest_snapshot:
+        last_required_month = max(last_required_month, latest_snapshot)
+
+    rebuilt = [
+        {
+            "month": target_month.isoformat(),
+            "rows": rebuild_membership_month(site_id, target_month),
+        }
+        for target_month in months_between(first_month, last_required_month)
+    ]
+    return {
+        "skipped": False,
+        "rebuilt": rebuilt,
+        "total_rows": sum(row["rows"] for row in rebuilt),
+    }
 
 
 def membership_status_queryset(request, start=None, end=None):
@@ -709,6 +787,20 @@ def membership_history_for_statuses(statuses):
         (row["site_id"], row["client_id"]): row
         for row in rows
     }
+    purchases = (
+        ServicePurchase.objects.filter(
+            site_id__in=site_ids,
+            client_id__in=client_ids,
+            pricing_option__track_retention=True,
+        )
+        .values("id", "site_id", "client_id", "sale_date")
+        .order_by("site_id", "client_id", "sale_date", "id")
+    )
+    for purchase in purchases:
+        history.setdefault(
+            (purchase["site_id"], purchase["client_id"]),
+            {},
+        ).setdefault("_purchases", []).append(purchase)
     return status_rows, history
 
 
@@ -809,6 +901,16 @@ def serialize_membership_status(status, membership_history=None, not_renewed_act
     activity = (not_renewed_activity or {}).get(status.id, default_not_renewed_activity(status))
     first_sale_date = history.get("first_sale_date")
     last_sale_date = history.get("last_sale_date")
+    previous_sale_date = None
+    if purchase and purchase.sale_date:
+        source_key = (purchase.sale_date, purchase.id)
+        previous_purchases = [
+            item
+            for item in history.get("_purchases", [])
+            if item["sale_date"] and (item["sale_date"], item["id"]) < source_key
+        ]
+        if previous_purchases:
+            previous_sale_date = previous_purchases[-1]["sale_date"]
     return {
         "id": status.id,
         "month": status.month.isoformat(),
@@ -831,6 +933,7 @@ def serialize_membership_status(status, membership_history=None, not_renewed_act
         "tracked_membership_purchase_count": history.get("purchase_count", 0),
         "first_membership_purchase_date": first_sale_date.isoformat() if first_sale_date else None,
         "last_membership_purchase_date": last_sale_date.isoformat() if last_sale_date else None,
+        "previous_membership_purchase_date": previous_sale_date.isoformat() if previous_sale_date else None,
         "lifetime_membership_value": decimal_value(history.get("lifetime_value")),
         **activity,
     }
@@ -843,6 +946,103 @@ def serialize_membership_status_rows(statuses):
         serialize_membership_status(row, membership_history, not_renewed_activity)
         for row in status_rows
     ]
+
+
+NOT_RENEWED_ACTIVITY_ORDER = {
+    "attending_unpaid": 0,
+    "attending_paid": 1,
+    "inactive": 2,
+}
+
+
+def sort_not_renewed_rows(rows):
+    return sorted(rows, key=lambda row: (
+        NOT_RENEWED_ACTIVITY_ORDER.get(row.get("not_renewed_activity_status"), 99),
+        str(row.get("client") or "").casefold(),
+        row.get("month") or "",
+    ))
+
+
+def new_non_member_purchase_rows(request, start, end, exclude_client_months=None):
+    first_non_trial_sale_date = (
+        ServicePurchase.objects.filter(
+            client_id=OuterRef("client_id"),
+            pricing_option__is_trial_class=False,
+        )
+        .order_by("sale_date", "id")
+        .values("sale_date")[:1]
+    )
+    purchases = (
+        filtered_by_site(
+            ServicePurchase.objects.select_related(
+                "client",
+                "pricing_option",
+                "studio",
+            ).exclude(pricing_option__is_trial_class=True),
+            request,
+        )
+        .annotate(first_non_trial_sale_date=Subquery(first_non_trial_sale_date))
+        .filter(
+            sale_date=F("first_non_trial_sale_date"),
+            sale_date__gte=start,
+            sale_date__lte=end,
+        )
+        .order_by("client_id", "sale_date", "id")
+    )
+    first_date_purchases = {}
+    for purchase in purchases:
+        client_rows = first_date_purchases.get(purchase.client_id)
+        if client_rows is None:
+            first_date_purchases[purchase.client_id] = [purchase]
+        elif purchase.sale_date == client_rows[0].sale_date:
+            client_rows.append(purchase)
+
+    excluded = set(exclude_client_months or [])
+    selected_studio = str(request.query_params.get("studio") or "")
+    rows = []
+    for client_id, first_purchases in first_date_purchases.items():
+        first_purchase = first_purchases[0]
+        if (
+            (client_id, month_start(first_purchase.sale_date)) in excluded
+            or any(purchase.pricing_option.track_retention for purchase in first_purchases)
+        ):
+            continue
+        source_purchase = first_purchase
+        if selected_studio and str(source_purchase.studio_id or "") != selected_studio:
+            continue
+        rows.append({
+            "id": f"purchase-{source_purchase.id}",
+            "purchase_id": source_purchase.id,
+            "history_client_id": source_purchase.client_id,
+            "month": month_start(source_purchase.sale_date).isoformat(),
+            "status": "new_non_member",
+            "client": source_purchase.client.name,
+            "client_mindbody_id": source_purchase.client.mindbody_id,
+            "client_email": source_purchase.client.email,
+            "client_phone": source_purchase.client.phone,
+            "client_id": source_purchase.client_id,
+            "studio": source_purchase.studio.name if source_purchase.studio else "Unknown",
+            "studio_id": source_purchase.studio_id,
+            "service": service_label(source_purchase),
+            "sale_date": source_purchase.sale_date.isoformat(),
+            "activation_date": (
+                source_purchase.activation_date.isoformat()
+                if source_purchase.activation_date
+                else None
+            ),
+            "expiration_date": (
+                source_purchase.expiration_date.isoformat()
+                if source_purchase.expiration_date
+                else None
+            ),
+            "membership_days": 0,
+            "previous_membership_days": 0,
+            "total_amount": money_value(request, source_purchase.total_amount),
+            "tracked_membership_purchase_count": 0,
+            "lifetime_membership_value": None,
+            "not_renewed_activity_status": None,
+        })
+    return sorted(rows, key=lambda row: (row["sale_date"], row["client"]))
 
 
 def not_renewed_activity_summary(statuses):
@@ -1186,6 +1386,14 @@ def retention_payload(request, start=None, end=None, sample_limit=25):
     current_members = statuses.filter(current_month_member=True).count()
     retained = statuses.filter(status=MembershipMonthStatus.STATUS_RETAINED).count()
     new_members = statuses.filter(status=MembershipMonthStatus.STATUS_NEW).count()
+    new_non_member_rows = new_non_member_purchase_rows(
+        request,
+        start,
+        end,
+        exclude_client_months=statuses.filter(
+            status=MembershipMonthStatus.STATUS_NEW,
+        ).values_list("client_id", "month"),
+    )
     reactivated = statuses.filter(status=MembershipMonthStatus.STATUS_REACTIVATED).count()
     not_renewed = statuses.filter(status=MembershipMonthStatus.STATUS_NOT_RENEWED)
     not_renewed_count = not_renewed.count()
@@ -1223,6 +1431,11 @@ def retention_payload(request, start=None, end=None, sample_limit=25):
         month_previous = month_statuses.filter(previous_month_member=True).count()
         month_retained = month_statuses.filter(status=MembershipMonthStatus.STATUS_RETAINED).count()
         renewal_rate_by_month[month.isoformat()] = percentage(month_retained, month_previous)
+    not_renewed_sample_rows = []
+    if sample_limit:
+        not_renewed_sample_rows = sort_not_renewed_rows(
+            serialize_membership_status_rows(not_renewed.order_by("client__name"))
+        )[:sample_limit]
 
     return {
         "date_range": {"from": start.isoformat(), "to": end.isoformat()},
@@ -1233,6 +1446,7 @@ def retention_payload(request, start=None, end=None, sample_limit=25):
         "current_month_members": current_members,
         "retained_members": retained,
         "new_members": new_members,
+        "new_non_members": len(new_non_member_rows),
         "reactivated_members": reactivated,
         "not_renewed_services": not_renewed_count,
         "not_renewed_members": not_renewed_count,
@@ -1252,16 +1466,14 @@ def retention_payload(request, start=None, end=None, sample_limit=25):
         "not_renewed_members_by_month": not_renewed_members_by_month,
         "not_renewed_unassigned_studio_by_month": not_renewed_unassigned_studio_by_month,
         "renewal_rate_by_month": renewal_rate_by_month,
-        "not_renewed_clients": mask_membership_money_rows(
-            request,
-            serialize_membership_status_rows(not_renewed.order_by("month", "client__name")[:sample_limit]),
-        ),
+        "not_renewed_clients": mask_membership_money_rows(request, not_renewed_sample_rows),
         "retained_samples": mask_membership_money_rows(request, serialize_membership_status_rows(
             statuses.filter(status=MembershipMonthStatus.STATUS_RETAINED).order_by("month", "client__name")[:sample_limit]
         )),
         "new_member_samples": mask_membership_money_rows(request, serialize_membership_status_rows(
             statuses.filter(status=MembershipMonthStatus.STATUS_NEW).order_by("month", "client__name")[:sample_limit]
         )),
+        "new_non_member_samples": new_non_member_rows[:sample_limit],
         "reactivated_samples": mask_membership_money_rows(request, serialize_membership_status_rows(
             statuses.filter(status=MembershipMonthStatus.STATUS_REACTIVATED).order_by("month", "client__name")[:sample_limit]
         )),
@@ -1282,9 +1494,10 @@ def retention_view(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def retention_followup_view(request):
-    _, _, _, statuses = membership_status_queryset(request)
+    start, end, _, statuses = membership_status_queryset(request)
     status_value = request.query_params.get("status", "not_renewed")
     search = str(request.query_params.get("search") or "").strip().casefold()
+    activity_filter = str(request.query_params.get("activity") or "all").strip()
     status_map = {
         "retained": MembershipMonthStatus.STATUS_RETAINED,
         "renewed": MembershipMonthStatus.STATUS_RETAINED,
@@ -1292,11 +1505,21 @@ def retention_followup_view(request):
         "reactivated": MembershipMonthStatus.STATUS_REACTIVATED,
         "not_renewed": MembershipMonthStatus.STATUS_NOT_RENEWED,
     }
-    queryset = statuses.filter(status=status_map.get(status_value, MembershipMonthStatus.STATUS_NOT_RENEWED))
-    rows = mask_membership_money_rows(
-        request,
-        serialize_membership_status_rows(queryset.order_by("month", "client__name")),
-    )
+    if status_value == "new_non_members":
+        rows = new_non_member_purchase_rows(
+            request,
+            start,
+            end,
+            exclude_client_months=statuses.filter(
+                status=MembershipMonthStatus.STATUS_NEW,
+            ).values_list("client_id", "month"),
+        )
+    else:
+        queryset = statuses.filter(status=status_map.get(status_value, MembershipMonthStatus.STATUS_NOT_RENEWED))
+        rows = mask_membership_money_rows(
+            request,
+            serialize_membership_status_rows(queryset.order_by("month", "client__name")),
+        )
 
     if search:
         rows = [
@@ -1307,11 +1530,252 @@ def retention_followup_view(request):
             or search in str(row.get("studio") or "").casefold()
         ]
 
-    rows.sort(key=lambda row: (row.get("month") or "", row.get("client") or ""))
+    activity_counts = {
+        "all": len(rows),
+        "attending_unpaid": 0,
+        "attending_paid": 0,
+        "inactive": 0,
+    }
+    if status_value == "not_renewed":
+        for row in rows:
+            activity_status = row.get("not_renewed_activity_status") or "inactive"
+            if activity_status in activity_counts:
+                activity_counts[activity_status] += 1
+        if activity_filter in NOT_RENEWED_ACTIVITY_ORDER:
+            rows = [
+                row for row in rows
+                if row.get("not_renewed_activity_status") == activity_filter
+            ]
+
+    if status_value == "not_renewed":
+        rows = sort_not_renewed_rows(rows)
+    else:
+        rows.sort(key=lambda row: (row.get("month") or "", row.get("client") or ""))
     return Response({
         "status": status_value,
+        "activity": activity_filter,
+        "activity_counts": activity_counts,
         "count": len(rows),
         "rows": rows,
+    })
+
+
+def serialize_retention_activity_visit(request, visit):
+    return {
+        "id": visit.id,
+        "date": visit.visit_date.isoformat(),
+        "time": visit.visit_time_raw,
+        "studio": visit.visit_studio.name,
+        "studio_id": visit.visit_studio_id,
+        "pricing_option": visit.pricing_option.name if visit.pricing_option else "N/A",
+        "payment_status": "paid" if (visit.revenue or Decimal("0.00")) > 0 else "unpaid",
+        "revenue": money_value(request, visit.revenue),
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def retention_followup_activity_view(request, snapshot_id):
+    statuses = scoped_queryset_for_user(
+        MembershipMonthStatus.objects.select_related(
+            "client",
+            "site",
+            "studio",
+            "source_purchase",
+        ),
+        request.user,
+        site_field="site_id",
+        studio_field="studio_id",
+        include_null_studio=True,
+    )
+    status = statuses.filter(pk=snapshot_id).first()
+    if not status:
+        return Response({"detail": "Retention snapshot not found."}, status=404)
+    if status.status != MembershipMonthStatus.STATUS_NOT_RENEWED:
+        return Response(
+            {"detail": "Activity details are available only for not renewed snapshots."},
+            status=400,
+        )
+    if not status.source_purchase or not status.source_purchase.expiration_date:
+        return Response(
+            {"detail": "The membership expiration date is unavailable for this snapshot."},
+            status=400,
+        )
+
+    followup_start = status.source_purchase.expiration_date + timedelta(days=1)
+    followup_end = month_end(status.month)
+    later_start = followup_end + timedelta(days=1)
+    later_end = timezone.localdate()
+    visits = (
+        scoped_queryset_for_user(
+            AttendanceVisit.objects.all(),
+            request.user,
+            site_field="site_id",
+            studio_field="visit_studio_id",
+        )
+        .filter(
+            site_id=status.site_id,
+            client_id=status.client_id,
+            visit_date__gte=followup_start,
+            visit_date__lte=later_end,
+            no_show=False,
+            late_cancel=False,
+        )
+        .select_related("visit_studio", "pricing_option")
+        .order_by("visit_date", "visit_time_raw", "id")
+    )
+    followup_visits = [
+        serialize_retention_activity_visit(request, visit)
+        for visit in visits
+        if visit.visit_date <= followup_end
+    ]
+    later_visits = [
+        serialize_retention_activity_visit(request, visit)
+        for visit in visits
+        if later_start <= visit.visit_date <= later_end
+    ]
+    return Response({
+        "snapshot_id": status.id,
+        "client": status.client.name,
+        "client_id": status.client_id,
+        "snapshot_month": status.month.isoformat(),
+        "last_tracked_purchase": {
+            "service": service_label(status.source_purchase),
+            "studio": (
+                status.source_purchase.studio.name
+                if status.source_purchase.studio
+                else status.studio.name
+                if status.studio
+                else "Unknown"
+            ),
+            "sale_date": status.source_purchase.sale_date.isoformat(),
+            "activation_date": (
+                status.source_purchase.activation_date.isoformat()
+                if status.source_purchase.activation_date
+                else None
+            ),
+            "expiration_date": status.source_purchase.expiration_date.isoformat(),
+        },
+        "activity_status": (
+            "attending_paid"
+            if any(visit["payment_status"] == "paid" for visit in followup_visits)
+            else "attending_unpaid"
+            if followup_visits
+            else "inactive"
+        ),
+        "followup_period": {
+            "from": followup_start.isoformat(),
+            "to": followup_end.isoformat(),
+            "visits": followup_visits,
+        },
+        "later_period": {
+            "from": later_start.isoformat(),
+            "to": later_end.isoformat(),
+            "visits": later_visits,
+        },
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def retention_purchase_history_view(request, snapshot_id):
+    statuses = scoped_queryset_for_user(
+        MembershipMonthStatus.objects.select_related("client", "site"),
+        request.user,
+        site_field="site_id",
+        studio_field="studio_id",
+        include_null_studio=True,
+    )
+    status = statuses.filter(pk=snapshot_id).first()
+    if not status:
+        return Response({"detail": "Retention snapshot not found."}, status=404)
+
+    purchases = (
+        scoped_queryset_for_user(
+            ServicePurchase.objects.all(),
+            request.user,
+            site_field="site_id",
+            studio_field="studio_id",
+            include_null_studio=True,
+        )
+        .filter(
+            site_id=status.site_id,
+            client_id=status.client_id,
+        )
+        .select_related("pricing_option", "studio")
+        .order_by("-sale_date", "-id")
+    )
+    return Response({
+        "snapshot_id": status.id,
+        "client": status.client.name,
+        "client_id": status.client_id,
+        "count": purchases.count(),
+        "purchases": [
+            {
+                "id": purchase.id,
+                "service": service_label(purchase),
+                "studio": purchase.studio.name if purchase.studio else "Unknown",
+                "studio_id": purchase.studio_id,
+                "sale_date": purchase.sale_date.isoformat(),
+                "activation_date": (
+                    purchase.activation_date.isoformat()
+                    if purchase.activation_date
+                    else None
+                ),
+                "expiration_date": (
+                    purchase.expiration_date.isoformat()
+                    if purchase.expiration_date
+                    else None
+                ),
+                "amount": money_value(request, purchase.total_amount),
+            }
+            for purchase in purchases
+        ],
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def retention_client_purchase_history_view(request, client_id):
+    purchases = (
+        scoped_queryset_for_user(
+            ServicePurchase.objects.select_related("client", "pricing_option", "studio"),
+            request.user,
+            site_field="site_id",
+            studio_field="studio_id",
+            include_null_studio=True,
+        )
+        .filter(client_id=client_id)
+        .order_by("-sale_date", "-id")
+    )
+    first_purchase = purchases.first()
+    if not first_purchase:
+        return Response({"detail": "Client purchase history not found."}, status=404)
+    return Response({
+        "client": first_purchase.client.name,
+        "client_id": first_purchase.client_id,
+        "count": purchases.count(),
+        "purchases": [
+            {
+                "id": purchase.id,
+                "service": service_label(purchase),
+                "studio": purchase.studio.name if purchase.studio else "Unknown",
+                "studio_id": purchase.studio_id,
+                "sale_date": purchase.sale_date.isoformat(),
+                "activation_date": (
+                    purchase.activation_date.isoformat()
+                    if purchase.activation_date
+                    else None
+                ),
+                "expiration_date": (
+                    purchase.expiration_date.isoformat()
+                    if purchase.expiration_date
+                    else None
+                ),
+                "amount": money_value(request, purchase.total_amount),
+            }
+            for purchase in purchases
+        ],
     })
 
 
@@ -2044,7 +2508,8 @@ def dashboard_monthly_trends_view(request):
 @permission_classes([IsAuthenticated])
 def dashboard_monthly_retention_tables_view(request):
     start, end, _, statuses = membership_status_queryset(request)
-    limit = int(request.query_params.get("limit") or 200)
+    limit_value = request.query_params.get("limit")
+    limit = int(limit_value) if limit_value else None
     status_filters = {
         "not_renewed": MembershipMonthStatus.STATUS_NOT_RENEWED,
         "retained": MembershipMonthStatus.STATUS_RETAINED,
@@ -2054,10 +2519,32 @@ def dashboard_monthly_retention_tables_view(request):
     tables = {}
     for key, status_value in status_filters.items():
         queryset = statuses.filter(status=status_value).order_by("month", "client__name")
+        rows = serialize_membership_status_rows(queryset)
+        if key == "not_renewed":
+            rows = sort_not_renewed_rows(rows)
         tables[key] = {
             "count": queryset.count(),
-            "rows": mask_membership_money_rows(request, serialize_membership_status_rows(queryset[:limit])),
+            "rows": mask_membership_money_rows(
+                request,
+                rows[:limit] if limit is not None else rows,
+            ),
         }
+    new_non_member_rows = new_non_member_purchase_rows(
+        request,
+        start,
+        end,
+        exclude_client_months=statuses.filter(
+            status=MembershipMonthStatus.STATUS_NEW,
+        ).values_list("client_id", "month"),
+    )
+    tables["new_non_members"] = {
+        "count": len(new_non_member_rows),
+        "rows": (
+            new_non_member_rows[:limit]
+            if limit is not None
+            else new_non_member_rows
+        ),
+    }
     return Response({
         "mode": "monthly",
         "date_range": {"from": start.isoformat(), "to": end.isoformat()},

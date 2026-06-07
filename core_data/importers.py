@@ -2345,11 +2345,7 @@ def preview_sales_by_service_report(uploaded_file, site, studio=None):
                 lambda payload: service_purchase_natural_key(site, payload, studio),
                 sample_fields,
             ),
-            "import_impact": current_record_impact(
-                rows["valid_rows"],
-                ServicePurchase,
-                lambda payload: service_purchase_natural_key(site, payload, studio),
-            ),
+            "import_impact": service_purchase_import_impact(site, studio, rows["valid_rows"]),
         },
         "invalid_row_samples": rows["invalid_rows"][:10],
         "sample_rows": rows["valid_rows"][:5],
@@ -2364,8 +2360,18 @@ def service_purchase_natural_key(site, payload, studio=None):
         payload.get("ID del Cliente"),
         payload.get("Nombre"),
         payload.get("_sale_date"),
-        payload.get("_activation_date"),
-        payload.get("_expiration_date"),
+        payload.get("_total_amount"),
+        payload.get("_quantity"),
+    ])
+
+
+def service_purchase_stable_key(site, payload, studio=None):
+    return hash_parts([
+        site.id,
+        studio.id if studio else "",
+        payload.get("ID del Cliente"),
+        payload.get("Nombre"),
+        payload.get("_sale_date"),
         payload.get("_total_amount"),
         payload.get("_quantity"),
     ])
@@ -2388,6 +2394,106 @@ def service_purchase_snapshot(payload, related):
         "non_cash_equivalent": decimal_string(payload.get("_non_cash_equivalent")),
         "quantity": decimal_string(payload.get("_quantity")),
     }
+
+
+def service_purchase_import_impact(site, studio, valid_rows):
+    client_ids = {
+        clean_value(row["payload"].get("ID del Cliente"))
+        for row in valid_rows
+    }
+    option_names = {
+        clean_value(row["payload"].get("Nombre"))
+        for row in valid_rows
+    }
+    clients = {
+        str(client.mindbody_id): client.id
+        for client in Client.objects.filter(site=site, mindbody_id__in=client_ids)
+    }
+    options = {
+        option.name: option.id
+        for option in PricingOption.objects.filter(site=site, name__in=option_names)
+    }
+    existing_groups = {}
+    for purchase in ServicePurchase.objects.filter(
+        site=site,
+        studio=studio,
+        client_id__in=clients.values(),
+        pricing_option_id__in=options.values(),
+    ).order_by("id"):
+        key = (
+            purchase.client_id,
+            purchase.pricing_option_id,
+            purchase.sale_date.isoformat(),
+            decimal_string(purchase.total_amount),
+            decimal_string(purchase.quantity),
+        )
+        existing_groups.setdefault(key, []).append(purchase)
+
+    candidate_groups = {}
+    unresolved_rows = 0
+    for row in valid_rows:
+        payload = row["payload"]
+        client_id = clients.get(str(payload.get("ID del Cliente")))
+        option_id = options.get(payload.get("Nombre"))
+        if not client_id or not option_id:
+            unresolved_rows += 1
+            continue
+        key = (
+            client_id,
+            option_id,
+            payload.get("_sale_date"),
+            decimal_string(payload.get("_total_amount")),
+            decimal_string(payload.get("_quantity")),
+        )
+        candidate_groups.setdefault(key, []).append(row)
+
+    impact = {
+        "raw_rows_to_save": len(valid_rows),
+        "current_records_to_create": unresolved_rows,
+        "current_records_to_update": 0,
+        "current_records_unchanged": 0,
+        "current_records_in_file": len(valid_rows),
+        "natural_key_collisions": 0,
+        "ambiguous_rows": 0,
+    }
+    for key, candidates in candidate_groups.items():
+        remaining_existing = list(existing_groups.get(key, []))
+        remaining_candidates = []
+        for row in candidates:
+            payload = row["payload"]
+            exact = next(
+                (
+                    purchase
+                    for purchase in remaining_existing
+                    if (
+                        purchase.activation_date.isoformat()
+                        if purchase.activation_date
+                        else None
+                    ) == payload.get("_activation_date")
+                    and (
+                        purchase.expiration_date.isoformat()
+                        if purchase.expiration_date
+                        else None
+                    ) == payload.get("_expiration_date")
+                ),
+                None,
+            )
+            if exact:
+                if exact.current_row_hash == row["hash"]:
+                    impact["current_records_unchanged"] += 1
+                else:
+                    impact["current_records_to_update"] += 1
+                remaining_existing.remove(exact)
+            else:
+                remaining_candidates.append(row)
+
+        if len(remaining_candidates) == 1 and len(remaining_existing) == 1:
+            impact["current_records_to_update"] += 1
+        elif not remaining_existing:
+            impact["current_records_to_create"] += len(remaining_candidates)
+        else:
+            impact["ambiguous_rows"] += len(remaining_candidates)
+    return impact
 
 
 @transaction.atomic
@@ -2417,6 +2523,7 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None, studio
         "service_purchases_created": 0,
         "service_purchases_changed": 0,
         "service_purchases_identical": 0,
+        "service_purchase_ambiguous_rows": 0,
         "natural_key_collisions": 0,
         "versions_created": 0,
         "new_lookups": {"clients": 0, "service_categories": 0, "pricing_options": 0},
@@ -2424,9 +2531,9 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None, studio
     rows_to_import = validate_sales_by_service_rows(uploaded_file)
     assign_occurrence_indexes(
         rows_to_import["valid_rows"],
-        lambda payload: service_purchase_natural_key(site, payload, studio),
+        lambda payload: service_purchase_stable_key(site, payload, studio),
     )
-    current_candidates = {}
+    current_candidates = []
     lookup_cache = {}
 
     for row in rows_to_import["valid_rows"]:
@@ -2475,20 +2582,90 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None, studio
             "service_category": service_category,
             "pricing_option": pricing_option,
         }
-        current_candidates[service_purchase_natural_key(site, payload, studio)] = {
+        current_candidates.append({
+            "natural_key": service_purchase_natural_key(site, payload, studio),
             "row": row,
             "payload": payload,
             "raw_row": raw_row,
             "related": related,
-        }
+        })
 
-    for natural_key, candidate in current_candidates.items():
+    grouped_candidates = {}
+    for candidate in current_candidates:
+        payload = candidate["payload"]
+        related = candidate["related"]
+        group_key = (
+            related["site"].id,
+            related["studio"].id if related.get("studio") else None,
+            related["client"].id,
+            related["pricing_option"].id,
+            payload["_sale_date"],
+            decimal_string(payload.get("_total_amount")),
+            decimal_string(payload.get("_quantity")),
+        )
+        grouped_candidates.setdefault(group_key, []).append(candidate)
+
+    matched_candidates = []
+    ambiguous_candidates = []
+    for group_key, candidates in grouped_candidates.items():
+        site_key, studio_key, client_key, option_key, sale_date, total_amount, quantity = group_key
+        existing = list(
+            ServicePurchase.objects.filter(
+                site_id=site_key,
+                studio_id=studio_key,
+                client_id=client_key,
+                pricing_option_id=option_key,
+                sale_date=sale_date,
+                total_amount=money(total_amount),
+                quantity=money(quantity),
+            ).order_by("id")
+        )
+        remaining_existing = existing[:]
+        remaining_candidates = []
+        for candidate in candidates:
+            payload = candidate["payload"]
+            exact = next(
+                (
+                    purchase
+                    for purchase in remaining_existing
+                    if (
+                        purchase.activation_date.isoformat()
+                        if purchase.activation_date
+                        else None
+                    ) == payload.get("_activation_date")
+                    and (
+                        purchase.expiration_date.isoformat()
+                        if purchase.expiration_date
+                        else None
+                    ) == payload.get("_expiration_date")
+                ),
+                None,
+            )
+            if exact:
+                candidate["service_purchase"] = exact
+                remaining_existing.remove(exact)
+                matched_candidates.append(candidate)
+            else:
+                remaining_candidates.append(candidate)
+
+        if len(remaining_candidates) == 1 and len(remaining_existing) == 1:
+            remaining_candidates[0]["service_purchase"] = remaining_existing[0]
+            matched_candidates.append(remaining_candidates[0])
+        elif not remaining_existing:
+            matched_candidates.extend(remaining_candidates)
+        elif remaining_candidates:
+            ambiguous_candidates.extend(remaining_candidates)
+
+    stats["service_purchase_ambiguous_rows"] = len(ambiguous_candidates)
+
+    for candidate in matched_candidates:
+        natural_key = candidate["natural_key"]
         row = candidate["row"]
         payload = candidate["payload"]
         raw_row = candidate["raw_row"]
         related = candidate["related"]
         snapshot = service_purchase_snapshot(payload, related)
-        service_purchase = ServicePurchase.objects.filter(natural_key=natural_key).first()
+        service_purchase = candidate.get("service_purchase")
         previous_snapshot = None
         if service_purchase:
             previous_version = service_purchase.versions.order_by("-created_at").first()
@@ -2498,6 +2675,7 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None, studio
         values = {
             "site": site,
             "studio": related["studio"],
+            "natural_key": natural_key,
             "current_row_hash": row["hash"],
             "client": related["client"],
             "service_category": related["service_category"],
@@ -2514,10 +2692,11 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None, studio
             "source_raw_row": raw_row,
         }
         if not service_purchase:
+            create_values = {key: value for key, value in values.items() if key != "natural_key"}
             service_purchase = ServicePurchase.objects.create(
                 natural_key=natural_key,
                 first_seen_import=report_import,
-                **values,
+                **create_values,
             )
             stats["service_purchases_created"] += 1
             changes = list(snapshot.keys())

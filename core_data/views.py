@@ -968,6 +968,7 @@ class ReportImportViewSet(viewsets.ModelViewSet):
         "import_file": "can_upload_data",
         "rollback": "can_reset_data",
         "reset_analytics_data": "can_reset_data",
+        "repair_sales_by_service_purchases": "can_reset_data",
         "destroy": "can_reset_data",
     }
 
@@ -1260,6 +1261,56 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             ],
         })
 
+    @action(detail=False, methods=["post"], url_path="repair-sales-by-service-purchases")
+    def repair_sales_by_service_purchases(self, request):
+        if not settings.ENABLE_PURCHASE_REPAIR:
+            return Response(
+                {"error": "Analytics maintenance actions are disabled for this environment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        apply_changes = request.data.get("apply") in (True, "true", "True", "1", 1)
+        if apply_changes and request.data.get("confirmation") != "REPAIR PURCHASES":
+            return Response(
+                {"error": "Invalid confirmation phrase."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from analytics.views import add_months, month_start, months_between, rebuild_membership_month
+        from core_data.purchase_repair import apply_purchase_repairs, audit_purchase_repairs
+
+        site_id = request.data.get("site") or request.query_params.get("site")
+        if not site_id:
+            return Response(
+                {"error": "Site is required for purchase maintenance."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        scoped_sites = scoped_queryset_for_user(Site.objects.all(), request.user, site_field="id")
+        if not scoped_sites.filter(id=site_id).exists():
+            return Response({"error": "Site not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        result = (
+            apply_purchase_repairs(site_id=site_id)
+            if apply_changes
+            else audit_purchase_repairs(site_id=site_id)
+        )
+        result["dry_run"] = not apply_changes
+        result["confirmation_required"] = "REPAIR PURCHASES"
+
+        rebuilt = []
+        if apply_changes:
+            for affected_site_id, range_values in result.get("affected_ranges", {}).items():
+                start_month = month_start(parse_iso_date(range_values["from"]))
+                end_month = add_months(month_start(parse_iso_date(range_values["to"])), 1)
+                for target_month in months_between(start_month, end_month):
+                    rebuilt.append({
+                        "site_id": int(affected_site_id),
+                        "month": target_month.isoformat(),
+                        "rows": rebuild_membership_month(int(affected_site_id), target_month),
+                    })
+        result["rebuilt_snapshots"] = rebuilt
+        return Response(result)
+
     @action(detail=False, methods=["post"], url_path="preview")
     def preview(self, request):
         uploaded_file = request.FILES.get("file")
@@ -1361,6 +1412,19 @@ class ReportImportViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
             result = import_report(uploaded_file, site, report_type, uploaded_by=request.user, options=options)
+            if report_type == "sales_by_service":
+                try:
+                    from analytics.views import rebuild_membership_months_after_import
+
+                    result["retention_automation"] = rebuild_membership_months_after_import(
+                        site.id,
+                        result["import"]["report_import_id"],
+                    )
+                except Exception as exc:
+                    result["retention_automation"] = {
+                        "skipped": True,
+                        "error": f"Retention snapshot automation failed after import: {exc}",
+                    }
             auto_reconcile = request.data.get("auto_schedule_reconcile", "true")
             if auto_reconcile in (True, "true", "True", "1", 1):
                 try:
