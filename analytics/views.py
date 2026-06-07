@@ -1388,12 +1388,18 @@ def retention_followup_view(request):
     _, _, _, statuses = membership_status_queryset(request)
     status_value = request.query_params.get("status", "not_renewed")
     search = str(request.query_params.get("search") or "").strip().casefold()
+    activity_filter = str(request.query_params.get("activity") or "all").strip()
     status_map = {
         "retained": MembershipMonthStatus.STATUS_RETAINED,
         "renewed": MembershipMonthStatus.STATUS_RETAINED,
         "new": MembershipMonthStatus.STATUS_NEW,
         "reactivated": MembershipMonthStatus.STATUS_REACTIVATED,
         "not_renewed": MembershipMonthStatus.STATUS_NOT_RENEWED,
+    }
+    activity_order = {
+        "attending_unpaid": 0,
+        "attending_paid": 1,
+        "inactive": 2,
     }
     queryset = statuses.filter(status=status_map.get(status_value, MembershipMonthStatus.STATUS_NOT_RENEWED))
     rows = mask_membership_money_rows(
@@ -1410,9 +1416,35 @@ def retention_followup_view(request):
             or search in str(row.get("studio") or "").casefold()
         ]
 
-    rows.sort(key=lambda row: (row.get("month") or "", row.get("client") or ""))
+    activity_counts = {
+        "all": len(rows),
+        "attending_unpaid": 0,
+        "attending_paid": 0,
+        "inactive": 0,
+    }
+    if status_value == "not_renewed":
+        for row in rows:
+            activity_status = row.get("not_renewed_activity_status") or "inactive"
+            if activity_status in activity_counts:
+                activity_counts[activity_status] += 1
+        if activity_filter in activity_order:
+            rows = [
+                row for row in rows
+                if row.get("not_renewed_activity_status") == activity_filter
+            ]
+
+    if status_value == "not_renewed":
+        rows.sort(key=lambda row: (
+            activity_order.get(row.get("not_renewed_activity_status"), 99),
+            row.get("client") or "",
+            row.get("month") or "",
+        ))
+    else:
+        rows.sort(key=lambda row: (row.get("month") or "", row.get("client") or ""))
     return Response({
         "status": status_value,
+        "activity": activity_filter,
+        "activity_counts": activity_counts,
         "count": len(rows),
         "rows": rows,
     })

@@ -405,3 +405,123 @@ class RetentionFollowupActivityTests(TestCase):
         self.assertEqual(response.data["purchases"][1]["studio"], "Piantini")
         self.assertEqual(response.data["purchases"][1]["activation_date"], "2026-05-01")
         self.assertEqual(response.data["purchases"][1]["expiration_date"], "2026-05-31")
+
+    def test_followup_list_filters_and_orders_not_renewed_activity(self):
+        paid_client = Client.objects.create(
+            site=self.site,
+            name="Paid Client",
+            mindbody_id="paid-1",
+        )
+        unpaid_client = Client.objects.create(
+            site=self.site,
+            name="Unpaid Client",
+            mindbody_id="unpaid-1",
+        )
+        paid_purchase = ServicePurchase.objects.create(
+            site=self.site,
+            studio=self.studio,
+            natural_key="paid-expired-membership",
+            current_row_hash="paid-expired-membership-hash",
+            client=paid_client,
+            pricing_option=self.membership,
+            sale_date=date(2026, 3, 2),
+            activation_date=date(2026, 3, 1),
+            expiration_date=date(2026, 3, 31),
+            total_amount=Decimal("100.00"),
+        )
+        unpaid_purchase = ServicePurchase.objects.create(
+            site=self.site,
+            studio=self.studio,
+            natural_key="unpaid-expired-membership",
+            current_row_hash="unpaid-expired-membership-hash",
+            client=unpaid_client,
+            pricing_option=self.membership,
+            sale_date=date(2026, 3, 3),
+            activation_date=date(2026, 3, 1),
+            expiration_date=date(2026, 3, 31),
+            total_amount=Decimal("100.00"),
+        )
+        MembershipMonthStatus.objects.create(
+            site=self.site,
+            studio=self.studio,
+            month=date(2026, 4, 1),
+            client=paid_client,
+            status=MembershipMonthStatus.STATUS_NOT_RENEWED,
+            previous_month_member=True,
+            previous_membership_days=31,
+            membership_value=paid_purchase.total_amount,
+            source_purchase=paid_purchase,
+            studio_inference_method=MembershipMonthStatus.STUDIO_METHOD_PURCHASE,
+        )
+        MembershipMonthStatus.objects.create(
+            site=self.site,
+            studio=self.studio,
+            month=date(2026, 4, 1),
+            client=unpaid_client,
+            status=MembershipMonthStatus.STATUS_NOT_RENEWED,
+            previous_month_member=True,
+            previous_membership_days=31,
+            membership_value=unpaid_purchase.total_amount,
+            source_purchase=unpaid_purchase,
+            studio_inference_method=MembershipMonthStatus.STUDIO_METHOD_PURCHASE,
+        )
+        AttendanceVisit.objects.create(
+            site=self.site,
+            natural_key="paid-followup-visit",
+            current_row_hash="paid-followup-visit-hash",
+            client=paid_client,
+            visit_studio=self.studio,
+            pricing_option=self.drop_in,
+            visit_date=date(2026, 4, 8),
+            visit_time_raw="10:00 AM",
+            revenue=Decimal("25.00"),
+        )
+        AttendanceVisit.objects.create(
+            site=self.site,
+            natural_key="unpaid-followup-visit",
+            current_row_hash="unpaid-followup-visit-hash",
+            client=unpaid_client,
+            visit_studio=self.studio,
+            pricing_option=self.drop_in,
+            visit_date=date(2026, 4, 9),
+            visit_time_raw="10:00 AM",
+            revenue=Decimal("0.00"),
+        )
+
+        response = self.api.get(
+            reverse("analytics-retention-followup"),
+            {
+                "date_from": "2026-04-01",
+                "date_to": "2026-04-30",
+                "status": "not_renewed",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.data["activity_counts"],
+            {
+                "all": 3,
+                "attending_unpaid": 1,
+                "attending_paid": 1,
+                "inactive": 1,
+            },
+        )
+        self.assertEqual(
+            [row["not_renewed_activity_status"] for row in response.data["rows"]],
+            ["attending_unpaid", "attending_paid", "inactive"],
+        )
+
+        filtered_response = self.api.get(
+            reverse("analytics-retention-followup"),
+            {
+                "date_from": "2026-04-01",
+                "date_to": "2026-04-30",
+                "status": "not_renewed",
+                "activity": "attending_paid",
+            },
+        )
+
+        self.assertEqual(filtered_response.status_code, 200)
+        self.assertEqual(filtered_response.data["count"], 1)
+        self.assertEqual(filtered_response.data["rows"][0]["client"], "Paid Client")
