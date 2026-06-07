@@ -6,6 +6,7 @@ import re
 from django.db import transaction
 from django.db.models import Count, DecimalField, Max, Min, Q, Sum
 from django.db.models.functions import Coalesce, TruncDate
+from django.utils import timezone
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
@@ -1414,6 +1415,180 @@ def retention_followup_view(request):
         "status": status_value,
         "count": len(rows),
         "rows": rows,
+    })
+
+
+def serialize_retention_activity_visit(request, visit):
+    return {
+        "id": visit.id,
+        "date": visit.visit_date.isoformat(),
+        "time": visit.visit_time_raw,
+        "studio": visit.visit_studio.name,
+        "studio_id": visit.visit_studio_id,
+        "pricing_option": visit.pricing_option.name if visit.pricing_option else "N/A",
+        "payment_status": "paid" if (visit.revenue or Decimal("0.00")) > 0 else "unpaid",
+        "revenue": money_value(request, visit.revenue),
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def retention_followup_activity_view(request, snapshot_id):
+    statuses = scoped_queryset_for_user(
+        MembershipMonthStatus.objects.select_related(
+            "client",
+            "site",
+            "studio",
+            "source_purchase",
+        ),
+        request.user,
+        site_field="site_id",
+        studio_field="studio_id",
+        include_null_studio=True,
+    )
+    status = statuses.filter(pk=snapshot_id).first()
+    if not status:
+        return Response({"detail": "Retention snapshot not found."}, status=404)
+    if status.status != MembershipMonthStatus.STATUS_NOT_RENEWED:
+        return Response(
+            {"detail": "Activity details are available only for not renewed snapshots."},
+            status=400,
+        )
+    if not status.source_purchase or not status.source_purchase.expiration_date:
+        return Response(
+            {"detail": "The membership expiration date is unavailable for this snapshot."},
+            status=400,
+        )
+
+    followup_start = status.source_purchase.expiration_date + timedelta(days=1)
+    followup_end = month_end(status.month)
+    later_start = followup_end + timedelta(days=1)
+    later_end = timezone.localdate()
+    visits = (
+        scoped_queryset_for_user(
+            AttendanceVisit.objects.all(),
+            request.user,
+            site_field="site_id",
+            studio_field="visit_studio_id",
+        )
+        .filter(
+            site_id=status.site_id,
+            client_id=status.client_id,
+            visit_date__gte=followup_start,
+            visit_date__lte=later_end,
+            no_show=False,
+            late_cancel=False,
+        )
+        .select_related("visit_studio", "pricing_option")
+        .order_by("visit_date", "visit_time_raw", "id")
+    )
+    followup_visits = [
+        serialize_retention_activity_visit(request, visit)
+        for visit in visits
+        if visit.visit_date <= followup_end
+    ]
+    later_visits = [
+        serialize_retention_activity_visit(request, visit)
+        for visit in visits
+        if later_start <= visit.visit_date <= later_end
+    ]
+    return Response({
+        "snapshot_id": status.id,
+        "client": status.client.name,
+        "client_id": status.client_id,
+        "snapshot_month": status.month.isoformat(),
+        "last_tracked_purchase": {
+            "service": service_label(status.source_purchase),
+            "studio": (
+                status.source_purchase.studio.name
+                if status.source_purchase.studio
+                else status.studio.name
+                if status.studio
+                else "Unknown"
+            ),
+            "sale_date": status.source_purchase.sale_date.isoformat(),
+            "activation_date": (
+                status.source_purchase.activation_date.isoformat()
+                if status.source_purchase.activation_date
+                else None
+            ),
+            "expiration_date": status.source_purchase.expiration_date.isoformat(),
+        },
+        "activity_status": (
+            "attending_paid"
+            if any(visit["payment_status"] == "paid" for visit in followup_visits)
+            else "attending_unpaid"
+            if followup_visits
+            else "inactive"
+        ),
+        "followup_period": {
+            "from": followup_start.isoformat(),
+            "to": followup_end.isoformat(),
+            "visits": followup_visits,
+        },
+        "later_period": {
+            "from": later_start.isoformat(),
+            "to": later_end.isoformat(),
+            "visits": later_visits,
+        },
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def retention_purchase_history_view(request, snapshot_id):
+    statuses = scoped_queryset_for_user(
+        MembershipMonthStatus.objects.select_related("client", "site"),
+        request.user,
+        site_field="site_id",
+        studio_field="studio_id",
+        include_null_studio=True,
+    )
+    status = statuses.filter(pk=snapshot_id).first()
+    if not status:
+        return Response({"detail": "Retention snapshot not found."}, status=404)
+
+    purchases = (
+        scoped_queryset_for_user(
+            ServicePurchase.objects.all(),
+            request.user,
+            site_field="site_id",
+            studio_field="studio_id",
+            include_null_studio=True,
+        )
+        .filter(
+            site_id=status.site_id,
+            client_id=status.client_id,
+        )
+        .select_related("pricing_option", "studio")
+        .order_by("-sale_date", "-id")
+    )
+    return Response({
+        "snapshot_id": status.id,
+        "client": status.client.name,
+        "client_id": status.client_id,
+        "count": purchases.count(),
+        "purchases": [
+            {
+                "id": purchase.id,
+                "service": service_label(purchase),
+                "studio": purchase.studio.name if purchase.studio else "Unknown",
+                "studio_id": purchase.studio_id,
+                "sale_date": purchase.sale_date.isoformat(),
+                "activation_date": (
+                    purchase.activation_date.isoformat()
+                    if purchase.activation_date
+                    else None
+                ),
+                "expiration_date": (
+                    purchase.expiration_date.isoformat()
+                    if purchase.expiration_date
+                    else None
+                ),
+                "amount": money_value(request, purchase.total_amount),
+            }
+            for purchase in purchases
+        ],
     })
 
 

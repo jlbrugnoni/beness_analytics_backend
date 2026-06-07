@@ -2,6 +2,8 @@ from datetime import date
 from decimal import Decimal
 
 from django.test import TestCase
+from django.urls import reverse
+from rest_framework.test import APIClient
 
 from analytics.models import MembershipMonthStatus
 from analytics.views import (
@@ -11,6 +13,8 @@ from analytics.views import (
 )
 from core_data.models import (
     Client,
+    CustomUser,
+    AttendanceVisit,
     PricingOption,
     ReportImport,
     ServiceCategory,
@@ -238,3 +242,166 @@ class ReactivatedMembershipHistoryTests(TestCase):
         self.assertEqual(may_status.status, MembershipMonthStatus.STATUS_NEW)
         self.assertEqual(june_status.status, MembershipMonthStatus.STATUS_NOT_RENEWED)
         self.assertEqual(may_status.source_purchase, purchase)
+
+
+class RetentionFollowupActivityTests(TestCase):
+    def setUp(self):
+        self.api = APIClient()
+        self.user = CustomUser.objects.create_superuser(
+            email="admin@example.com",
+            password="testpass123",
+        )
+        self.api.force_authenticate(self.user)
+        self.site = Site.objects.create(
+            name="Activity Site",
+            country_code=Site.COUNTRY_DOMINICAN_REPUBLIC,
+        )
+        self.studio = Studio.objects.create(site=self.site, name="Piantini")
+        self.client = Client.objects.create(
+            site=self.site,
+            name="Follow-up Client",
+            mindbody_id="followup-1",
+        )
+        category = ServiceCategory.objects.create(site=self.site, name="Memberships")
+        self.membership = PricingOption.objects.create(
+            site=self.site,
+            name="Monthly",
+            service_category=category,
+            track_retention=True,
+        )
+        self.drop_in = PricingOption.objects.create(
+            site=self.site,
+            name="Drop In",
+            service_category=category,
+        )
+        purchase = ServicePurchase.objects.create(
+            site=self.site,
+            studio=self.studio,
+            natural_key="expired-membership",
+            current_row_hash="expired-membership-hash",
+            client=self.client,
+            pricing_option=self.membership,
+            sale_date=date(2026, 3, 1),
+            activation_date=date(2026, 3, 1),
+            expiration_date=date(2026, 3, 31),
+            total_amount=Decimal("100.00"),
+        )
+        self.snapshot = MembershipMonthStatus.objects.create(
+            site=self.site,
+            studio=self.studio,
+            month=date(2026, 4, 1),
+            client=self.client,
+            status=MembershipMonthStatus.STATUS_NOT_RENEWED,
+            previous_month_member=True,
+            previous_membership_days=31,
+            membership_value=purchase.total_amount,
+            source_purchase=purchase,
+            studio_inference_method=MembershipMonthStatus.STUDIO_METHOD_PURCHASE,
+        )
+
+    def create_visit(self, natural_key, visit_date, revenue):
+        return AttendanceVisit.objects.create(
+            site=self.site,
+            natural_key=natural_key,
+            current_row_hash=f"{natural_key}-hash",
+            client=self.client,
+            visit_studio=self.studio,
+            pricing_option=self.drop_in,
+            visit_date=visit_date,
+            visit_time_raw="10:00 AM",
+            revenue=Decimal(revenue),
+        )
+
+    def test_activity_endpoint_separates_followup_and_later_visits(self):
+        self.create_visit("followup-unpaid", date(2026, 4, 10), "0.00")
+        self.create_visit("followup-paid", date(2026, 4, 20), "25.00")
+        self.create_visit("later-paid", date(2026, 5, 5), "30.00")
+
+        response = self.api.get(
+            reverse(
+                "analytics-retention-followup-activity",
+                kwargs={"snapshot_id": self.snapshot.id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["activity_status"], "attending_paid")
+        self.assertEqual(
+            response.data["last_tracked_purchase"],
+            {
+                "service": "Monthly",
+                "studio": "Piantini",
+                "sale_date": "2026-03-01",
+                "activation_date": "2026-03-01",
+                "expiration_date": "2026-03-31",
+            },
+        )
+        self.assertEqual(
+            [visit["date"] for visit in response.data["followup_period"]["visits"]],
+            ["2026-04-10", "2026-04-20"],
+        )
+        self.assertEqual(
+            [visit["date"] for visit in response.data["later_period"]["visits"]],
+            ["2026-05-05"],
+        )
+        self.assertEqual(
+            response.data["followup_period"]["visits"][0]["payment_status"],
+            "unpaid",
+        )
+
+    def test_activity_endpoint_returns_empty_periods_for_inactive_client(self):
+        response = self.api.get(
+            reverse(
+                "analytics-retention-followup-activity",
+                kwargs={"snapshot_id": self.snapshot.id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["activity_status"], "inactive")
+        self.assertEqual(response.data["followup_period"]["visits"], [])
+        self.assertEqual(response.data["later_period"]["visits"], [])
+
+    def test_purchase_history_returns_all_purchases_newest_first(self):
+        ServicePurchase.objects.create(
+            site=self.site,
+            studio=self.studio,
+            natural_key="newer-membership",
+            current_row_hash="newer-membership-hash",
+            client=self.client,
+            pricing_option=self.membership,
+            sale_date=date(2026, 5, 1),
+            activation_date=date(2026, 5, 1),
+            expiration_date=date(2026, 5, 31),
+            total_amount=Decimal("120.00"),
+        )
+        ServicePurchase.objects.create(
+            site=self.site,
+            studio=self.studio,
+            natural_key="non-tracked-purchase",
+            current_row_hash="non-tracked-purchase-hash",
+            client=self.client,
+            pricing_option=self.drop_in,
+            sale_date=date(2026, 6, 1),
+            activation_date=date(2026, 6, 1),
+            expiration_date=date(2026, 6, 1),
+            total_amount=Decimal("25.00"),
+        )
+
+        response = self.api.get(
+            reverse(
+                "analytics-retention-purchase-history",
+                kwargs={"snapshot_id": self.snapshot.id},
+            )
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 3)
+        self.assertEqual(
+            [purchase["sale_date"] for purchase in response.data["purchases"]],
+            ["2026-06-01", "2026-05-01", "2026-03-01"],
+        )
+        self.assertEqual(response.data["purchases"][0]["service"], "Drop In")
+        self.assertEqual(response.data["purchases"][1]["studio"], "Piantini")
+        self.assertEqual(response.data["purchases"][1]["activation_date"], "2026-05-01")
+        self.assertEqual(response.data["purchases"][1]["expiration_date"], "2026-05-31")
