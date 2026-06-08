@@ -443,68 +443,24 @@ def build_lookup_preview(site, data_rows):
 
 
 def preview_attendance_report(uploaded_file, site):
-    sheet_name, parsed_rows = load_first_sheet_rows(uploaded_file)
-    headers, rows = table_from_rows(parsed_rows)
+    rows = preview_attendance_rows(uploaded_file)
+    sheet_name = rows["sheet_name"]
+    headers = rows["headers"]
+    valid_rows = rows["valid_rows"]
+    invalid_rows = rows["invalid_rows"]
+    footer_rows = rows["footer_rows"]
 
     missing_headers = [header for header in ATTENDANCE_REQUIRED_HEADERS if header not in headers]
     extra_headers = [header for header in headers if header not in ATTENDANCE_REQUIRED_HEADERS]
-
-    footer_rows = []
-    data_rows = []
-    for row in rows:
-        if clean_value(row["payload"].get("Fecha")).casefold() in ("total", "totales"):
-            footer_rows.append(row)
-        else:
-            data_rows.append(row)
-
-    valid_rows = []
-    invalid_rows = []
-    for row in data_rows:
-        payload = row["payload"]
-        errors = []
-        visit_date = parse_excel_date(payload.get("Fecha"))
-        if not visit_date:
-            errors.append("Invalid Fecha")
-        if not clean_value(payload.get("ID del cliente")):
-            errors.append("Missing ID del cliente")
-        if not clean_value(payload.get("Cliente")):
-            errors.append("Missing Cliente")
-        if not clean_value(payload.get("Ubicación de visita")):
-            errors.append("Missing Ubicación de visita")
-        revenue = parse_number(payload.get("Ingresos por visita"))
-        if revenue is None:
-            errors.append("Invalid Ingresos por visita")
-
-        normalized_payload = {key: clean_value(value) for key, value in payload.items()}
-        normalized_payload["_visit_date"] = visit_date.isoformat() if visit_date else None
-        normalized_payload["_expiration_date"] = (
-            parse_excel_date(payload.get("Fecha de Exp.")).isoformat()
-            if parse_excel_date(payload.get("Fecha de Exp."))
-            else None
-        )
-        normalized_payload["_late_cancel"] = parse_yes_no(payload.get("Cancelación tardíá"))
-        normalized_payload["_no_show"] = parse_yes_no(payload.get("No presentado"))
-        normalized_payload["_revenue"] = revenue
-
-        enriched_row = {
-            "row_number": row["row_number"],
-            "hash": row_hash(normalized_payload),
-            "payload": normalized_payload,
-            "errors": errors,
-        }
-        if errors:
-            invalid_rows.append(enriched_row)
-        else:
-            valid_rows.append(enriched_row)
 
     hash_counts = Counter(row["hash"] for row in valid_rows)
     duplicate_groups = sum(1 for count in hash_counts.values() if count > 1)
     duplicate_extra_rows = sum(count - 1 for count in hash_counts.values() if count > 1)
 
     date_values = [
-        parse_excel_date(row["payload"].get("Fecha"))
-        for row in data_rows
-        if parse_excel_date(row["payload"].get("Fecha"))
+        datetime.date.fromisoformat(row["payload"]["_visit_date"])
+        for row in valid_rows
+        if row["payload"].get("_visit_date")
     ]
     revenue_values = [row["payload"]["_revenue"] for row in valid_rows if row["payload"]["_revenue"] is not None]
 
@@ -533,8 +489,8 @@ def preview_attendance_report(uploaded_file, site):
         "extra_headers": extra_headers,
         "is_valid_schema": not missing_headers,
         "row_counts": {
-            "raw_rows": len(rows),
-            "data_rows": len(data_rows),
+            "raw_rows": len(valid_rows) + len(invalid_rows) + len(footer_rows),
+            "data_rows": len(valid_rows) + len(invalid_rows),
             "footer_rows": len(footer_rows),
             "valid_rows": len(valid_rows),
             "invalid_rows": len(invalid_rows),
@@ -567,6 +523,7 @@ def preview_attendance_report(uploaded_file, site):
                 valid_rows,
                 AttendanceVisit,
                 lambda payload: attendance_natural_key(site, payload),
+                current_hash_builder=current_attendance_hash,
             ),
         },
         "invalid_row_samples": invalid_rows[:10],
@@ -754,6 +711,34 @@ def attendance_natural_key(site, payload):
     ])
 
 
+def attendance_row_hash(payload):
+    return row_hash({
+        "client_mindbody_id": payload.get("ID del cliente"),
+        "staff": payload.get("Personal"),
+        "visit_studio": payload.get("Ubicación de visita"),
+        "sale_studio": payload.get("Ubicación de venta"),
+        "service_category": payload.get("Visita por categoría de servicio"),
+        "pricing_option": payload.get("Opción de precio"),
+        "payment_method": payload.get("Método de pago"),
+        "visit_date": payload.get("_visit_date"),
+        "visit_time": payload.get("Tiempo"),
+        "visit_type": payload.get("Tipo de Visita"),
+        "type_name": payload.get("Tipo"),
+        "expiration_date": payload.get("_expiration_date"),
+        "staff_paid": payload.get("_staff_paid"),
+        "late_cancel": payload.get("_late_cancel") is True,
+        "no_show": payload.get("_no_show") is True,
+        "scheduling_method": payload.get("Metodo de programación"),
+        "revenue": decimal_string(payload.get("_revenue")),
+    })
+
+
+def current_attendance_hash(visit):
+    if visit.source_raw_row_id and visit.source_raw_row:
+        return attendance_row_hash(visit.source_raw_row.normalized_payload)
+    return visit.current_row_hash
+
+
 def attendance_snapshot(payload, related):
     return {
         "site_id": related["site"].id,
@@ -770,7 +755,6 @@ def attendance_snapshot(payload, related):
         "visit_type": payload.get("Tipo de Visita"),
         "type_name": payload.get("Tipo"),
         "expiration_date": payload.get("_expiration_date"),
-        "remaining_visits": parse_int(payload.get("Visitas Rest.")),
         "staff_paid": payload.get("_staff_paid"),
         "late_cancel": payload.get("_late_cancel") is True,
         "no_show": payload.get("_no_show") is True,
@@ -808,14 +792,21 @@ def repeated_row_samples(valid_rows, sample_fields, max_samples=50):
     return samples
 
 
-def current_record_impact(valid_rows, model, natural_key_builder):
+def current_record_impact(valid_rows, model, natural_key_builder, current_hash_builder=None):
     current_candidates = {}
     for row in valid_rows:
         current_candidates[natural_key_builder(row["payload"])] = row
 
+    existing_queryset = model.objects.filter(natural_key__in=current_candidates.keys())
+    if current_hash_builder:
+        existing_queryset = existing_queryset.select_related("source_raw_row")
     existing = {
-        item.natural_key: item.current_row_hash
-        for item in model.objects.filter(natural_key__in=current_candidates.keys())
+        item.natural_key: (
+            current_hash_builder(item)
+            if current_hash_builder
+            else item.current_row_hash
+        )
+        for item in existing_queryset
     }
     to_create = 0
     to_update = 0
@@ -1707,10 +1698,17 @@ def import_attendance_report(uploaded_file, site, uploaded_by=None):
             )
             stats["attendance_created"] += 1
             changes = list(snapshot.keys())
-        elif visit.current_row_hash == row["hash"]:
+        elif current_attendance_hash(visit) == row["hash"]:
+            changes = []
+            visit.current_row_hash = row["hash"]
             visit.last_seen_import = report_import
             visit.source_raw_row = raw_row
-            visit.save(update_fields=["last_seen_import", "source_raw_row", "updated_at"])
+            visit.save(update_fields=[
+                "current_row_hash",
+                "last_seen_import",
+                "source_raw_row",
+                "updated_at",
+            ])
             stats["attendance_identical"] += 1
         else:
             visit.current_row_hash = row["hash"]
@@ -1811,7 +1809,7 @@ def preview_attendance_rows(uploaded_file):
 
         enriched = {
             "row_number": row["row_number"],
-            "hash": row_hash(payload),
+            "hash": attendance_row_hash(payload),
             "payload": payload,
             "raw_payload": raw_payload,
             "errors": errors,
