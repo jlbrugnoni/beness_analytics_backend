@@ -1,4 +1,7 @@
-from datetime import time
+from datetime import date, time
+from html import escape
+from io import BytesIO
+from zipfile import ZIP_DEFLATED, ZipFile
 
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import override_settings
@@ -7,6 +10,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from core_data.models import (
+    AttendanceVisitVersion,
     Client,
     CustomUser,
     PaymentMethod,
@@ -20,6 +24,75 @@ from core_data.models import (
     StudioClosure,
     WeeklyRoomTemplate,
 )
+from core_data.importers import import_attendance_report, preview_attendance_report
+
+
+def excel_serial(value):
+    return (value - date(1899, 12, 30)).days
+
+
+def inline_cell(cell_ref, value):
+    return (
+        f'<c r="{cell_ref}" t="inlineStr"><is><t>{escape(str(value))}</t></is></c>'
+    )
+
+
+def xlsx_upload(name, headers, rows):
+    letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    xml_rows = []
+    for row_index, values in enumerate([headers, *rows], start=1):
+        cells = [
+            inline_cell(f"{letters[column_index]}{row_index}", value)
+            for column_index, value in enumerate(values)
+        ]
+        xml_rows.append(f'<row r="{row_index}">{"".join(cells)}</row>')
+
+    workbook = BytesIO()
+    with ZipFile(workbook, "w", ZIP_DEFLATED) as archive:
+        archive.writestr(
+            "[Content_Types].xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
+<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
+<Default Extension="xml" ContentType="application/xml"/>
+<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
+<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+</Types>""",
+        )
+        archive.writestr(
+            "_rels/.rels",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>
+</Relationships>""",
+        )
+        archive.writestr(
+            "xl/workbook.xml",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+<sheets><sheet name="Sheet1" sheetId="1" r:id="rId1"/></sheets>
+</workbook>""",
+        )
+        archive.writestr(
+            "xl/_rels/workbook.xml.rels",
+            """<?xml version="1.0" encoding="UTF-8"?>
+<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
+</Relationships>""",
+        )
+        archive.writestr(
+            "xl/worksheets/sheet1.xml",
+            f"""<?xml version="1.0" encoding="UTF-8"?>
+<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">
+<sheetData>{''.join(xml_rows)}</sheetData>
+</worksheet>""",
+        )
+    workbook.seek(0)
+    return SimpleUploadedFile(
+        name,
+        workbook.read(),
+        content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    )
 
 
 class AnalyticsImportGuardTests(APITestCase):
@@ -43,6 +116,92 @@ class AnalyticsImportGuardTests(APITestCase):
             b"not a real workbook",
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
+
+    def attendance_upload(self, remaining_visits="4", revenue="25"):
+        headers = [
+            "Fecha",
+            "Día de la semana",
+            "Tiempo",
+            "ID del cliente",
+            "Cliente",
+            "Visita por categoría de servicio",
+            "Tipo de Visita",
+            "Tipo",
+            "Opción de precio",
+            "Fecha de Exp.",
+            "Visitas Rest.",
+            "Personal",
+            "Ubicación de visita",
+            "Ubicación de venta",
+            "Personal pagado",
+            "Cancelación tardíá",
+            "No presentado",
+            "Metodo de programación",
+            "Método de pago",
+            "Ingresos por visita",
+            "Pago de categoría de servicio",
+        ]
+        row = [
+            excel_serial(date(2026, 4, 15)),
+            "Miércoles",
+            "10:00 AM",
+            "100001",
+            "Cliente Prueba",
+            "Clases Grupales",
+            "Clase",
+            "Visita",
+            "Bono 5 clases",
+            excel_serial(date(2026, 4, 30)),
+            remaining_visits,
+            "Entrenador Uno",
+            "Pi Tao",
+            "Pi Tao",
+            "Sí",
+            "No",
+            "No",
+            "Web",
+            "Tarjeta",
+            revenue,
+            "Clases Grupales",
+        ]
+        return xlsx_upload("attendance.xlsx", headers, [row])
+
+    def test_repeated_attendance_file_is_identical_in_preview_and_import(self):
+        first_result = import_attendance_report(self.attendance_upload(), self.site, self.user)
+        self.assertEqual(first_result["import"]["attendance_created"], 1)
+
+        preview = preview_attendance_report(
+            self.attendance_upload(remaining_visits="2"),
+            self.site,
+        )
+        impact = preview["data_quality"]["import_impact"]
+        self.assertEqual(impact["current_records_to_create"], 0)
+        self.assertEqual(impact["current_records_to_update"], 0)
+        self.assertEqual(impact["current_records_unchanged"], 1)
+
+        second_result = import_attendance_report(
+            self.attendance_upload(remaining_visits="2"),
+            self.site,
+            self.user,
+        )
+        self.assertEqual(second_result["import"]["attendance_created"], 0)
+        self.assertEqual(second_result["import"]["attendance_changed"], 0)
+        self.assertEqual(second_result["import"]["attendance_identical"], 1)
+        self.assertEqual(second_result["import"]["versions_created"], 0)
+
+        corrected_result = import_attendance_report(
+            self.attendance_upload(remaining_visits="1", revenue="30"),
+            self.site,
+            self.user,
+        )
+        self.assertEqual(corrected_result["import"]["attendance_created"], 0)
+        self.assertEqual(corrected_result["import"]["attendance_changed"], 1)
+        self.assertEqual(corrected_result["import"]["attendance_identical"], 0)
+        self.assertEqual(corrected_result["import"]["versions_created"], 1)
+        corrected_version = AttendanceVisitVersion.objects.get(
+            report_import_id=corrected_result["import"]["report_import_id"],
+        )
+        self.assertEqual(corrected_version.changed_fields, ["revenue"])
 
     def test_sales_by_service_preview_requires_studio_before_parsing(self):
         response = self.client.post(
