@@ -11,7 +11,7 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from analytics.models import MembershipMonthStatus
+from analytics.models import ClientStudioMonthlyMetric, MembershipMonthStatus
 from core_data.access import scoped_queryset_for_user, user_has_capability
 from core_data.models import (
     AttendanceClassMatch,
@@ -1849,7 +1849,10 @@ def rebuild_client_metrics_view(request):
     if not sites.exists():
         return Response({"detail": "No accessible sites found."}, status=404)
 
-    from analytics.client_metrics import rebuild_client_metrics_for_range
+    from analytics.client_metrics import (
+        rebuild_client_metrics_for_periods,
+        weeks_between,
+    )
 
     results = []
     for site in sites:
@@ -1860,7 +1863,22 @@ def rebuild_client_metrics_view(request):
             }
             for target_month in months_between(start, end)
         ]
-        result = rebuild_client_metrics_for_range(site.id, start, end)
+        monthly = [
+            {
+                "month": row["month"],
+                "rows": ClientStudioMonthlyMetric.objects.filter(
+                    site_id=site.id,
+                    month=parse_date(row["month"]),
+                ).count(),
+            }
+            for row in retention
+        ]
+        result = rebuild_client_metrics_for_periods(
+            site.id,
+            weeks=weeks_between(start, end),
+        )
+        result["monthly"] = monthly
+        result["total_monthly_rows"] = sum(row["rows"] for row in monthly)
         results.append({
             "site": site.name,
             "site_id": site.id,

@@ -243,16 +243,59 @@ Validation:
 
 ### Phase 1.4: Foundation Review
 
-Status: Not started
+Status: Complete
 
 Review metric definitions, performance, report overlap, site/studio attribution,
 and historical rebuild behavior before beginning frontend development.
 
-- [ ] Full Phase 1 test suite passes
-- [ ] Historical data can be rebuilt
-- [ ] Calculations checked against representative clients
-- [ ] Phase review completed
-- [ ] Changes or corrections documented
+Review results:
+
+- The local historical dataset contains 2,834 clients, 33,042 attendance
+  records, 8,679 general sale lines, and 8,643 service purchases across
+  September 1, 2025 through June 6, 2026.
+- A complete two-site historical rebuild finished in approximately 8 seconds
+  and created 8,725 monthly rows, 22,449 weekly rows, and 6,212 retention rows.
+- A second complete rebuild produced exactly the same row counts.
+- Derived totals matched the raw source tables exactly for total bookings,
+  attended visits, no-shows, late cancellations, service purchase count,
+  service spending, general sales spending, and weekly bookings.
+- A representative cross-studio client had 47 studio-week rows but 38 distinct
+  active weeks in both the raw attendance and aggregated weekly metrics.
+- No local attendance row is simultaneously marked as a no-show and a late
+  cancellation.
+- Attendance revenue, service spending, and general sales spending remain
+  separate and are never combined into an artificial total.
+
+Corrections made during review:
+
+- Multi-month aggregation now selects membership status from the latest month
+  rather than depending on queryset iteration order.
+- Service-purchase correction history is loaded in bulk instead of issuing one
+  query per changed purchase.
+- Historical, rollback, repair, and Sales by Service automation paths avoid
+  recalculating monthly client metrics immediately after retention rebuilding
+  has already calculated them.
+- Added regression coverage for latest membership status and bounded
+  correction-history query count.
+
+Verification:
+
+- The dedicated Phase 1 and purchase-repair suite passes 28 tests.
+- Django system and migration consistency checks pass.
+- The frontend production build passes.
+- Full project test discovery still contains unrelated legacy failures: an
+  obsolete `Center` import in `core_data/tests.py` and four import-guard tests
+  that do not grant the capabilities currently required by their endpoints.
+  These failures also exist outside the Client Module work and were not mixed
+  into this phase.
+
+- [x] Full Phase 1 test suite passes
+- [x] Historical data can be rebuilt
+- [x] Calculations checked against representative clients
+- [x] Phase review completed
+- [x] Changes or corrections documented
+- [x] User reviewed
+- [x] Committed
 
 ## Phase 2: Client Directory And Profile
 
@@ -542,3 +585,9 @@ Status: Not started
 - Added a `can_reset_data` protected historical rebuild endpoint and Uploads
   maintenance controls.
 - User reviewed and approved Phase 1.3 for commit.
+- Completed the Phase 1 foundation review against the local historical
+  dataset.
+- Confirmed exact raw-to-derived totals and idempotent rebuild row counts.
+- Corrected latest-month membership status aggregation, removed duplicate
+  monthly rebuild work, and bulk-loaded purchase correction history.
+- User reviewed and approved the Phase 1 foundation review for commit.

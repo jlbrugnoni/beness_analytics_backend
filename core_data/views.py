@@ -1233,7 +1233,11 @@ class ReportImportViewSet(viewsets.ModelViewSet):
 
             client_metrics_automation = rebuild_client_metrics_for_periods(
                 client_metric_site_id,
-                months=client_metric_periods["months"],
+                months=(
+                    []
+                    if report_payload["report_type"] == SALES_BY_SERVICE_REPORT_TYPE
+                    else client_metric_periods["months"]
+                ),
                 weeks=client_metric_periods["weeks"],
             )
 
@@ -1351,14 +1355,16 @@ class ReportImportViewSet(viewsets.ModelViewSet):
                         "month": target_month.isoformat(),
                         "rows": rebuild_membership_month(int(affected_site_id), target_month),
                     })
-                from analytics.client_metrics import rebuild_client_metrics_for_range
+                from analytics.client_metrics import (
+                    rebuild_client_metrics_for_periods,
+                    weeks_between,
+                )
 
                 rebuilt_client_metrics.append({
                     "site_id": int(affected_site_id),
-                    **rebuild_client_metrics_for_range(
+                    **rebuild_client_metrics_for_periods(
                         int(affected_site_id),
-                        range_start,
-                        range_end,
+                        weeks=weeks_between(range_start, range_end),
                     ),
                 })
         result["rebuilt_snapshots"] = rebuilt
@@ -1466,6 +1472,7 @@ class ReportImportViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
             result = import_report(uploaded_file, site, report_type, uploaded_by=request.user, options=options)
+            retention_months = []
             if report_type == SALES_BY_SERVICE_REPORT_TYPE:
                 try:
                     from analytics.views import rebuild_membership_months_after_import
@@ -1474,6 +1481,10 @@ class ReportImportViewSet(viewsets.ModelViewSet):
                         site.id,
                         result["import"]["report_import_id"],
                     )
+                    retention_months = [
+                        parse_iso_date(row["month"])
+                        for row in result["retention_automation"].get("rebuilt", [])
+                    ]
                 except Exception as exc:
                     result["retention_automation"] = {
                         "skipped": True,
@@ -1490,6 +1501,7 @@ class ReportImportViewSet(viewsets.ModelViewSet):
                     result["client_metrics_automation"] = rebuild_client_metrics_after_import(
                         site.id,
                         result["import"]["report_import_id"],
+                        exclude_months=retention_months,
                     )
                 except Exception as exc:
                     result["client_metrics_automation"] = {

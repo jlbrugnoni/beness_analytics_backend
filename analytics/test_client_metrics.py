@@ -2,12 +2,15 @@ from datetime import date
 from decimal import Decimal
 
 from django.test import TestCase, override_settings
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from rest_framework.test import APIClient
 
 from analytics.client_metrics import (
     aggregate_client_monthly_metrics,
     aggregate_client_weekly_metrics,
+    client_metric_periods_for_import,
     rebuild_client_metrics_after_import,
     rebuild_client_studio_monthly_metrics,
     rebuild_client_studio_weekly_metrics,
@@ -268,6 +271,34 @@ class ClientStudioMonthlyMetricTests(TestCase):
         self.assertEqual(corrected.attended_visits, 1)
         self.assertEqual(corrected.no_shows, 0)
         self.assertEqual(corrected.attendance_revenue, Decimal("25.00"))
+
+    def test_monthly_aggregation_uses_latest_membership_status(self):
+        older = ClientStudioMonthlyMetric.objects.create(
+            site=self.site,
+            studio=self.studio_a,
+            client=self.client,
+            month=date(2026, 3, 1),
+            membership_status=MembershipMonthStatus.STATUS_NEW,
+        )
+        newer = ClientStudioMonthlyMetric.objects.create(
+            site=self.site,
+            studio=self.studio_a,
+            client=self.client,
+            month=date(2026, 4, 1),
+            membership_status=MembershipMonthStatus.STATUS_RETAINED,
+        )
+
+        forward = aggregate_client_monthly_metrics([older, newer])
+        reverse = aggregate_client_monthly_metrics([newer, older])
+
+        self.assertEqual(
+            forward["membership_status"],
+            MembershipMonthStatus.STATUS_RETAINED,
+        )
+        self.assertEqual(
+            reverse["membership_status"],
+            MembershipMonthStatus.STATUS_RETAINED,
+        )
 
     def test_unassigned_purchases_share_one_monthly_row(self):
         self.create_purchase(
@@ -594,6 +625,14 @@ class ClientStudioMonthlyMetricTests(TestCase):
                 "activation_date": "2026-05-01",
                 "expiration_date": "2026-06-30",
             },
+        )
+
+        with CaptureQueriesContext(connection) as queries:
+            periods = client_metric_periods_for_import(correction_import)
+        self.assertLessEqual(len(queries), 5)
+        self.assertEqual(
+            periods["months"],
+            [date(2026, 4, 1), date(2026, 5, 1), date(2026, 6, 1)],
         )
 
         result = rebuild_client_metrics_after_import(

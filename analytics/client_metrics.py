@@ -18,6 +18,7 @@ from core_data.models import (
     ReportImport,
     SaleLine,
     ServicePurchase,
+    ServicePurchaseVersion,
 )
 
 
@@ -250,6 +251,7 @@ def aggregate_client_monthly_metrics(rows):
     }
     active_week_starts = set()
     active_membership_dates = set()
+    membership_status_month = None
 
     for row in rows:
         for field in (
@@ -279,8 +281,12 @@ def aggregate_client_monthly_metrics(rows):
                 totals[first_key] = first_value
             if last_value and (totals[last_key] is None or last_value > totals[last_key]):
                 totals[last_key] = last_value
-        if row.membership_status:
+        if (
+            row.membership_status
+            and (membership_status_month is None or row.month > membership_status_month)
+        ):
             totals["membership_status"] = row.membership_status
+            membership_status_month = row.month
 
     totals["active_weeks"] = len(active_week_starts)
     totals["active_week_starts"] = sorted(active_week_starts)
@@ -430,24 +436,37 @@ def client_metric_periods_for_import(report_import):
                 months.update(months_between(start, end))
                 weeks.update(weeks_between(start, end))
 
-        option_ids = set()
-        previous_snapshots = []
-        for version in report_import.service_purchase_versions.select_related(
-            "service_purchase",
-        ):
-            previous_version = (
-                version.service_purchase.versions
-                .exclude(report_import=report_import)
-                .filter(created_at__lt=version.created_at)
-                .order_by("-created_at")
-                .first()
+        current_version_ids = set(
+            report_import.service_purchase_versions.values_list("id", flat=True)
+        )
+        affected_purchase_ids = set(
+            report_import.service_purchase_versions.values_list(
+                "service_purchase_id",
+                flat=True,
             )
-            if not previous_version:
-                continue
-            snapshot = previous_version.snapshot
-            previous_snapshots.append(snapshot)
-            if snapshot.get("pricing_option_id"):
-                option_ids.add(snapshot["pricing_option_id"])
+        )
+        previous_snapshots = []
+        previous_snapshot_by_purchase = {}
+        version_history = (
+            ServicePurchaseVersion.objects.filter(
+                service_purchase_id__in=affected_purchase_ids,
+            )
+            .order_by("service_purchase_id", "created_at", "id")
+            .values("id", "service_purchase_id", "snapshot")
+        )
+        for version in version_history:
+            purchase_id = version["service_purchase_id"]
+            if version["id"] in current_version_ids:
+                previous_snapshot = previous_snapshot_by_purchase.get(purchase_id)
+                if previous_snapshot:
+                    previous_snapshots.append(previous_snapshot)
+            previous_snapshot_by_purchase[purchase_id] = version["snapshot"]
+
+        option_ids = {
+            snapshot["pricing_option_id"]
+            for snapshot in previous_snapshots
+            if snapshot.get("pricing_option_id")
+        }
 
         tracked_option_ids = set(
             PricingOption.objects.filter(
@@ -496,15 +515,17 @@ def rebuild_client_metrics_for_periods(site_id, months=None, weeks=None):
     }
 
 
-def rebuild_client_metrics_after_import(site_id, report_import_id):
+def rebuild_client_metrics_after_import(site_id, report_import_id, exclude_months=None):
     report_import = ReportImport.objects.get(id=report_import_id)
     periods = client_metric_periods_for_import(report_import)
+    excluded = set(exclude_months or [])
+    months = [value for value in periods["months"] if value not in excluded]
     result = rebuild_client_metrics_for_periods(
         site_id,
-        months=periods["months"],
+        months=months,
         weeks=periods["weeks"],
     )
-    result["skipped"] = not periods["months"] and not periods["weeks"]
+    result["skipped"] = not months and not periods["weeks"]
     return result
 
 
