@@ -695,6 +695,9 @@ def rebuild_membership_month(site_id, target_month):
     with transaction.atomic():
         MembershipMonthStatus.objects.filter(site_id=site_id, month=target_month).delete()
         MembershipMonthStatus.objects.bulk_create(rows)
+    from analytics.client_metrics import rebuild_client_studio_monthly_metrics
+
+    rebuild_client_studio_monthly_metrics(site_id, target_month)
     return len(rows)
 
 
@@ -1812,6 +1815,66 @@ def rebuild_membership_months_view(request):
     return Response({
         "rebuilt": results,
         "total_rows": sum(row["rows"] for row in results),
+    })
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def rebuild_client_metrics_view(request):
+    denied = capability_error(request, "can_reset_data")
+    if denied:
+        return denied
+
+    start = parse_date(request.data.get("date_from") or request.query_params.get("date_from"))
+    end = parse_date(request.data.get("date_to") or request.query_params.get("date_to"))
+    month_value = request.data.get("month") or request.query_params.get("month")
+    if month_value and not start:
+        start = parse_date(f"{month_value}-01")
+        end = month_end(start) if start else None
+    if not start or not end:
+        return Response(
+            {"detail": "date_from and date_to, or month, are required."},
+            status=400,
+        )
+    if start > end:
+        return Response(
+            {"detail": "date_from cannot be after date_to."},
+            status=400,
+        )
+
+    site_id = request.data.get("site") or request.query_params.get("site")
+    sites = scoped_queryset_for_user(Site.objects.all(), request.user, site_field="id")
+    if site_id:
+        sites = sites.filter(id=site_id)
+    if not sites.exists():
+        return Response({"detail": "No accessible sites found."}, status=404)
+
+    from analytics.client_metrics import rebuild_client_metrics_for_range
+
+    results = []
+    for site in sites:
+        retention = [
+            {
+                "month": target_month.isoformat(),
+                "rows": rebuild_membership_month(site.id, target_month),
+            }
+            for target_month in months_between(start, end)
+        ]
+        result = rebuild_client_metrics_for_range(site.id, start, end)
+        results.append({
+            "site": site.name,
+            "site_id": site.id,
+            "retention": retention,
+            **result,
+        })
+    return Response({
+        "date_range": {
+            "from": start.isoformat(),
+            "to": end.isoformat(),
+        },
+        "sites": results,
+        "total_monthly_rows": sum(row["total_monthly_rows"] for row in results),
+        "total_weekly_rows": sum(row["total_weekly_rows"] for row in results),
     })
 
 

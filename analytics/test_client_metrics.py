@@ -1,11 +1,14 @@
 from datetime import date
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
+from django.urls import reverse
+from rest_framework.test import APIClient
 
 from analytics.client_metrics import (
     aggregate_client_monthly_metrics,
     aggregate_client_weekly_metrics,
+    rebuild_client_metrics_after_import,
     rebuild_client_studio_monthly_metrics,
     rebuild_client_studio_weekly_metrics,
 )
@@ -14,15 +17,20 @@ from analytics.models import (
     ClientStudioWeeklyMetric,
     MembershipMonthStatus,
 )
+from analytics.views import rebuild_membership_month
 from core_data.models import (
     AttendanceVisit,
+    AttendanceRawRow,
     Client,
+    CustomUser,
     PricingOption,
+    ReportImport,
     SaleLine,
     ServiceCategory,
     ServicePurchase,
     Site,
     Studio,
+    UserAccessProfile,
 )
 
 
@@ -465,3 +473,292 @@ class ClientStudioMonthlyMetricTests(TestCase):
         self.assertEqual(corrected.attended_visits, 1)
         self.assertEqual(corrected.no_shows, 0)
         self.assertEqual(corrected.attendance_revenue, Decimal("35.00"))
+
+    def test_import_periods_rebuild_only_relevant_metrics(self):
+        attendance_import = ReportImport.objects.create(
+            report_type="attendance_with_revenue",
+            file_name="attendance.xlsx",
+        )
+        self.create_visit(
+            "automated-attendance",
+            self.studio_a,
+            date(2026, 4, 14),
+            revenue="20.00",
+        )
+        AttendanceVisit.objects.filter(natural_key="automated-attendance").update(
+            last_seen_import=attendance_import,
+        )
+
+        attendance_result = rebuild_client_metrics_after_import(
+            self.site.id,
+            attendance_import.id,
+        )
+
+        self.assertEqual(
+            [row["month"] for row in attendance_result["monthly"]],
+            ["2026-04-01"],
+        )
+        self.assertEqual(
+            [row["week_start"] for row in attendance_result["weekly"]],
+            ["2026-04-13"],
+        )
+
+        sales_import = ReportImport.objects.create(
+            report_type="sales",
+            file_name="sales.xlsx",
+        )
+        sale = self.create_sale(
+            "automated-sale",
+            self.studio_a,
+            date(2026, 5, 8),
+            "75.00",
+        )
+        sale.last_seen_import = sales_import
+        sale.save(update_fields=["last_seen_import", "updated_at"])
+
+        sales_result = rebuild_client_metrics_after_import(
+            self.site.id,
+            sales_import.id,
+        )
+
+        self.assertEqual(
+            [row["month"] for row in sales_result["monthly"]],
+            ["2026-05-01"],
+        )
+        self.assertEqual(sales_result["weekly"], [])
+
+    def test_service_import_rebuilds_old_and_new_membership_coverage(self):
+        initial_import = ReportImport.objects.create(
+            report_type="sales_by_service",
+            file_name="initial.xlsx",
+            studio=self.studio_a,
+        )
+        purchase = self.create_purchase(
+            "coverage-change",
+            self.studio_a,
+            self.membership,
+            date(2026, 4, 1),
+            "100.00",
+            activation_date=date(2026, 4, 1),
+            expiration_date=date(2026, 5, 31),
+        )
+        purchase.first_seen_import = initial_import
+        purchase.last_seen_import = initial_import
+        purchase.save(
+            update_fields=["first_seen_import", "last_seen_import", "updated_at"]
+        )
+        first_version = purchase.versions.create(
+            report_import=initial_import,
+            raw_row=self._service_raw_row(
+                initial_import,
+                1,
+                "initial-row",
+            ),
+            row_hash="initial-version",
+            snapshot={
+                "pricing_option_id": self.membership.id,
+                "sale_date": "2026-04-01",
+                "activation_date": "2026-04-01",
+                "expiration_date": "2026-05-31",
+            },
+        )
+        self.assertIsNotNone(first_version.id)
+
+        correction_import = ReportImport.objects.create(
+            report_type="sales_by_service",
+            file_name="correction.xlsx",
+            studio=self.studio_a,
+        )
+        purchase.activation_date = date(2026, 5, 1)
+        purchase.expiration_date = date(2026, 6, 30)
+        purchase.last_seen_import = correction_import
+        purchase.save(
+            update_fields=[
+                "activation_date",
+                "expiration_date",
+                "last_seen_import",
+                "updated_at",
+            ]
+        )
+        purchase.versions.create(
+            report_import=correction_import,
+            raw_row=self._service_raw_row(
+                correction_import,
+                1,
+                "correction-row",
+            ),
+            row_hash="correction-version",
+            snapshot={
+                "pricing_option_id": self.membership.id,
+                "sale_date": "2026-04-01",
+                "activation_date": "2026-05-01",
+                "expiration_date": "2026-06-30",
+            },
+        )
+
+        result = rebuild_client_metrics_after_import(
+            self.site.id,
+            correction_import.id,
+        )
+
+        self.assertEqual(
+            [row["month"] for row in result["monthly"]],
+            ["2026-04-01", "2026-05-01", "2026-06-01"],
+        )
+        self.assertEqual(result["weekly"][0]["week_start"], "2026-03-30")
+        self.assertEqual(result["weekly"][-1]["week_start"], "2026-06-29")
+
+    def test_retention_rebuild_updates_monthly_metric_status(self):
+        self.create_purchase(
+            "retention-sync",
+            self.studio_a,
+            self.membership,
+            date(2026, 4, 1),
+            "100.00",
+            activation_date=date(2026, 4, 1),
+            expiration_date=date(2026, 4, 30),
+        )
+
+        rebuild_membership_month(self.site.id, date(2026, 4, 1))
+
+        metric = ClientStudioMonthlyMetric.objects.get(
+            client=self.client,
+            studio=self.studio_a,
+            month=date(2026, 4, 1),
+        )
+        self.assertEqual(metric.membership_status, MembershipMonthStatus.STATUS_NEW)
+        self.assertEqual(metric.active_membership_days, 30)
+
+    def _service_raw_row(self, report_import, row_number, row_hash):
+        from core_data.models import ServicePurchaseRawRow
+
+        return ServicePurchaseRawRow.objects.create(
+            report_import=report_import,
+            site=self.site,
+            studio=self.studio_a,
+            row_number=row_number,
+            row_hash=row_hash,
+            raw_payload={},
+            normalized_payload={},
+        )
+
+
+class ClientMetricRebuildEndpointTests(TestCase):
+    def setUp(self):
+        self.site = Site.objects.create(
+            name="Madrid",
+            country_code=Site.COUNTRY_SPAIN,
+        )
+        self.studio = Studio.objects.create(site=self.site, name="Centro")
+        self.client_record = Client.objects.create(
+            site=self.site,
+            name="Historical Client",
+            mindbody_id="historical-client",
+        )
+        AttendanceVisit.objects.create(
+            site=self.site,
+            natural_key="historical-visit",
+            current_row_hash="historical-visit-hash",
+            client=self.client_record,
+            visit_studio=self.studio,
+            visit_date=date(2026, 1, 15),
+            visit_time_raw="9:00 AM",
+        )
+        self.user = CustomUser.objects.create_user(
+            email="metrics@example.com",
+            password="testpass123",
+        )
+        self.profile, _ = UserAccessProfile.objects.get_or_create(user=self.user)
+        self.profile.can_reset_data = True
+        self.profile.save(update_fields=["can_reset_data"])
+        self.profile.allowed_sites.add(self.site)
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
+
+    def test_manual_rebuild_is_permission_protected(self):
+        self.profile.can_reset_data = False
+        self.profile.save(update_fields=["can_reset_data"])
+
+        response = self.api.post(
+            reverse("analytics-client-metrics-rebuild"),
+            {
+                "site": self.site.id,
+                "month": "2026-01",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(ClientStudioMonthlyMetric.objects.exists())
+
+    def test_manual_historical_rebuild_is_idempotent(self):
+        payload = {
+            "site": self.site.id,
+            "date_from": "2026-01-01",
+            "date_to": "2026-01-31",
+        }
+        first = self.api.post(
+            reverse("analytics-client-metrics-rebuild"),
+            payload,
+            format="json",
+        )
+        second = self.api.post(
+            reverse("analytics-client-metrics-rebuild"),
+            payload,
+            format="json",
+        )
+
+        self.assertEqual(first.status_code, 200)
+        self.assertEqual(second.status_code, 200)
+        self.assertEqual(ClientStudioMonthlyMetric.objects.count(), 1)
+        self.assertEqual(ClientStudioWeeklyMetric.objects.count(), 1)
+        active_week = ClientStudioWeeklyMetric.objects.get(total_bookings=1)
+        self.assertEqual(active_week.week_start, date(2026, 1, 12))
+
+    @override_settings(ENABLE_ANALYTICS_RESET=True)
+    def test_report_rollback_removes_derived_client_metrics(self):
+        report_import = ReportImport.objects.create(
+            report_type="attendance_with_revenue",
+            file_name="rollback-attendance.xlsx",
+            uploaded_by=self.user,
+        )
+        raw_row = AttendanceRawRow.objects.create(
+            report_import=report_import,
+            site=self.site,
+            row_number=1,
+            row_hash="rollback-row",
+            raw_payload={},
+            normalized_payload={},
+        )
+        visit = AttendanceVisit.objects.get(natural_key="historical-visit")
+        visit.first_seen_import = report_import
+        visit.last_seen_import = report_import
+        visit.source_raw_row = raw_row
+        visit.save(
+            update_fields=[
+                "first_seen_import",
+                "last_seen_import",
+                "source_raw_row",
+                "updated_at",
+            ]
+        )
+        rebuild_client_metrics_after_import(self.site.id, report_import.id)
+        self.assertTrue(ClientStudioMonthlyMetric.objects.exists())
+        self.assertTrue(ClientStudioWeeklyMetric.objects.exists())
+        self.user.is_superuser = True
+        self.user.save(update_fields=["is_superuser"])
+
+        response = self.api.post(
+            f"/api/data/report-imports/{report_import.id}/rollback/",
+            {"confirmation": "DELETE REPORT DATA"},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(AttendanceVisit.objects.exists())
+        self.assertFalse(ClientStudioMonthlyMetric.objects.exists())
+        self.assertFalse(ClientStudioWeeklyMetric.objects.exists())
+        self.assertEqual(
+            response.data["client_metrics_automation"]["total_monthly_rows"],
+            0,
+        )

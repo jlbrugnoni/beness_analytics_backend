@@ -193,7 +193,7 @@ Validation:
 
 ### Phase 1.3: Automatic Rebuilding
 
-Status: Not started
+Status: Complete
 
 - Attendance imports rebuild affected weekly and monthly attendance metrics.
 - Sales imports rebuild affected monthly general-sales metrics.
@@ -203,15 +203,43 @@ Status: Not started
 - Add a protected manual historical rebuild action for initialization and
   repairs.
 
+Implemented behavior:
+
+- Attendance imports rebuild the distinct monthly and Monday-based weekly
+  periods present in the imported current attendance records.
+- General sales imports rebuild monthly periods only.
+- Sales by Service imports rebuild the sale month plus all monthly and weekly
+  periods covered by tracked memberships.
+- When tracked membership activation or expiration dates are corrected, both
+  the previous version's coverage and the corrected coverage are rebuilt.
+- Every membership snapshot rebuild refreshes the corresponding monthly client
+  metrics after the snapshot is saved.
+- Report rollback captures affected periods before deleting import records,
+  then removes or recalculates the derived client metrics. Sales by Service
+  rollback also rebuilds affected retention snapshots.
+- Safe Sales by Service purchase repairs rebuild retention plus affected
+  monthly and weekly client metrics.
+- The protected `client-metrics/rebuild` endpoint accepts a site and explicit
+  date range. It rebuilds retention snapshots first so membership status does
+  not depend on prior initialization, and it is restricted to users with
+  `can_reset_data`.
+- The Uploads maintenance page exposes the historical rebuild action to users
+  with `can_reset_data`, so production initialization does not require server
+  terminal access.
+- Relevant import results display monthly and weekly client-metric automation
+  results or errors.
+- Historical and automatic rebuilds replace calculated periods and are
+  idempotent.
+
 Validation:
 
-- [ ] Each importer triggers only relevant rebuilds
-- [ ] Corrected imports replace derived facts correctly
-- [ ] Historical rebuild is idempotent
-- [ ] Manual action is permission protected
-- [ ] Tests pass
-- [ ] User reviewed
-- [ ] Committed
+- [x] Each importer triggers only relevant rebuilds
+- [x] Corrected imports replace derived facts correctly
+- [x] Historical rebuild is idempotent
+- [x] Manual action is permission protected
+- [x] Tests pass
+- [x] User reviewed
+- [x] Committed
 
 ### Phase 1.4: Foundation Review
 
@@ -505,3 +533,12 @@ Status: Not started
 - Added cross-studio site aggregation that counts one active calendar week and
   unions covered membership dates.
 - User reviewed and approved Phase 1.2 for commit.
+- Implemented Phase 1.3 automatic client-metric rebuilding after attendance,
+  sales, and Sales by Service imports.
+- Added correction-aware period detection using previous service-purchase
+  versions.
+- Synchronized monthly client metrics with retention snapshot rebuilds.
+- Added rollback and purchase-repair recalculation.
+- Added a `can_reset_data` protected historical rebuild endpoint and Uploads
+  maintenance controls.
+- User reviewed and approved Phase 1.3 for commit.

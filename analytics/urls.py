@@ -32,6 +32,7 @@ urlpatterns = [
         name="analytics-retention-client-purchase-history",
     ),
     path("membership-months/rebuild/", views.rebuild_membership_months_view, name="analytics-membership-months-rebuild"),
+    path("client-metrics/rebuild/", views.rebuild_client_metrics_view, name="analytics-client-metrics-rebuild"),
     path("class-matches/rebuild/", views.rebuild_attendance_class_matches_view, name="analytics-class-matches-rebuild"),
     path("class-matches/unresolved/", views.unresolved_attendance_matches_view, name="analytics-class-matches-unresolved"),
     path("occupation/", views.occupation_view, name="analytics-occupation"),

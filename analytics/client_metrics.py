@@ -5,13 +5,20 @@ from decimal import Decimal
 
 from django.db import transaction
 from django.db.models import Q
+from django.utils.dateparse import parse_date
 
 from analytics.models import (
     ClientStudioMonthlyMetric,
     ClientStudioWeeklyMetric,
     MembershipMonthStatus,
 )
-from core_data.models import AttendanceVisit, SaleLine, ServicePurchase
+from core_data.models import (
+    AttendanceVisit,
+    PricingOption,
+    ReportImport,
+    SaleLine,
+    ServicePurchase,
+)
 
 
 ZERO = Decimal("0.00")
@@ -27,6 +34,41 @@ def month_end(value):
 
 def week_start(value):
     return value - timedelta(days=value.weekday())
+
+
+def add_months(value, months):
+    month_index = value.month - 1 + months
+    year = value.year + month_index // 12
+    month = month_index % 12 + 1
+    return value.replace(year=year, month=month, day=1)
+
+
+def months_between(start, end):
+    current = month_start(start)
+    final = month_start(end)
+    values = []
+    while current <= final:
+        values.append(current)
+        current = add_months(current, 1)
+    return values
+
+
+def weeks_between(start, end):
+    current = week_start(start)
+    final = week_start(end)
+    values = []
+    while current <= final:
+        values.append(current)
+        current += timedelta(days=7)
+    return values
+
+
+def metric_date(value):
+    if not value:
+        return None
+    if hasattr(value, "year"):
+        return value
+    return parse_date(str(value))
 
 
 def date_strings(start, end):
@@ -356,3 +398,119 @@ def aggregate_client_weekly_metrics(rows):
     totals["active_membership_dates"] = sorted(active_membership_dates)
     totals["had_active_membership"] = bool(active_membership_dates)
     return totals
+
+
+def client_metric_periods_for_import(report_import):
+    months = set()
+    weeks = set()
+
+    if report_import.report_type == "attendance_with_revenue":
+        dates = AttendanceVisit.objects.filter(
+            last_seen_import=report_import,
+        ).values_list("visit_date", flat=True)
+        for value in dates:
+            months.add(month_start(value))
+            weeks.add(week_start(value))
+
+    elif report_import.report_type == "sales":
+        for value in SaleLine.objects.filter(
+            last_seen_import=report_import,
+        ).values_list("sale_date", flat=True):
+            months.add(month_start(value))
+
+    elif report_import.report_type == "sales_by_service":
+        purchases = ServicePurchase.objects.filter(
+            last_seen_import=report_import,
+        ).select_related("pricing_option")
+        for purchase in purchases:
+            months.add(month_start(purchase.sale_date))
+            if purchase.pricing_option.track_retention:
+                start = purchase.activation_date or purchase.sale_date
+                end = purchase.expiration_date or start
+                months.update(months_between(start, end))
+                weeks.update(weeks_between(start, end))
+
+        option_ids = set()
+        previous_snapshots = []
+        for version in report_import.service_purchase_versions.select_related(
+            "service_purchase",
+        ):
+            previous_version = (
+                version.service_purchase.versions
+                .exclude(report_import=report_import)
+                .filter(created_at__lt=version.created_at)
+                .order_by("-created_at")
+                .first()
+            )
+            if not previous_version:
+                continue
+            snapshot = previous_version.snapshot
+            previous_snapshots.append(snapshot)
+            if snapshot.get("pricing_option_id"):
+                option_ids.add(snapshot["pricing_option_id"])
+
+        tracked_option_ids = set(
+            PricingOption.objects.filter(
+                id__in=option_ids,
+                track_retention=True,
+            ).values_list("id", flat=True)
+        )
+        for snapshot in previous_snapshots:
+            sale_date = metric_date(snapshot.get("sale_date"))
+            if sale_date:
+                months.add(month_start(sale_date))
+            if snapshot.get("pricing_option_id") not in tracked_option_ids:
+                continue
+            start = metric_date(snapshot.get("activation_date")) or sale_date
+            end = metric_date(snapshot.get("expiration_date")) or start
+            if start and end:
+                months.update(months_between(start, end))
+                weeks.update(weeks_between(start, end))
+
+    return {
+        "months": sorted(months),
+        "weeks": sorted(weeks),
+    }
+
+
+def rebuild_client_metrics_for_periods(site_id, months=None, weeks=None):
+    monthly = [
+        {
+            "month": target_month.isoformat(),
+            "rows": rebuild_client_studio_monthly_metrics(site_id, target_month),
+        }
+        for target_month in sorted(set(months or []))
+    ]
+    weekly = [
+        {
+            "week_start": target_week.isoformat(),
+            "rows": rebuild_client_studio_weekly_metrics(site_id, target_week),
+        }
+        for target_week in sorted(set(weeks or []))
+    ]
+    return {
+        "monthly": monthly,
+        "weekly": weekly,
+        "total_monthly_rows": sum(row["rows"] for row in monthly),
+        "total_weekly_rows": sum(row["rows"] for row in weekly),
+    }
+
+
+def rebuild_client_metrics_after_import(site_id, report_import_id):
+    report_import = ReportImport.objects.get(id=report_import_id)
+    periods = client_metric_periods_for_import(report_import)
+    result = rebuild_client_metrics_for_periods(
+        site_id,
+        months=periods["months"],
+        weeks=periods["weeks"],
+    )
+    result["skipped"] = not periods["months"] and not periods["weeks"]
+    return result
+
+
+def rebuild_client_metrics_for_range(site_id, start, end):
+    return rebuild_client_metrics_for_periods(
+        site_id,
+        months=months_between(start, end),
+        weeks=weeks_between(start, end),
+    )

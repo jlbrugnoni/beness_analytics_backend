@@ -17,6 +17,8 @@ from rest_framework.response import Response
 
 from .importers import (
     ATTENDANCE_REPORT_TYPE,
+    SALES_BY_SERVICE_REPORT_TYPE,
+    SALES_REPORT_TYPE,
     SUPPORTED_REPORT_TYPES,
     TRAINER_AVAILABILITY_REPORT_TYPE,
     import_report,
@@ -1121,6 +1123,23 @@ class ReportImportViewSet(viewsets.ModelViewSet):
         include_schedule_data = request.data.get("include_schedule_data", True) in (True, "true", "True", "1", 1)
         deleted_counts = {}
         notes = []
+        client_metric_periods = None
+        client_metric_site_id = None
+
+        if report_import.report_type in {
+            ATTENDANCE_REPORT_TYPE,
+            SALES_REPORT_TYPE,
+            SALES_BY_SERVICE_REPORT_TYPE,
+        }:
+            from analytics.client_metrics import client_metric_periods_for_import
+
+            client_metric_periods = client_metric_periods_for_import(report_import)
+            model_config = self.import_models(report_import)
+            client_metric_site_id = (
+                model_config["raw_model"].objects.filter(report_import=report_import)
+                .values_list("site_id", flat=True)
+                .first()
+            )
 
         with transaction.atomic():
             if report_import.report_type == TRAINER_AVAILABILITY_REPORT_TYPE:
@@ -1198,11 +1217,32 @@ class ReportImportViewSet(viewsets.ModelViewSet):
             else:
                 transaction.set_rollback(True)
 
+        client_metrics_automation = None
+        if not dry_run and client_metric_periods and client_metric_site_id:
+            if report_payload["report_type"] == SALES_BY_SERVICE_REPORT_TYPE:
+                from analytics.client_metrics import add_months
+                from analytics.views import rebuild_membership_month
+
+                retention_months = set(client_metric_periods["months"])
+                if retention_months:
+                    retention_months.add(add_months(max(retention_months), 1))
+                for target_month in sorted(retention_months):
+                    rebuild_membership_month(client_metric_site_id, target_month)
+
+            from analytics.client_metrics import rebuild_client_metrics_for_periods
+
+            client_metrics_automation = rebuild_client_metrics_for_periods(
+                client_metric_site_id,
+                months=client_metric_periods["months"],
+                weeks=client_metric_periods["weeks"],
+            )
+
         return Response({
             "dry_run": dry_run,
             "report_import": report_payload,
             "deleted_counts": deleted_counts,
             "notes": notes,
+            "client_metrics_automation": client_metrics_automation,
         })
 
     @action(detail=False, methods=["post"], url_path="reset-analytics-data")
@@ -1298,17 +1338,31 @@ class ReportImportViewSet(viewsets.ModelViewSet):
         result["confirmation_required"] = "REPAIR PURCHASES"
 
         rebuilt = []
+        rebuilt_client_metrics = []
         if apply_changes:
             for affected_site_id, range_values in result.get("affected_ranges", {}).items():
-                start_month = month_start(parse_iso_date(range_values["from"]))
-                end_month = add_months(month_start(parse_iso_date(range_values["to"])), 1)
+                range_start = parse_iso_date(range_values["from"])
+                range_end = parse_iso_date(range_values["to"])
+                start_month = month_start(range_start)
+                end_month = add_months(month_start(range_end), 1)
                 for target_month in months_between(start_month, end_month):
                     rebuilt.append({
                         "site_id": int(affected_site_id),
                         "month": target_month.isoformat(),
                         "rows": rebuild_membership_month(int(affected_site_id), target_month),
                     })
+                from analytics.client_metrics import rebuild_client_metrics_for_range
+
+                rebuilt_client_metrics.append({
+                    "site_id": int(affected_site_id),
+                    **rebuild_client_metrics_for_range(
+                        int(affected_site_id),
+                        range_start,
+                        range_end,
+                    ),
+                })
         result["rebuilt_snapshots"] = rebuilt
+        result["rebuilt_client_metrics"] = rebuilt_client_metrics
         return Response(result)
 
     @action(detail=False, methods=["post"], url_path="preview")
@@ -1412,7 +1466,7 @@ class ReportImportViewSet(viewsets.ModelViewSet):
                         status=status.HTTP_400_BAD_REQUEST,
                     )
             result = import_report(uploaded_file, site, report_type, uploaded_by=request.user, options=options)
-            if report_type == "sales_by_service":
+            if report_type == SALES_BY_SERVICE_REPORT_TYPE:
                 try:
                     from analytics.views import rebuild_membership_months_after_import
 
@@ -1424,6 +1478,23 @@ class ReportImportViewSet(viewsets.ModelViewSet):
                     result["retention_automation"] = {
                         "skipped": True,
                         "error": f"Retention snapshot automation failed after import: {exc}",
+                    }
+            if report_type in {
+                ATTENDANCE_REPORT_TYPE,
+                SALES_REPORT_TYPE,
+                SALES_BY_SERVICE_REPORT_TYPE,
+            }:
+                try:
+                    from analytics.client_metrics import rebuild_client_metrics_after_import
+
+                    result["client_metrics_automation"] = rebuild_client_metrics_after_import(
+                        site.id,
+                        result["import"]["report_import_id"],
+                    )
+                except Exception as exc:
+                    result["client_metrics_automation"] = {
+                        "skipped": True,
+                        "error": f"Client metric automation failed after import: {exc}",
                     }
             auto_reconcile = request.data.get("auto_schedule_reconcile", "true")
             if auto_reconcile in (True, "true", "True", "1", 1):
