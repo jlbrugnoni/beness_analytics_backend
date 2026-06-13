@@ -801,3 +801,178 @@ class ClientMetricRebuildEndpointTests(TestCase):
             response.data["client_metrics_automation"]["total_monthly_rows"],
             0,
         )
+
+
+class ClientDirectoryTests(TestCase):
+    def setUp(self):
+        self.site = Site.objects.create(
+            name="Client Directory Site",
+            country_code=Site.COUNTRY_DOMINICAN_REPUBLIC,
+        )
+        self.studio_a = Studio.objects.create(site=self.site, name="Piantini")
+        self.studio_b = Studio.objects.create(site=self.site, name="Naco")
+        self.client_a = Client.objects.create(
+            site=self.site,
+            name="Ana Client",
+            mindbody_id="client-a",
+            email="ana@example.com",
+            phone="111",
+        )
+        self.client_b = Client.objects.create(
+            site=self.site,
+            name="Berta Client",
+            mindbody_id="client-b",
+            email="berta@example.com",
+            phone="222",
+        )
+        self.admin = CustomUser.objects.create_superuser(
+            email="directory-admin@example.com",
+            password="testpass123",
+        )
+        self.api = APIClient()
+        self.api.force_authenticate(self.admin)
+
+        ClientStudioMonthlyMetric.objects.create(
+            site=self.site,
+            studio=self.studio_a,
+            client=self.client_a,
+            month=date(2026, 4, 1),
+            total_bookings=4,
+            attended_visits=3,
+            no_shows=1,
+            active_weeks=2,
+            active_week_starts=["2026-04-06", "2026-04-13"],
+            service_spending=Decimal("100.00"),
+            general_sales_spending=Decimal("120.00"),
+            first_visit_date=date(2026, 4, 7),
+            last_visit_date=date(2026, 4, 15),
+            membership_status=MembershipMonthStatus.STATUS_NEW,
+        )
+        ClientStudioMonthlyMetric.objects.create(
+            site=self.site,
+            studio=self.studio_a,
+            client=self.client_a,
+            month=date(2026, 5, 1),
+            total_bookings=5,
+            attended_visits=4,
+            late_cancels=1,
+            active_weeks=3,
+            active_week_starts=["2026-05-04", "2026-05-11", "2026-05-18"],
+            service_spending=Decimal("150.00"),
+            general_sales_spending=Decimal("175.00"),
+            first_visit_date=date(2026, 5, 4),
+            last_visit_date=date(2026, 5, 20),
+            membership_status=MembershipMonthStatus.STATUS_RETAINED,
+        )
+        ClientStudioMonthlyMetric.objects.create(
+            site=self.site,
+            studio=self.studio_b,
+            client=self.client_a,
+            month=date(2026, 5, 1),
+            total_bookings=1,
+            attended_visits=1,
+            active_weeks=1,
+            active_week_starts=["2026-05-11"],
+            service_spending=Decimal("25.00"),
+            general_sales_spending=Decimal("25.00"),
+            first_visit_date=date(2026, 5, 12),
+            last_visit_date=date(2026, 5, 12),
+        )
+        ClientStudioMonthlyMetric.objects.create(
+            site=self.site,
+            studio=self.studio_b,
+            client=self.client_b,
+            month=date(2026, 5, 1),
+            total_bookings=2,
+            attended_visits=1,
+            no_shows=1,
+            active_weeks=1,
+            active_week_starts=["2026-05-25"],
+            service_spending=Decimal("50.00"),
+            general_sales_spending=Decimal("60.00"),
+            first_visit_date=date(2026, 5, 25),
+            last_visit_date=date(2026, 5, 25),
+            membership_status=MembershipMonthStatus.STATUS_NOT_RENEWED,
+        )
+
+    def test_default_month_aggregates_studios_and_uses_latest_status(self):
+        response = self.api.get(
+            reverse("analytics-client-directory"),
+            {"site": self.site.id, "month": "2026-05"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 2)
+        ana = next(row for row in response.data["results"] if row["client_id"] == self.client_a.id)
+        self.assertEqual(ana["membership_status"], MembershipMonthStatus.STATUS_RETAINED)
+        self.assertEqual(ana["attended_visits"], 5)
+        self.assertEqual(ana["active_weeks"], 3)
+        self.assertEqual(ana["total_bookings"], 6)
+        self.assertEqual(ana["attendance_rate"], 83.33)
+        self.assertEqual(ana["late_cancel_rate"], 16.67)
+        self.assertEqual(ana["service_spending"], 175.0)
+        self.assertEqual(ana["total_sales_spending"], 200.0)
+        self.assertEqual(ana["primary_studio"], "Piantini")
+        self.assertEqual(ana["last_visit_date"], "2026-05-20")
+
+    def test_studio_status_search_sorting_and_pagination(self):
+        response = self.api.get(
+            reverse("analytics-client-directory"),
+            {
+                "site": self.site.id,
+                "studio": self.studio_b.id,
+                "month": "2026-05",
+                "status": "not_renewed",
+                "search": "222",
+                "ordering": "-attended_visits",
+                "page": 1,
+                "page_size": 1,
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["count"], 1)
+        self.assertEqual(response.data["pages"], 1)
+        self.assertEqual(response.data["results"][0]["client_id"], self.client_b.id)
+        self.assertEqual(response.data["results"][0]["primary_studio"], "Naco")
+
+        response = self.api.get(
+            reverse("analytics-client-directory"),
+            {
+                "site": self.site.id,
+                "studio": self.studio_b.id,
+                "month": "2026-05",
+                "search": "Ana",
+            },
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["results"][0]["primary_studio"], "Piantini")
+
+    def test_rolling_period_and_money_permission(self):
+        viewer = CustomUser.objects.create_user(
+            email="directory-viewer@example.com",
+            password="testpass123",
+        )
+        profile, _ = UserAccessProfile.objects.get_or_create(user=viewer)
+        profile.allowed_sites.add(self.site)
+        self.api.force_authenticate(viewer)
+
+        response = self.api.get(
+            reverse("analytics-client-directory"),
+            {
+                "site": self.site.id,
+                "period": "last_3_months",
+                "month": "2026-05",
+                "search": "ana@example.com",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["period"]["from"], "2026-03-01")
+        self.assertEqual(response.data["period"]["to"], "2026-05-31")
+        self.assertEqual(response.data["count"], 1)
+        row = response.data["results"][0]
+        self.assertEqual(row["attended_visits"], 8)
+        self.assertEqual(row["active_weeks"], 5)
+        self.assertIsNone(row["service_spending"])
+        self.assertIsNone(row["total_sales_spending"])

@@ -1,6 +1,7 @@
 from calendar import monthrange
 from datetime import date, datetime, timedelta
 from decimal import Decimal
+from math import ceil
 import re
 
 from django.db import transaction
@@ -11,16 +12,19 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from analytics.client_metrics import aggregate_client_monthly_metrics
 from analytics.models import ClientStudioMonthlyMetric, MembershipMonthStatus
 from core_data.access import scoped_queryset_for_user, user_has_capability
 from core_data.models import (
     AttendanceClassMatch,
     AttendanceVisit,
+    Client,
     PricingOption,
     SaleLine,
     ScheduledClass,
     ServicePurchase,
     Site,
+    Studio,
     StudioClosure,
 )
 
@@ -43,6 +47,262 @@ def date_bounds(request, start=None, end=None):
     start = parse_date(request.query_params.get("date_from")) or default_start
     end = parse_date(request.query_params.get("date_to")) or default_end
     return start, end
+
+
+def client_directory_period(request):
+    period = request.query_params.get("period", "month")
+    allowed_periods = {"month", "last_3_months", "last_6_months", "last_12_months", "lifetime"}
+    if period not in allowed_periods:
+        period = "month"
+
+    latest_complete = add_months(month_start(date.today()), -1)
+    month_value = parse_date(f"{request.query_params.get('month')}-01") if request.query_params.get("month") else None
+    selected_month = month_start(month_value or latest_complete)
+    if period == "lifetime":
+        return period, None, None, selected_month
+
+    month_count = {
+        "month": 1,
+        "last_3_months": 3,
+        "last_6_months": 6,
+        "last_12_months": 12,
+    }[period]
+    start = add_months(selected_month, -(month_count - 1))
+    return period, start, selected_month, selected_month
+
+
+def client_directory_sort_value(row, field):
+    value = row.get(field)
+    if value is None:
+        if field in {"client", "membership_status", "primary_studio"}:
+            return ""
+        return -1
+    if isinstance(value, str):
+        return value.casefold()
+    return value
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def client_directory_view(request):
+    period, start_month, end_month, selected_month = client_directory_period(request)
+    site_id = request.query_params.get("site")
+    studio_id = request.query_params.get("studio")
+    search = (request.query_params.get("search") or "").strip()
+    status_value = request.query_params.get("status")
+
+    clients = scoped_queryset_for_user(
+        Client.objects.select_related("site"),
+        request.user,
+        site_field="site_id",
+    )
+    if site_id:
+        clients = clients.filter(site_id=site_id)
+    if search:
+        clients = clients.filter(
+            Q(name__icontains=search)
+            | Q(mindbody_id__icontains=search)
+            | Q(email__icontains=search)
+            | Q(phone__icontains=search)
+        )
+
+    metric_scope = scoped_queryset_for_user(
+        ClientStudioMonthlyMetric.objects.select_related("studio", "client"),
+        request.user,
+        site_field="site_id",
+        studio_field="studio_id",
+        include_null_studio=True,
+    )
+    if site_id:
+        metric_scope = metric_scope.filter(site_id=site_id)
+    if studio_id:
+        metric_scope = metric_scope.filter(studio_id=studio_id)
+    if start_month and end_month:
+        metric_scope = metric_scope.filter(month__range=(start_month, end_month))
+
+    represented_client_ids = metric_scope.values_list("client_id", flat=True).distinct()
+    clients = clients.filter(id__in=represented_client_ids)
+    client_rows = list(clients.values(
+        "id",
+        "name",
+        "mindbody_id",
+        "email",
+        "phone",
+        "site_id",
+        "site__name",
+    ))
+    client_ids = [row["id"] for row in client_rows]
+
+    metrics_by_client = {}
+    for metric in metric_scope.filter(client_id__in=client_ids).iterator():
+        metrics_by_client.setdefault(metric.client_id, []).append(metric)
+
+    lifetime_metrics = scoped_queryset_for_user(
+        ClientStudioMonthlyMetric.objects.filter(client_id__in=client_ids),
+        request.user,
+        site_field="site_id",
+        studio_field="studio_id",
+        include_null_studio=True,
+    )
+    if site_id:
+        lifetime_metrics = lifetime_metrics.filter(site_id=site_id)
+
+    primary_candidates = {}
+    last_visit_by_client = {}
+    for metric in lifetime_metrics.select_related("studio").iterator():
+        if metric.last_visit_date:
+            current_last = last_visit_by_client.get(metric.client_id)
+            if current_last is None or metric.last_visit_date > current_last:
+                last_visit_by_client[metric.client_id] = metric.last_visit_date
+        if not metric.studio_id or metric.attended_visits <= 0:
+            continue
+        key = (metric.client_id, metric.studio_id)
+        candidate = primary_candidates.setdefault(key, {
+            "client_id": metric.client_id,
+            "studio_id": metric.studio_id,
+            "studio": metric.studio.name,
+            "attended_visits": 0,
+            "last_visit_date": None,
+        })
+        candidate["attended_visits"] += metric.attended_visits
+        if metric.last_visit_date and (
+            candidate["last_visit_date"] is None
+            or metric.last_visit_date > candidate["last_visit_date"]
+        ):
+            candidate["last_visit_date"] = metric.last_visit_date
+
+    primary_by_client = {}
+    for candidate in primary_candidates.values():
+        current = primary_by_client.get(candidate["client_id"])
+        candidate_key = (
+            candidate["attended_visits"],
+            candidate["last_visit_date"] or date.min,
+            candidate["studio"].casefold(),
+        )
+        current_key = (
+            current["attended_visits"],
+            current["last_visit_date"] or date.min,
+            current["studio"].casefold(),
+        ) if current else None
+        if current_key is None or candidate_key > current_key:
+            primary_by_client[candidate["client_id"]] = candidate
+
+    today = date.today()
+    can_see_money = can_view_money(request)
+    rows = []
+    for client in client_rows:
+        totals = aggregate_client_monthly_metrics(metrics_by_client.get(client["id"], []))
+        last_visit = last_visit_by_client.get(client["id"])
+        primary = primary_by_client.get(client["id"])
+        total_bookings = totals["total_bookings"]
+        row = {
+            "client_id": client["id"],
+            "client": client["name"],
+            "mindbody_id": client["mindbody_id"],
+            "email": client["email"],
+            "phone": client["phone"],
+            "site_id": client["site_id"],
+            "site": client["site__name"],
+            "membership_status": totals["membership_status"],
+            "primary_studio_id": primary["studio_id"] if primary else None,
+            "primary_studio": primary["studio"] if primary else None,
+            "last_visit_date": last_visit.isoformat() if last_visit else None,
+            "days_since_last_visit": (today - last_visit).days if last_visit else None,
+            "attended_visits": totals["attended_visits"],
+            "active_weeks": totals["active_weeks"],
+            "total_bookings": total_bookings,
+            "attendance_rate": percentage(totals["attended_visits"], total_bookings),
+            "no_show_rate": percentage(totals["no_shows"], total_bookings),
+            "late_cancel_rate": percentage(totals["late_cancels"], total_bookings),
+            "service_spending": decimal_value(totals["service_spending"]) if can_see_money else None,
+            "total_sales_spending": decimal_value(totals["general_sales_spending"]) if can_see_money else None,
+        }
+        if not status_value or row["membership_status"] == status_value:
+            rows.append(row)
+
+    sort_field = request.query_params.get("ordering", "client")
+    descending = sort_field.startswith("-")
+    sort_field = sort_field.lstrip("-")
+    allowed_sort_fields = {
+        "client",
+        "membership_status",
+        "primary_studio",
+        "last_visit_date",
+        "days_since_last_visit",
+        "attended_visits",
+        "active_weeks",
+        "attendance_rate",
+        "no_show_rate",
+        "late_cancel_rate",
+        "service_spending",
+        "total_sales_spending",
+    }
+    if sort_field not in allowed_sort_fields:
+        sort_field = "client"
+        descending = False
+    rows.sort(
+        key=lambda row: (
+            client_directory_sort_value(row, sort_field),
+            row["client"].casefold(),
+        ),
+        reverse=descending,
+    )
+
+    try:
+        page_size = min(max(int(request.query_params.get("page_size", 25)), 1), 100)
+    except (TypeError, ValueError):
+        page_size = 25
+    try:
+        page = max(int(request.query_params.get("page", 1)), 1)
+    except (TypeError, ValueError):
+        page = 1
+    count = len(rows)
+    pages = ceil(count / page_size) if count else 0
+    if pages and page > pages:
+        page = pages
+    offset = (page - 1) * page_size
+
+    available_sites = scoped_queryset_for_user(
+        Site.objects.all(),
+        request.user,
+        site_field="id",
+    ).values("id", "name")
+    available_studios = scoped_queryset_for_user(
+        Studio.objects.select_related("site"),
+        request.user,
+        studio_field="id",
+    )
+
+    return Response({
+        "period": {
+            "mode": period,
+            "month": selected_month.strftime("%Y-%m"),
+            "from": start_month.isoformat() if start_month else None,
+            "to": month_end(end_month).isoformat() if end_month else None,
+        },
+        "count": count,
+        "page": page,
+        "page_size": page_size,
+        "pages": pages,
+        "ordering": f"-{sort_field}" if descending else sort_field,
+        "results": rows[offset:offset + page_size],
+        "filters": {
+            "sites": list(available_sites),
+            "studios": [
+                {
+                    "id": studio.id,
+                    "name": studio.name,
+                    "site_id": studio.site_id,
+                    "site": studio.site.name,
+                }
+                for studio in available_studios
+            ],
+            "membership_statuses": [
+                {"value": value, "label": label}
+                for value, label in MembershipMonthStatus.STATUS_CHOICES
+            ],
+        },
+    })
 
 
 def filtered_by_site(queryset, request):

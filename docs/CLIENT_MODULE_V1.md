@@ -301,7 +301,7 @@ Verification:
 
 ### Phase 2.1: Client Directory
 
-Status: Not started
+Status: Complete
 
 Create a dedicated analytics page with:
 
@@ -322,6 +322,75 @@ Initial columns:
 - Attendance, no-show, and late-cancel rates
 - Service spending
 - Total sales spending
+
+Navigation and access:
+
+- The primary navigation People icon opens the operational `/clients` module.
+- User administration is removed from the primary navigation.
+- Settings exposes User Management only to users with `can_manage_users`.
+- Existing user administration routes remain protected by
+  `can_manage_users`.
+
+Initial directory definitions:
+
+- Default period is the last completed calendar month.
+- Supported scopes are selected month, last 3 months, last 6 months, last 12
+  months, and lifetime.
+- Period metrics are calculated from the monthly client-studio facts.
+- Membership status is the latest available status within the selected scope.
+- Primary studio is the studio with the highest lifetime attended visits,
+  using the latest visit and studio name as deterministic tie breakers.
+- A studio-filtered directory contains clients represented by a metric row for
+  that studio during the selected period.
+- Studio representation is intentionally broader than attendance: a client can
+  be included through attendance, purchases, tracked membership coverage, or a
+  retention status assigned to that studio. This allows the directory to
+  expose members who have not attended.
+- Attendance, no-show, and late-cancel rates are recalculated from summed
+  components rather than averaging monthly percentages.
+- Service and general-sales spending remain separate and are hidden when the
+  user lacks `can_view_money`.
+- Search, sorting, and pagination are performed by the server.
+
+Implemented behavior:
+
+- The directory API returns only clients represented in the selected period
+  and respects the user's allowed sites and studios.
+- Month arrows move the selected or ending month without opening a separate
+  advanced filter panel.
+- Site, studio, period, membership status, and text search can be combined.
+- Search covers client name, Mindbody ID, email, and phone.
+- The server supports ascending and descending sorting for every displayed
+  metric and limits pages to at most 100 clients.
+- Primary studio and last visit remain lifetime facts within the user's access
+  scope, even when the directory is filtered to activity at another studio.
+- `MembershipMonthStatus` is a sparse monthly transition snapshot rather than
+  one permanent row for every client and month. A row is created only when the
+  client qualifies as a member in the current month or the immediately
+  preceding month.
+- Membership qualification requires at least 15 covered calendar days from
+  tracked pricing-option purchases during the month.
+- A client with no current or previous-month membership receives no retention
+  snapshot row, even if they were a member further in the past. Historical
+  membership is consulted when a current member returns after a gap so the
+  client can be classified as reactivated.
+- Site-level active weeks union the stored week dates, so attendance at
+  multiple studios in the same week is counted once.
+- User Management now appears inside Settings only for users with
+  `can_manage_users`; the People navigation icon opens Clients for all
+  authenticated operational users.
+
+Validation:
+
+- [x] Directory API tests cover aggregation, scopes, filtering, search,
+  sorting, pagination, money permissions, and cross-studio primary studio
+- [x] Django system and migration checks pass
+- [x] Frontend production build passes
+- [x] Existing Client Module regression suite passes
+- [x] Local May 2026 directory returns 1,060 clients in 0.243 seconds
+  using 5 database queries
+- [x] User reviewed
+- [x] Committed
 
 ### Phase 2.2: Individual Client Overview
 
