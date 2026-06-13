@@ -5,9 +5,15 @@ from django.test import TestCase
 
 from analytics.client_metrics import (
     aggregate_client_monthly_metrics,
+    aggregate_client_weekly_metrics,
     rebuild_client_studio_monthly_metrics,
+    rebuild_client_studio_weekly_metrics,
 )
-from analytics.models import ClientStudioMonthlyMetric, MembershipMonthStatus
+from analytics.models import (
+    ClientStudioMonthlyMetric,
+    ClientStudioWeeklyMetric,
+    MembershipMonthStatus,
+)
 from core_data.models import (
     AttendanceVisit,
     Client,
@@ -275,3 +281,187 @@ class ClientStudioMonthlyMetricTests(TestCase):
         self.assertEqual(row.general_sales_spending, Decimal("50.00"))
         self.assertEqual(row.first_purchase_date, date(2026, 4, 7))
         self.assertEqual(row.last_purchase_date, date(2026, 4, 8))
+
+    def test_weekly_rebuild_uses_monday_boundary_and_unions_studios(self):
+        self.create_visit(
+            "weekly-a-attended",
+            self.studio_a,
+            date(2025, 12, 30),
+            revenue="10.00",
+        )
+        self.create_visit(
+            "weekly-a-no-show",
+            self.studio_a,
+            date(2026, 1, 3),
+            no_show=True,
+        )
+        self.create_visit(
+            "weekly-b-attended",
+            self.studio_b,
+            date(2026, 1, 2),
+            revenue="15.00",
+        )
+        self.create_visit(
+            "weekly-b-late-cancel",
+            self.studio_b,
+            date(2026, 1, 4),
+            late_cancel=True,
+        )
+        self.create_purchase(
+            "weekly-membership-a",
+            self.studio_a,
+            self.membership,
+            date(2025, 12, 28),
+            "100.00",
+            activation_date=date(2025, 12, 28),
+            expiration_date=date(2026, 1, 2),
+        )
+        self.create_purchase(
+            "weekly-membership-b",
+            self.studio_b,
+            self.membership,
+            date(2026, 1, 1),
+            "120.00",
+            activation_date=date(2026, 1, 1),
+            expiration_date=date(2026, 1, 5),
+        )
+
+        rebuilt = rebuild_client_studio_weekly_metrics(
+            self.site.id,
+            date(2026, 1, 1),
+        )
+
+        self.assertEqual(rebuilt, 2)
+        studio_a = ClientStudioWeeklyMetric.objects.get(
+            client=self.client,
+            studio=self.studio_a,
+            week_start=date(2025, 12, 29),
+        )
+        studio_b = ClientStudioWeeklyMetric.objects.get(
+            client=self.client,
+            studio=self.studio_b,
+            week_start=date(2025, 12, 29),
+        )
+
+        self.assertEqual(studio_a.total_bookings, 2)
+        self.assertEqual(studio_a.attended_visits, 1)
+        self.assertEqual(studio_a.no_shows, 1)
+        self.assertEqual(studio_a.late_cancels, 0)
+        self.assertEqual(studio_a.attendance_revenue, Decimal("10.00"))
+        self.assertEqual(studio_a.active_membership_days, 5)
+        self.assertTrue(studio_a.had_active_membership)
+
+        self.assertEqual(studio_b.total_bookings, 2)
+        self.assertEqual(studio_b.attended_visits, 1)
+        self.assertEqual(studio_b.no_shows, 0)
+        self.assertEqual(studio_b.late_cancels, 1)
+        self.assertEqual(studio_b.attendance_revenue, Decimal("15.00"))
+        self.assertEqual(studio_b.active_membership_days, 4)
+
+        site_totals = aggregate_client_weekly_metrics([studio_a, studio_b])
+        self.assertEqual(site_totals["attended_visits"], 2)
+        self.assertEqual(site_totals["active_weeks"], 1)
+        self.assertEqual(site_totals["active_membership_days"], 7)
+        self.assertTrue(site_totals["had_active_membership"])
+
+        self.create_visit(
+            "next-week-attended",
+            self.studio_a,
+            date(2026, 1, 6),
+        )
+        rebuild_client_studio_weekly_metrics(self.site.id, date(2026, 1, 6))
+        range_totals = aggregate_client_weekly_metrics(
+            ClientStudioWeeklyMetric.objects.filter(client=self.client)
+        )
+        self.assertEqual(range_totals["active_weeks"], 2)
+        self.assertEqual(
+            range_totals["active_week_starts"],
+            ["2025-12-29", "2026-01-05"],
+        )
+
+    def test_weekly_rebuild_skips_empty_and_purchase_only_weeks(self):
+        self.create_purchase(
+            "weekly-drop-in-only",
+            self.studio_a,
+            self.drop_in,
+            date(2026, 2, 3),
+            "30.00",
+        )
+
+        rebuilt = rebuild_client_studio_weekly_metrics(
+            self.site.id,
+            date(2026, 2, 3),
+        )
+
+        self.assertEqual(rebuilt, 0)
+        self.assertFalse(ClientStudioWeeklyMetric.objects.exists())
+
+        empty_rebuild = rebuild_client_studio_weekly_metrics(
+            self.site.id,
+            date(2026, 2, 10),
+        )
+        self.assertEqual(empty_rebuild, 0)
+        self.assertFalse(ClientStudioWeeklyMetric.objects.exists())
+
+    def test_weekly_rebuild_keeps_membership_only_weeks(self):
+        self.create_purchase(
+            "weekly-membership-only",
+            self.studio_a,
+            self.membership,
+            date(2026, 2, 1),
+            "100.00",
+            activation_date=date(2026, 2, 9),
+            expiration_date=date(2026, 2, 12),
+        )
+
+        rebuilt = rebuild_client_studio_weekly_metrics(
+            self.site.id,
+            date(2026, 2, 10),
+        )
+
+        self.assertEqual(rebuilt, 1)
+        row = ClientStudioWeeklyMetric.objects.get(
+            client=self.client,
+            studio=self.studio_a,
+            week_start=date(2026, 2, 9),
+        )
+        self.assertEqual(row.total_bookings, 0)
+        self.assertEqual(row.attended_visits, 0)
+        self.assertEqual(row.active_membership_days, 4)
+        self.assertEqual(
+            row.active_membership_dates,
+            ["2026-02-09", "2026-02-10", "2026-02-11", "2026-02-12"],
+        )
+        self.assertTrue(row.had_active_membership)
+
+    def test_weekly_rebuild_replaces_corrected_attendance(self):
+        visit = self.create_visit(
+            "weekly-corrected",
+            self.studio_a,
+            date(2026, 3, 4),
+            revenue="0.00",
+            no_show=True,
+        )
+        rebuild_client_studio_weekly_metrics(self.site.id, date(2026, 3, 4))
+
+        first = ClientStudioWeeklyMetric.objects.get(
+            client=self.client,
+            studio=self.studio_a,
+        )
+        self.assertEqual(first.attended_visits, 0)
+        self.assertEqual(first.no_shows, 1)
+
+        visit.no_show = False
+        visit.revenue = Decimal("35.00")
+        visit.save(update_fields=["no_show", "revenue", "updated_at"])
+        rebuild_client_studio_weekly_metrics(self.site.id, date(2026, 3, 8))
+
+        self.assertEqual(ClientStudioWeeklyMetric.objects.count(), 1)
+        corrected = ClientStudioWeeklyMetric.objects.get(
+            client=self.client,
+            studio=self.studio_a,
+        )
+        self.assertEqual(corrected.week_start, date(2026, 3, 2))
+        self.assertEqual(corrected.attended_visits, 1)
+        self.assertEqual(corrected.no_shows, 0)
+        self.assertEqual(corrected.attendance_revenue, Decimal("35.00"))

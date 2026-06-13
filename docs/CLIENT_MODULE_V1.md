@@ -137,7 +137,7 @@ Validation:
 
 ### Phase 1.2: Weekly Client Metrics
 
-Status: Not started
+Status: Complete
 
 Create `ClientStudioWeeklyMetric`, uniquely identified by:
 
@@ -155,20 +155,41 @@ Store:
 - Active membership days
 - Active membership indicator
 
-Rows are created when a client has attendance, cancellation, purchase, or
-active membership activity. Empty calendar weeks are interpreted as zero
-without creating permanent rows.
+Internal support field:
+
+- `active_membership_dates` stores the distinct covered dates behind
+  `active_membership_days`, allowing site-level aggregation to union
+  cross-studio membership coverage.
+
+Implemented definitions:
+
+- Weeks begin on Monday and end on Sunday, including weeks that cross month or
+  year boundaries.
+- A row is created when the client has a booking, no-show, late cancellation,
+  or tracked membership coverage attributed to that studio during the week.
+- Active membership weeks without attendance are stored because they are
+  required to identify inactive members.
+- Ordinary non-membership purchases do not create weekly rows. They remain
+  monthly facts because the weekly table has no financial fields and an
+  all-zero purchase row would incorrectly imply engagement data.
+- Empty calendar weeks are interpreted as zero without creating permanent
+  rows.
+- Site-level attendance sums visits across studios but counts the calendar week
+  as active only once.
+- Active membership days are the union of covered dates, preventing overlapping
+  purchases or cross-studio coverage from inflating the site result.
+- The rebuild atomically replaces all calculated rows for one site and week.
 
 Validation:
 
-- [ ] Model and migration created
-- [ ] Rebuild service implemented
-- [ ] Week boundaries are consistent
-- [ ] Missing weeks behave as zero
-- [ ] Multi-studio attendance counts once at site-week scope
-- [ ] Tests pass
-- [ ] User reviewed
-- [ ] Committed
+- [x] Model and migration created
+- [x] Rebuild service implemented
+- [x] Week boundaries are consistent
+- [x] Missing weeks behave as zero
+- [x] Multi-studio attendance counts once at site-week scope
+- [x] Tests pass
+- [x] User reviewed
+- [x] Committed
 
 ### Phase 1.3: Automatic Rebuilding
 
@@ -477,3 +498,10 @@ Status: Not started
 - Defined non-membership spending as non-tracked and non-trial service
   purchases.
 - User reviewed and approved Phase 1.1 for commit.
+- Implemented Phase 1.2 weekly client-studio metrics using Monday-Sunday
+  calendar weeks.
+- Preserved membership-only weeks while leaving empty and ordinary
+  purchase-only weeks unstored.
+- Added cross-studio site aggregation that counts one active calendar week and
+  unions covered membership dates.
+- User reviewed and approved Phase 1.2 for commit.

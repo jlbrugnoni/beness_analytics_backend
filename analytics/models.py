@@ -139,3 +139,59 @@ class ClientStudioMonthlyMetric(models.Model):
     def __str__(self):
         studio = self.studio.name if self.studio_id else "Unassigned"
         return f"{self.month:%Y-%m} - {studio} - {self.client}"
+
+
+class ClientStudioWeeklyMetric(models.Model):
+    site = models.ForeignKey(
+        "core_data.Site",
+        on_delete=models.CASCADE,
+        related_name="client_studio_weekly_metrics",
+    )
+    studio = models.ForeignKey(
+        "core_data.Studio",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="client_weekly_metrics",
+    )
+    client = models.ForeignKey(
+        "core_data.Client",
+        on_delete=models.CASCADE,
+        related_name="studio_weekly_metrics",
+    )
+    week_start = models.DateField(db_index=True)
+
+    total_bookings = models.PositiveIntegerField(default=0)
+    attended_visits = models.PositiveIntegerField(default=0)
+    no_shows = models.PositiveIntegerField(default=0)
+    late_cancels = models.PositiveIntegerField(default=0)
+    attendance_revenue = models.DecimalField(max_digits=14, decimal_places=2, default=0)
+
+    active_membership_days = models.PositiveIntegerField(default=0)
+    active_membership_dates = models.JSONField(default=list, blank=True)
+    had_active_membership = models.BooleanField(default=False)
+    rebuilt_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-week_start", "site__name", "studio__name", "client__name"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["site", "studio", "client", "week_start"],
+                condition=models.Q(studio__isnull=False),
+                name="unique_client_studio_week_metric",
+            ),
+            models.UniqueConstraint(
+                fields=["site", "client", "week_start"],
+                condition=models.Q(studio__isnull=True),
+                name="unique_client_unassigned_week_metric",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["site", "week_start"]),
+            models.Index(fields=["studio", "week_start"]),
+            models.Index(fields=["client", "week_start"]),
+        ]
+
+    def __str__(self):
+        studio = self.studio.name if self.studio_id else "Unassigned"
+        return f"{self.week_start:%Y-%m-%d} - {studio} - {self.client}"
