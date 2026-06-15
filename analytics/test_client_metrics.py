@@ -1,5 +1,6 @@
 from datetime import date
 from decimal import Decimal
+from unittest.mock import patch
 
 from django.test import TestCase, override_settings
 from django.db import connection
@@ -831,6 +832,25 @@ class ClientDirectoryTests(TestCase):
         )
         self.api = APIClient()
         self.api.force_authenticate(self.admin)
+        category = ServiceCategory.objects.create(site=self.site, name="Memberships")
+        membership = PricingOption.objects.create(
+            site=self.site,
+            name="Monthly Membership",
+            service_category=category,
+            track_retention=True,
+        )
+        self.current_purchase = ServicePurchase.objects.create(
+            site=self.site,
+            studio=self.studio_a,
+            natural_key="directory-membership",
+            current_row_hash="directory-membership-hash",
+            client=self.client_a,
+            pricing_option=membership,
+            sale_date=date(2026, 5, 1),
+            activation_date=date(2026, 5, 1),
+            expiration_date=date(2026, 5, 31),
+            total_amount=Decimal("150.00"),
+        )
 
         ClientStudioMonthlyMetric.objects.create(
             site=self.site,
@@ -842,6 +862,10 @@ class ClientDirectoryTests(TestCase):
             no_shows=1,
             active_weeks=2,
             active_week_starts=["2026-04-06", "2026-04-13"],
+            active_membership_days=20,
+            active_membership_dates=[
+                f"2026-04-{day:02d}" for day in range(1, 21)
+            ],
             service_spending=Decimal("100.00"),
             general_sales_spending=Decimal("120.00"),
             first_visit_date=date(2026, 4, 7),
@@ -858,6 +882,10 @@ class ClientDirectoryTests(TestCase):
             late_cancels=1,
             active_weeks=3,
             active_week_starts=["2026-05-04", "2026-05-11", "2026-05-18"],
+            active_membership_days=20,
+            active_membership_dates=[
+                f"2026-05-{day:02d}" for day in range(1, 21)
+            ],
             service_spending=Decimal("150.00"),
             general_sales_spending=Decimal("175.00"),
             first_visit_date=date(2026, 5, 4),
@@ -894,8 +922,46 @@ class ClientDirectoryTests(TestCase):
             last_visit_date=date(2026, 5, 25),
             membership_status=MembershipMonthStatus.STATUS_NOT_RENEWED,
         )
+        MembershipMonthStatus.objects.create(
+            site=self.site,
+            studio=self.studio_a,
+            client=self.client_a,
+            month=date(2026, 4, 1),
+            status=MembershipMonthStatus.STATUS_NEW,
+            current_month_member=True,
+            membership_days=20,
+            membership_value=Decimal("100.00"),
+            source_purchase=self.current_purchase,
+            studio_inference_method=MembershipMonthStatus.STUDIO_METHOD_PURCHASE,
+        )
+        MembershipMonthStatus.objects.create(
+            site=self.site,
+            studio=self.studio_a,
+            client=self.client_a,
+            month=date(2026, 6, 1),
+            status=MembershipMonthStatus.STATUS_NOT_RENEWED,
+            previous_month_member=True,
+            previous_membership_days=31,
+            membership_value=Decimal("150.00"),
+            source_purchase=self.current_purchase,
+            studio_inference_method=MembershipMonthStatus.STUDIO_METHOD_PURCHASE,
+        )
+        MembershipMonthStatus.objects.create(
+            site=self.site,
+            studio=self.studio_a,
+            client=self.client_a,
+            month=date(2026, 5, 1),
+            status=MembershipMonthStatus.STATUS_RETAINED,
+            current_month_member=True,
+            previous_month_member=True,
+            membership_days=31,
+            previous_membership_days=20,
+            membership_value=Decimal("150.00"),
+            source_purchase=self.current_purchase,
+            studio_inference_method=MembershipMonthStatus.STUDIO_METHOD_PURCHASE,
+        )
 
-    def test_default_month_aggregates_studios_and_uses_latest_status(self):
+    def test_default_metrics_are_lifetime_while_status_uses_selected_month(self):
         response = self.api.get(
             reverse("analytics-client-directory"),
             {"site": self.site.id, "month": "2026-05"},
@@ -905,13 +971,14 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(response.data["count"], 2)
         ana = next(row for row in response.data["results"] if row["client_id"] == self.client_a.id)
         self.assertEqual(ana["membership_status"], MembershipMonthStatus.STATUS_RETAINED)
-        self.assertEqual(ana["attended_visits"], 5)
-        self.assertEqual(ana["active_weeks"], 3)
-        self.assertEqual(ana["total_bookings"], 6)
-        self.assertEqual(ana["attendance_rate"], 83.33)
-        self.assertEqual(ana["late_cancel_rate"], 16.67)
-        self.assertEqual(ana["service_spending"], 175.0)
-        self.assertEqual(ana["total_sales_spending"], 200.0)
+        self.assertEqual(response.data["metric_period"]["mode"], "lifetime")
+        self.assertEqual(ana["attended_visits"], 8)
+        self.assertEqual(ana["active_weeks"], 5)
+        self.assertEqual(ana["total_bookings"], 10)
+        self.assertEqual(ana["attendance_rate"], 80.0)
+        self.assertEqual(ana["late_cancel_rate"], 10.0)
+        self.assertEqual(ana["service_spending"], 275.0)
+        self.assertEqual(ana["total_sales_spending"], 320.0)
         self.assertEqual(ana["primary_studio"], "Piantini")
         self.assertEqual(ana["last_visit_date"], "2026-05-20")
 
@@ -943,10 +1010,14 @@ class ClientDirectoryTests(TestCase):
                 "studio": self.studio_b.id,
                 "month": "2026-05",
                 "search": "Ana",
+                "status": "retained",
+                "metric_period": "month",
             },
         )
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["results"][0]["primary_studio"], "Piantini")
+        self.assertEqual(response.data["results"][0]["attended_visits"], 5)
+        self.assertEqual(response.data["results"][0]["service_spending"], 175.0)
 
     def test_rolling_period_and_money_permission(self):
         viewer = CustomUser.objects.create_user(
@@ -962,6 +1033,7 @@ class ClientDirectoryTests(TestCase):
             {
                 "site": self.site.id,
                 "period": "last_3_months",
+                "metric_period": "last_3_months",
                 "month": "2026-05",
                 "search": "ana@example.com",
             },
@@ -970,9 +1042,84 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["period"]["from"], "2026-03-01")
         self.assertEqual(response.data["period"]["to"], "2026-05-31")
+        self.assertEqual(response.data["metric_period"]["from"], "2026-03-01")
+        self.assertEqual(response.data["metric_period"]["to"], "2026-05-31")
         self.assertEqual(response.data["count"], 1)
         row = response.data["results"][0]
         self.assertEqual(row["attended_visits"], 8)
         self.assertEqual(row["active_weeks"], 5)
         self.assertIsNone(row["service_spending"])
         self.assertIsNone(row["total_sales_spending"])
+
+    def test_client_profile_returns_period_lifetime_and_membership(self):
+        with patch("analytics.views.date", wraps=date) as mocked_date:
+            mocked_date.today.return_value = date(2026, 6, 15)
+            response = self.api.get(
+                reverse("analytics-client-profile", args=[self.client_a.id]),
+                {"period": "last_3_months", "month": "2026-05"},
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["client"]["name"], "Ana Client")
+        self.assertEqual(response.data["selected_period"]["attended_visits"], 8)
+        self.assertEqual(response.data["selected_period"]["active_weeks"], 5)
+        self.assertEqual(response.data["selected_period"]["membership_months"], 2)
+        self.assertEqual(response.data["selected_period"]["first_visit_date"], "2026-04-07")
+        self.assertEqual(response.data["selected_period"]["last_visit_date"], "2026-05-20")
+        self.assertEqual(response.data["selected_period"]["service_spending"], 275.0)
+        self.assertEqual(response.data["lifetime"]["attended_visits"], 8)
+        self.assertEqual(
+            response.data["current_membership"]["status"],
+            MembershipMonthStatus.STATUS_NOT_RENEWED,
+        )
+        self.assertEqual(response.data["membership_as_of_month"], "2026-06-01")
+        self.assertEqual(
+            response.data["current_membership"]["service"],
+            "Monthly Membership",
+        )
+
+        with patch("analytics.views.date", wraps=date) as mocked_date:
+            mocked_date.today.return_value = date(2026, 5, 15)
+            lifetime_response = self.api.get(
+                reverse("analytics-client-profile", args=[self.client_a.id]),
+                {"period": "lifetime", "month": "2026-04"},
+            )
+        self.assertEqual(lifetime_response.status_code, 200)
+        self.assertEqual(
+            lifetime_response.data["current_membership"]["status"],
+            MembershipMonthStatus.STATUS_RETAINED,
+        )
+        self.assertEqual(
+            lifetime_response.data["current_membership"]["month"],
+            "2026-05-01",
+        )
+
+    def test_client_profile_is_all_studio_and_respects_money_permission(self):
+        viewer = CustomUser.objects.create_user(
+            email="profile-viewer@example.com",
+            password="testpass123",
+        )
+        profile, _ = UserAccessProfile.objects.get_or_create(user=viewer)
+        profile.allowed_sites.add(self.site)
+        self.api.force_authenticate(viewer)
+
+        with patch("analytics.views.date", wraps=date) as mocked_date:
+            mocked_date.today.return_value = date(2026, 5, 15)
+            response = self.api.get(
+                reverse("analytics-client-profile", args=[self.client_a.id]),
+                {
+                    "period": "month",
+                    "month": "2026-05",
+                    "studio": self.studio_b.id,
+                },
+            )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn("scope", response.data)
+        self.assertEqual(response.data["selected_period"]["attended_visits"], 5)
+        self.assertEqual(response.data["selected_period"]["membership_months"], 1)
+        self.assertIsNone(response.data["selected_period"]["service_spending"])
+        self.assertEqual(
+            response.data["current_membership"]["status"],
+            MembershipMonthStatus.STATUS_RETAINED,
+        )

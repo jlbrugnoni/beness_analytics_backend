@@ -71,6 +71,28 @@ def client_directory_period(request):
     return period, start, selected_month, selected_month
 
 
+def client_directory_metric_period(request, selected_month):
+    period = request.query_params.get("metric_period", "lifetime")
+    allowed_periods = {
+        "month",
+        "last_3_months",
+        "last_6_months",
+        "last_12_months",
+        "lifetime",
+    }
+    if period not in allowed_periods:
+        period = "lifetime"
+    if period == "lifetime":
+        return period, None, None
+    month_count = {
+        "month": 1,
+        "last_3_months": 3,
+        "last_6_months": 6,
+        "last_12_months": 12,
+    }[period]
+    return period, add_months(selected_month, -(month_count - 1)), selected_month
+
+
 def client_directory_sort_value(row, field):
     value = row.get(field)
     if value is None:
@@ -82,10 +104,67 @@ def client_directory_sort_value(row, field):
     return value
 
 
+def client_profile_summary(metrics, can_see_money):
+    metrics = list(metrics)
+    totals = aggregate_client_monthly_metrics(metrics)
+    membership_dates_by_month = {}
+    for metric in metrics:
+        membership_dates_by_month.setdefault(metric.month, set()).update(
+            metric.active_membership_dates
+        )
+    membership_months = sum(
+        1 for dates in membership_dates_by_month.values() if len(dates) >= 15
+    )
+    total_bookings = totals["total_bookings"]
+    return {
+        "total_bookings": total_bookings,
+        "attended_visits": totals["attended_visits"],
+        "no_shows": totals["no_shows"],
+        "late_cancels": totals["late_cancels"],
+        "active_weeks": totals["active_weeks"],
+        "membership_months": membership_months,
+        "attendance_rate": percentage(totals["attended_visits"], total_bookings),
+        "no_show_rate": percentage(totals["no_shows"], total_bookings),
+        "late_cancel_rate": percentage(totals["late_cancels"], total_bookings),
+        "first_visit_date": (
+            totals["first_visit_date"].isoformat()
+            if totals["first_visit_date"]
+            else None
+        ),
+        "last_visit_date": (
+            totals["last_visit_date"].isoformat()
+            if totals["last_visit_date"]
+            else None
+        ),
+        "first_purchase_date": (
+            totals["first_purchase_date"].isoformat()
+            if totals["first_purchase_date"]
+            else None
+        ),
+        "last_purchase_date": (
+            totals["last_purchase_date"].isoformat()
+            if totals["last_purchase_date"]
+            else None
+        ),
+        "service_spending": (
+            decimal_value(totals["service_spending"]) if can_see_money else None
+        ),
+        "total_sales_spending": (
+            decimal_value(totals["general_sales_spending"])
+            if can_see_money
+            else None
+        ),
+    }
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def client_directory_view(request):
     period, start_month, end_month, selected_month = client_directory_period(request)
+    metric_period, metric_start, metric_end = client_directory_metric_period(
+        request,
+        selected_month,
+    )
     site_id = request.query_params.get("site")
     studio_id = request.query_params.get("studio")
     search = (request.query_params.get("search") or "").strip()
@@ -106,7 +185,7 @@ def client_directory_view(request):
             | Q(phone__icontains=search)
         )
 
-    metric_scope = scoped_queryset_for_user(
+    population_period_scope = scoped_queryset_for_user(
         ClientStudioMonthlyMetric.objects.select_related("studio", "client"),
         request.user,
         site_field="site_id",
@@ -114,13 +193,19 @@ def client_directory_view(request):
         include_null_studio=True,
     )
     if site_id:
-        metric_scope = metric_scope.filter(site_id=site_id)
-    if studio_id:
-        metric_scope = metric_scope.filter(studio_id=studio_id)
+        population_period_scope = population_period_scope.filter(site_id=site_id)
     if start_month and end_month:
-        metric_scope = metric_scope.filter(month__range=(start_month, end_month))
+        population_period_scope = population_period_scope.filter(
+            month__range=(start_month, end_month)
+        )
 
-    represented_client_ids = metric_scope.values_list("client_id", flat=True).distinct()
+    association_scope = population_period_scope
+    if studio_id:
+        association_scope = association_scope.filter(studio_id=studio_id)
+    represented_client_ids = association_scope.values_list(
+        "client_id",
+        flat=True,
+    ).distinct()
     clients = clients.filter(id__in=represented_client_ids)
     client_rows = list(clients.values(
         "id",
@@ -133,9 +218,15 @@ def client_directory_view(request):
     ))
     client_ids = [row["id"] for row in client_rows]
 
-    metrics_by_client = {}
-    for metric in metric_scope.filter(client_id__in=client_ids).iterator():
-        metrics_by_client.setdefault(metric.client_id, []).append(metric)
+    population_status_by_client = {}
+    population_status_month_by_client = {}
+    for metric in population_period_scope.filter(client_id__in=client_ids).iterator():
+        current_month = population_status_month_by_client.get(metric.client_id)
+        if metric.membership_status and (
+            current_month is None or metric.month > current_month
+        ):
+            population_status_by_client[metric.client_id] = metric.membership_status
+            population_status_month_by_client[metric.client_id] = metric.month
 
     lifetime_metrics = scoped_queryset_for_user(
         ClientStudioMonthlyMetric.objects.filter(client_id__in=client_ids),
@@ -147,13 +238,15 @@ def client_directory_view(request):
     if site_id:
         lifetime_metrics = lifetime_metrics.filter(site_id=site_id)
 
+    metric_scope = lifetime_metrics
+    if metric_start and metric_end:
+        metric_scope = metric_scope.filter(month__range=(metric_start, metric_end))
+    metrics_by_client = {}
+    for metric in metric_scope.iterator():
+        metrics_by_client.setdefault(metric.client_id, []).append(metric)
+
     primary_candidates = {}
-    last_visit_by_client = {}
     for metric in lifetime_metrics.select_related("studio").iterator():
-        if metric.last_visit_date:
-            current_last = last_visit_by_client.get(metric.client_id)
-            if current_last is None or metric.last_visit_date > current_last:
-                last_visit_by_client[metric.client_id] = metric.last_visit_date
         if not metric.studio_id or metric.attended_visits <= 0:
             continue
         key = (metric.client_id, metric.studio_id)
@@ -192,7 +285,7 @@ def client_directory_view(request):
     rows = []
     for client in client_rows:
         totals = aggregate_client_monthly_metrics(metrics_by_client.get(client["id"], []))
-        last_visit = last_visit_by_client.get(client["id"])
+        last_visit = totals["last_visit_date"]
         primary = primary_by_client.get(client["id"])
         total_bookings = totals["total_bookings"]
         row = {
@@ -203,7 +296,7 @@ def client_directory_view(request):
             "phone": client["phone"],
             "site_id": client["site_id"],
             "site": client["site__name"],
-            "membership_status": totals["membership_status"],
+            "membership_status": population_status_by_client.get(client["id"]),
             "primary_studio_id": primary["studio_id"] if primary else None,
             "primary_studio": primary["studio"] if primary else None,
             "last_visit_date": last_visit.isoformat() if last_visit else None,
@@ -280,6 +373,11 @@ def client_directory_view(request):
             "from": start_month.isoformat() if start_month else None,
             "to": month_end(end_month).isoformat() if end_month else None,
         },
+        "metric_period": {
+            "mode": metric_period,
+            "from": metric_start.isoformat() if metric_start else None,
+            "to": month_end(metric_end).isoformat() if metric_end else None,
+        },
         "count": count,
         "page": page,
         "page_size": page_size,
@@ -302,6 +400,111 @@ def client_directory_view(request):
                 for value, label in MembershipMonthStatus.STATUS_CHOICES
             ],
         },
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def client_profile_view(request, client_id):
+    client = (
+        scoped_queryset_for_user(
+            Client.objects.select_related("site"),
+            request.user,
+            site_field="site_id",
+        )
+        .filter(id=client_id)
+        .first()
+    )
+    if not client:
+        return Response({"detail": "Client not found."}, status=404)
+
+    period, start_month, end_month, selected_month = client_directory_period(request)
+    lifetime_metrics = scoped_queryset_for_user(
+        ClientStudioMonthlyMetric.objects.filter(
+            client_id=client.id,
+            site_id=client.site_id,
+        ),
+        request.user,
+        site_field="site_id",
+        studio_field="studio_id",
+        include_null_studio=True,
+    )
+    lifetime_rows = list(lifetime_metrics)
+    if not lifetime_rows:
+        return Response({"detail": "Client analytics not found."}, status=404)
+
+    if start_month and end_month:
+        selected_rows = [
+            metric
+            for metric in lifetime_rows
+            if start_month <= metric.month <= end_month
+        ]
+    else:
+        selected_rows = lifetime_rows
+
+    statuses = scoped_queryset_for_user(
+        MembershipMonthStatus.objects.select_related(
+            "source_purchase__pricing_option",
+            "source_purchase__studio",
+            "studio",
+        ).filter(client_id=client.id, site_id=client.site_id),
+        request.user,
+        site_field="site_id",
+        studio_field="studio_id",
+        include_null_studio=True,
+    )
+    current_month = month_start(date.today())
+    statuses = statuses.filter(month__lte=current_month)
+    membership = statuses.order_by("-month", "-id").first()
+    source_purchase = membership.source_purchase if membership else None
+    can_see_money = can_view_money(request)
+
+    return Response({
+        "client": {
+            "id": client.id,
+            "name": client.name,
+            "mindbody_id": client.mindbody_id,
+            "email": client.email,
+            "phone": client.phone,
+            "site_id": client.site_id,
+            "site": client.site.name,
+        },
+        "period": {
+            "mode": period,
+            "month": selected_month.strftime("%Y-%m"),
+            "from": start_month.isoformat() if start_month else None,
+            "to": month_end(end_month).isoformat() if end_month else None,
+        },
+        "membership_as_of_month": current_month.isoformat(),
+        "current_membership": {
+            "status": membership.status,
+            "month": membership.month.isoformat(),
+            "studio_id": membership.studio_id,
+            "studio": membership.studio.name if membership.studio else None,
+            "service": (
+                source_purchase.pricing_option.name if source_purchase else None
+            ),
+            "sale_date": (
+                source_purchase.sale_date.isoformat() if source_purchase else None
+            ),
+            "activation_date": (
+                source_purchase.activation_date.isoformat()
+                if source_purchase and source_purchase.activation_date
+                else None
+            ),
+            "expiration_date": (
+                source_purchase.expiration_date.isoformat()
+                if source_purchase and source_purchase.expiration_date
+                else None
+            ),
+            "amount": (
+                decimal_value(source_purchase.total_amount)
+                if source_purchase and can_see_money
+                else None
+            ),
+        } if membership else None,
+        "selected_period": client_profile_summary(selected_rows, can_see_money),
+        "lifetime": client_profile_summary(lifetime_rows, can_see_money),
     })
 
 

@@ -317,7 +317,7 @@ Initial columns:
 - Current membership status
 - Primary studio
 - Last visit and days since last visit
-- Visits in the selected period
+- Visits in the selected metric period
 - Active weeks
 - Attendance, no-show, and late-cancel rates
 - Service spending
@@ -333,11 +333,13 @@ Navigation and access:
 
 Initial directory definitions:
 
-- Default period is the last completed calendar month.
-- Supported scopes are selected month, last 3 months, last 6 months, last 12
-  months, and lifetime.
-- Period metrics are calculated from the monthly client-studio facts.
-- Membership status is the latest available status within the selected scope.
+- The default client-selection period is the last completed calendar month.
+- Client-selection and metric periods support selected month, last 3 months,
+  last 6 months, last 12 months, and lifetime.
+- Metric columns default to lifetime and are calculated from monthly
+  client-studio facts independently from the client-selection period.
+- Membership status is the latest available status within the client-selection
+  period.
 - Primary studio is the studio with the highest lifetime attended visits,
   using the latest visit and studio name as deterministic tie breakers.
 - A studio-filtered directory contains clients represented by a metric row for
@@ -362,8 +364,8 @@ Implemented behavior:
 - Search covers client name, Mindbody ID, email, and phone.
 - The server supports ascending and descending sorting for every displayed
   metric and limits pages to at most 100 clients.
-- Primary studio and last visit remain lifetime facts within the user's access
-  scope, even when the directory is filtered to activity at another studio.
+- Primary studio remains a lifetime fact within the user's access scope. Last
+  visit follows the selected metric period.
 - `MembershipMonthStatus` is a sparse monthly transition snapshot rather than
   one permanent row for every client and month. A row is created only when the
   client qualifies as a member in the current month or the immediately
@@ -394,11 +396,11 @@ Validation:
 
 ### Phase 2.2: Individual Client Overview
 
-Status: Not started
+Status: Complete
 
 Create an individual profile supporting:
 
-- All-studio, site, and studio scopes
+- General all-studio scope within the client's site
 - Lifetime and selected-period summaries
 - Current membership
 - First and last visits
@@ -406,6 +408,88 @@ Create an individual profile supporting:
 - Attendance and cancellation metrics
 - Active weeks and membership months
 - Service and total-sales spending
+
+Profile definitions:
+
+- A client record belongs to one site, so the all-studio scope means all
+  accessible studios within that client's site. The profile has no studio
+  selector and always presents the client's general accessible history.
+- The endpoint returns selected-period and lifetime summaries together so the
+  user can compare recent behavior with the client's history.
+- The profile defaults to lifetime, with selected-month and last 3, 6, and 12
+  month options anchored to the chosen ending month.
+- Current membership is independent from the selected analysis period. It is
+  the latest available retention snapshot on or before the actual current
+  calendar month. Prebuilt snapshots for a future month must never be shown as
+  the current status.
+- Membership months count distinct calendar months with at least 15 covered
+  days from tracked membership purchases.
+- First and last visit and purchase dates are calculated independently for the
+  selected period and lifetime.
+- Financial values remain separated into service spending and general sales
+  spending and follow `can_view_money`.
+- Phase 2.2 provides summary information only; paginated source histories
+  remain part of Phase 2.3.
+
+Implemented behavior:
+
+- Directory population filters and metric scope are independent:
+  - Site, studio, membership-status period, status, and search determine which
+    clients appear.
+  - Lifetime, last 3, 6, or 12 months determines the values used for visits,
+    active weeks, rates, spending, and sorting.
+- Client-selection filters remain permanently visible as the directory's
+  primary controls. Metric scope is a collapsed secondary control because
+  lifetime is the normal comparison.
+- Studio is a population filter only. Once a client qualifies through the
+  selected studio, their metric columns use all accessible studios.
+- Membership status remains site-wide within the selected population period.
+  A client associated with one studio does not lose their valid status merely
+  because the tracked membership was sold by another studio.
+- Recent metric windows end at the selected population period's ending month,
+  preventing later activity from affecting a historical client selection.
+- The complete directory state is stored in the URL, including filters,
+  metric scope, ordering, page, and page size.
+- Clicking a directory row carries the exact directory URL into `/clients/[id]`
+  as its return destination.
+- The profile header shows the client name, site, Mindbody ID, email, and
+  phone when available.
+- Period and ending-month controls recalculate the general all-studio profile
+  through a dedicated permission-scoped endpoint.
+- Profile period controls are collapsed by default and display the active
+  analysis scope in a compact button. The ending month appears only for
+  non-lifetime scopes.
+- Current membership shows the latest applicable status, snapshot month,
+  studio, tracked pricing option, sale date, activation date, and expiration
+  date.
+- Selected-period and lifetime cards show visits, bookings, active weeks,
+  membership months, attendance rate, no-show rate, late-cancel rate, raw
+  no-show and late-cancel counts, service spending, and general-sales
+  spending.
+- Each summary also shows first and last visit and purchase dates.
+
+Validation:
+
+- [x] Profile API tests cover period and lifetime aggregation
+- [x] Membership month and latest status definitions are tested
+- [x] Historical metric scopes still show current membership status
+- [x] Future transition snapshots cannot override the actual current month
+- [x] All-studio profile scope and financial permissions are tested
+- [x] Population and metric periods are independently tested
+- [x] Cross-studio population status and all-studio metrics are tested
+- [x] Directory URL includes filters, ordering, page, and page size
+- [x] Client-selection controls are visually primary
+- [x] Directory metric scope and profile analysis period are collapsed by
+  default
+- [x] Full Client Module regression suite passes 33 tests
+- [x] Django system and migration checks pass
+- [x] Frontend lint completes with existing unrelated warnings only
+- [x] Frontend production build passes with `/clients/[id]`
+- [x] A local profile request completes in 0.018 seconds using 4 queries
+- [x] Lifetime directory metrics for 1,060 May 2026 clients return in 0.367
+  seconds using 6 queries
+- [x] User reviewed
+- [x] Committed
 
 ### Phase 2.3: Client Histories
 
