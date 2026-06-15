@@ -42,6 +42,9 @@ Phase 1.1: Add monthly client metrics
 - Recalculate rates from their components instead of averaging percentages.
 - Never add `SaleLine`, `ServicePurchase`, and `AttendanceVisit.revenue`
   together because they can represent overlapping revenue.
+- For client spending, `SaleLine.paid_total` is the canonical financial source.
+  `ServicePurchase` enriches the matching transaction with activation,
+  expiration, pricing-option, trial, and retention metadata.
 - Attendance belongs to `AttendanceVisit.visit_studio`.
 - Service purchases belong to `ServicePurchase.studio`.
 - General sales belong to `SaleLine.studio`.
@@ -320,8 +323,7 @@ Initial columns:
 - Visits in the selected metric period
 - Active weeks
 - Attendance, no-show, and late-cancel rates
-- Service spending
-- Total sales spending
+- Total spending
 
 Navigation and access:
 
@@ -350,8 +352,9 @@ Initial directory definitions:
   expose members who have not attended.
 - Attendance, no-show, and late-cancel rates are recalculated from summed
   components rather than averaging monthly percentages.
-- Service and general-sales spending remain separate and are hidden when the
-  user lacks `can_view_money`.
+- Client-facing spending uses the canonical Sales total and is hidden when the
+  user lacks `can_view_money`. Sales by Service remains an internal enrichment
+  source rather than a second financial metric.
 - Search, sorting, and pagination are performed by the server.
 
 Implemented behavior:
@@ -407,7 +410,7 @@ Create an individual profile supporting:
 - First and last purchases
 - Attendance and cancellation metrics
 - Active weeks and membership months
-- Service and total-sales spending
+- Total spending
 
 Profile definitions:
 
@@ -426,8 +429,9 @@ Profile definitions:
   days from tracked membership purchases.
 - First and last visit and purchase dates are calculated independently for the
   selected period and lifetime.
-- Financial values remain separated into service spending and general sales
-  spending and follow `can_view_money`.
+- Client-facing financial value is shown once as total spending from Sales and
+  follows `can_view_money`. Sales by Service remains metadata enrichment, not a
+  second amount.
 - Phase 2.2 provides summary information only; paginated source histories
   remain part of Phase 2.3.
 
@@ -464,8 +468,7 @@ Implemented behavior:
   date.
 - Selected-period and lifetime cards show visits, bookings, active weeks,
   membership months, attendance rate, no-show rate, late-cancel rate, raw
-  no-show and late-cancel counts, service spending, and general-sales
-  spending.
+  no-show and late-cancel counts, and total spending.
 - Each summary also shows first and last visit and purchase dates.
 
 Validation:
@@ -493,15 +496,63 @@ Validation:
 
 ### Phase 2.3: Client Histories
 
-Status: Not started
+Status: Complete
 
 Add paginated histories for:
 
 - Attendance
-- Service purchases
-- General sales
+- Purchases
 - Membership and retention
 - Combined chronological timeline
+
+History definitions:
+
+- Histories are permission-scoped across every accessible studio in the
+  client's site and ordered newest to oldest.
+- Attendance shows visit date and time, studio, staff, pricing option,
+  attendance outcome, and revenue when permitted.
+- Purchases merge Sales and Sales by Service into one transaction view. Sales
+  provides the canonical paid amount and Sales by Service adds activation,
+  expiration, pricing-option, retention, and trial metadata.
+- Membership history shows the monthly retention snapshots and their source
+  tracked purchase details.
+- The combined timeline merges attendance, canonical purchases, and retention
+  transitions. Matching Sales and Sales by Service rows appear once.
+- Every history uses server pagination with a maximum page size of 100.
+
+Implemented behavior:
+
+- The client profile contains scrollable tabs for attendance, canonical
+  purchases, membership, and the combined timeline.
+- Tabs request only their active server page and reset to the first page when
+  the history type changes.
+- Attendance distinguishes attended, no-show, and late-cancel outcomes.
+- Purchases group matching Sales payment lines into one transaction and enrich
+  it from Sales by Service. They identify tracked memberships and expose their
+  activation and expiration dates without displaying duplicate purchases.
+- Membership rows show the monthly status alongside the source purchase.
+- The timeline labels each event source and uses the same source serializers
+  as the dedicated histories.
+- Financial values are masked consistently when the user lacks
+  `can_view_money`.
+
+Validation:
+
+- [x] All history types are permission scoped
+- [x] Pagination and page-size limits are tested
+- [x] Timeline chronology and source coverage are tested
+- [x] Matching Sales and Sales by Service records are shown once
+- [x] Split Sales payment lines are grouped into one canonical purchase
+- [x] Financial masking is tested
+- [x] Full Client Module regression suite passes 35 tests
+- [x] Django system and migration checks pass
+- [x] Frontend lint completes with existing unrelated warnings only
+- [x] Frontend production build passes
+- [x] Ilonka Weber's 10 Sales rows and 10 matching Sales by Service rows
+  produce 10 canonical purchases rather than 20 duplicated entries
+- [x] Ilonka Weber's 175-event canonical timeline returns in 0.036 seconds
+- [x] User reviewed
+- [x] Committed
 
 ### Phase 2.4: Basic Rankings
 
@@ -510,8 +561,7 @@ Status: Not started
 Rank clients by site or studio for:
 
 - Most attended
-- Highest service spending
-- Highest total-sales spending
+- Highest total spending
 - Most active weeks
 - Best attendance rate
 - Highest no-show rate

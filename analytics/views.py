@@ -146,14 +146,192 @@ def client_profile_summary(metrics, can_see_money):
             if totals["last_purchase_date"]
             else None
         ),
-        "service_spending": (
-            decimal_value(totals["service_spending"]) if can_see_money else None
-        ),
-        "total_sales_spending": (
+        "total_spending": (
             decimal_value(totals["general_sales_spending"])
             if can_see_money
             else None
         ),
+    }
+
+
+def client_history_page(request, rows):
+    try:
+        page_size = min(max(int(request.query_params.get("page_size", 25)), 1), 100)
+    except (TypeError, ValueError):
+        page_size = 25
+    try:
+        page = max(int(request.query_params.get("page", 1)), 1)
+    except (TypeError, ValueError):
+        page = 1
+    count = len(rows)
+    pages = ceil(count / page_size) if count else 0
+    if pages and page > pages:
+        page = pages
+    offset = (page - 1) * page_size
+    return {
+        "count": count,
+        "page": page,
+        "page_size": page_size,
+        "pages": pages,
+        "results": rows[offset:offset + page_size],
+    }
+
+
+def attendance_history_row(request, visit):
+    if visit.no_show:
+        outcome = "no_show"
+    elif visit.late_cancel:
+        outcome = "late_cancel"
+    else:
+        outcome = "attended"
+    return {
+        "id": visit.id,
+        "type": "attendance",
+        "date": visit.visit_date.isoformat(),
+        "time": visit.visit_time_raw,
+        "studio": visit.visit_studio.name,
+        "staff": visit.staff_member.name if visit.staff_member else None,
+        "pricing_option": visit.pricing_option.name if visit.pricing_option else None,
+        "outcome": outcome,
+        "revenue": money_value(request, visit.revenue),
+    }
+
+
+def normalized_purchase_name(value):
+    return " ".join((value or "").casefold().split())
+
+
+def canonical_purchase_history_rows(request, sales, service_purchases):
+    service_groups = {}
+    for purchase in service_purchases:
+        key = (
+            purchase.client_id,
+            purchase.studio_id,
+            purchase.sale_date,
+            normalized_purchase_name(purchase.pricing_option.name),
+        )
+        group = service_groups.setdefault(key, {
+            "purchases": [],
+            "amount": Decimal("0.00"),
+        })
+        group["purchases"].append(purchase)
+        group["amount"] += purchase.total_amount or Decimal("0.00")
+
+    sale_groups = {}
+    for sale in sales:
+        key = (
+            sale.client_id,
+            sale.studio_id,
+            sale.sale_date,
+            normalized_purchase_name(sale.item_name),
+        )
+        group = sale_groups.setdefault(key, {
+            "sales": [],
+            "amount": Decimal("0.00"),
+        })
+        group["sales"].append(sale)
+        group["amount"] += sale.paid_total or Decimal("0.00")
+
+    rows = []
+    for key, sale_group in sale_groups.items():
+        sales_for_purchase = sale_group["sales"]
+        service_group = service_groups.pop(key, None)
+        services = service_group["purchases"] if service_group else []
+        activation_dates = [
+            purchase.activation_date for purchase in services if purchase.activation_date
+        ]
+        expiration_dates = [
+            purchase.expiration_date for purchase in services if purchase.expiration_date
+        ]
+        quantities = [sale.quantity for sale in sales_for_purchase if sale.quantity is not None]
+        first_sale = sales_for_purchase[0]
+        rows.append({
+            "id": f"sale-{min(sale.id for sale in sales_for_purchase)}",
+            "type": "purchase",
+            "date": first_sale.sale_date.isoformat(),
+            "sale_date": first_sale.sale_date.isoformat(),
+            "activation_date": min(activation_dates).isoformat() if activation_dates else None,
+            "expiration_date": max(expiration_dates).isoformat() if expiration_dates else None,
+            "studio": first_sale.studio.name if first_sale.studio else None,
+            "item": first_sale.item_name,
+            "sale_numbers": sorted({
+                sale.sale_number for sale in sales_for_purchase if sale.sale_number
+            }),
+            "quantity": decimal_value(max(quantities)) if quantities else None,
+            "track_retention": any(
+                purchase.pricing_option.track_retention for purchase in services
+            ),
+            "is_trial": any(
+                purchase.pricing_option.is_trial_class for purchase in services
+            ),
+            "amount": money_value(request, sale_group["amount"]),
+            "enriched_by_service_report": bool(services),
+        })
+
+    for service_group in service_groups.values():
+        services = service_group["purchases"]
+        first_purchase = services[0]
+        activation_dates = [
+            purchase.activation_date for purchase in services if purchase.activation_date
+        ]
+        expiration_dates = [
+            purchase.expiration_date for purchase in services if purchase.expiration_date
+        ]
+        rows.append({
+            "id": f"service-{min(purchase.id for purchase in services)}",
+            "type": "purchase",
+            "date": first_purchase.sale_date.isoformat(),
+            "sale_date": first_purchase.sale_date.isoformat(),
+            "activation_date": min(activation_dates).isoformat() if activation_dates else None,
+            "expiration_date": max(expiration_dates).isoformat() if expiration_dates else None,
+            "studio": first_purchase.studio.name if first_purchase.studio else None,
+            "item": first_purchase.pricing_option.name,
+            "sale_numbers": [],
+            "quantity": decimal_value(sum(
+                (purchase.quantity or Decimal("0.00")) for purchase in services
+            )),
+            "track_retention": any(
+                purchase.pricing_option.track_retention for purchase in services
+            ),
+            "is_trial": any(
+                purchase.pricing_option.is_trial_class for purchase in services
+            ),
+            "amount": money_value(request, service_group["amount"]),
+            "enriched_by_service_report": True,
+        })
+
+    rows.sort(key=lambda row: (row["date"], row["id"]), reverse=True)
+    return rows
+
+
+def membership_history_row(request, status):
+    purchase = status.source_purchase
+    return {
+        "id": status.id,
+        "type": "membership",
+        "date": status.month.isoformat(),
+        "month": status.month.isoformat(),
+        "status": status.status,
+        "studio": status.studio.name if status.studio else None,
+        "current_month_member": status.current_month_member,
+        "previous_month_member": status.previous_month_member,
+        "membership_days": status.membership_days,
+        "previous_membership_days": status.previous_membership_days,
+        "service": (
+            purchase.pricing_option.name if purchase and purchase.pricing_option else None
+        ),
+        "sale_date": purchase.sale_date.isoformat() if purchase else None,
+        "activation_date": (
+            purchase.activation_date.isoformat()
+            if purchase and purchase.activation_date
+            else None
+        ),
+        "expiration_date": (
+            purchase.expiration_date.isoformat()
+            if purchase and purchase.expiration_date
+            else None
+        ),
+        "amount": money_value(request, status.membership_value),
     }
 
 
@@ -307,8 +485,11 @@ def client_directory_view(request):
             "attendance_rate": percentage(totals["attended_visits"], total_bookings),
             "no_show_rate": percentage(totals["no_shows"], total_bookings),
             "late_cancel_rate": percentage(totals["late_cancels"], total_bookings),
-            "service_spending": decimal_value(totals["service_spending"]) if can_see_money else None,
-            "total_sales_spending": decimal_value(totals["general_sales_spending"]) if can_see_money else None,
+            "total_spending": (
+                decimal_value(totals["general_sales_spending"])
+                if can_see_money
+                else None
+            ),
         }
         if not status_value or row["membership_status"] == status_value:
             rows.append(row)
@@ -327,8 +508,7 @@ def client_directory_view(request):
         "attendance_rate",
         "no_show_rate",
         "late_cancel_rate",
-        "service_spending",
-        "total_sales_spending",
+        "total_spending",
     }
     if sort_field not in allowed_sort_fields:
         sort_field = "client"
@@ -505,6 +685,128 @@ def client_profile_view(request, client_id):
         } if membership else None,
         "selected_period": client_profile_summary(selected_rows, can_see_money),
         "lifetime": client_profile_summary(lifetime_rows, can_see_money),
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def client_history_view(request, client_id):
+    client = (
+        scoped_queryset_for_user(
+            Client.objects.select_related("site"),
+            request.user,
+            site_field="site_id",
+        )
+        .filter(id=client_id)
+        .first()
+    )
+    if not client:
+        return Response({"detail": "Client not found."}, status=404)
+
+    history_type = request.query_params.get("type", "attendance")
+    allowed_types = {
+        "attendance",
+        "purchases",
+        "membership",
+        "timeline",
+    }
+    if history_type not in allowed_types:
+        return Response({"detail": "Invalid history type."}, status=400)
+
+    attendance = scoped_queryset_for_user(
+        AttendanceVisit.objects.select_related(
+            "visit_studio",
+            "staff_member",
+            "pricing_option",
+        ).filter(client_id=client.id, site_id=client.site_id),
+        request.user,
+        site_field="site_id",
+        studio_field="visit_studio_id",
+    )
+    service_purchases = scoped_queryset_for_user(
+        ServicePurchase.objects.select_related(
+            "studio",
+            "pricing_option",
+        ).filter(client_id=client.id, site_id=client.site_id),
+        request.user,
+        site_field="site_id",
+        studio_field="studio_id",
+        include_null_studio=True,
+    )
+    general_sales = scoped_queryset_for_user(
+        SaleLine.objects.select_related("studio").filter(
+            client_id=client.id,
+            site_id=client.site_id,
+        ),
+        request.user,
+        site_field="site_id",
+        studio_field="studio_id",
+        include_null_studio=True,
+    )
+    memberships = scoped_queryset_for_user(
+        MembershipMonthStatus.objects.select_related(
+            "studio",
+            "source_purchase__pricing_option",
+        ).filter(client_id=client.id, site_id=client.site_id),
+        request.user,
+        site_field="site_id",
+        studio_field="studio_id",
+        include_null_studio=True,
+    )
+
+    if history_type == "attendance":
+        rows = [
+            attendance_history_row(request, visit)
+            for visit in attendance.order_by("-visit_date", "-id")
+        ]
+    elif history_type == "purchases":
+        rows = canonical_purchase_history_rows(
+            request,
+            general_sales.order_by("-sale_date", "-id"),
+            service_purchases.order_by("-sale_date", "-id"),
+        )
+    elif history_type == "membership":
+        rows = [
+            membership_history_row(request, status)
+            for status in memberships.order_by("-month", "-id")
+        ]
+    else:
+        rows = [
+            attendance_history_row(request, visit)
+            for visit in attendance.iterator()
+        ]
+        rows.extend(
+            canonical_purchase_history_rows(
+                request,
+                general_sales.iterator(),
+                service_purchases.iterator(),
+            )
+        )
+        rows.extend(
+            membership_history_row(request, status)
+            for status in memberships.iterator()
+        )
+        type_order = {
+            "membership": 0,
+            "purchase": 1,
+            "attendance": 2,
+        }
+        rows.sort(
+            key=lambda row: (
+                row["date"],
+                -type_order[row["type"]],
+                row["id"],
+            ),
+            reverse=True,
+        )
+
+    return Response({
+        "client": {
+            "id": client.id,
+            "name": client.name,
+        },
+        "type": history_type,
+        **client_history_page(request, rows),
     })
 
 

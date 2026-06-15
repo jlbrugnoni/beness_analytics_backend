@@ -977,8 +977,7 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(ana["total_bookings"], 10)
         self.assertEqual(ana["attendance_rate"], 80.0)
         self.assertEqual(ana["late_cancel_rate"], 10.0)
-        self.assertEqual(ana["service_spending"], 275.0)
-        self.assertEqual(ana["total_sales_spending"], 320.0)
+        self.assertEqual(ana["total_spending"], 320.0)
         self.assertEqual(ana["primary_studio"], "Piantini")
         self.assertEqual(ana["last_visit_date"], "2026-05-20")
 
@@ -1017,7 +1016,7 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["results"][0]["primary_studio"], "Piantini")
         self.assertEqual(response.data["results"][0]["attended_visits"], 5)
-        self.assertEqual(response.data["results"][0]["service_spending"], 175.0)
+        self.assertEqual(response.data["results"][0]["total_spending"], 200.0)
 
     def test_rolling_period_and_money_permission(self):
         viewer = CustomUser.objects.create_user(
@@ -1048,8 +1047,7 @@ class ClientDirectoryTests(TestCase):
         row = response.data["results"][0]
         self.assertEqual(row["attended_visits"], 8)
         self.assertEqual(row["active_weeks"], 5)
-        self.assertIsNone(row["service_spending"])
-        self.assertIsNone(row["total_sales_spending"])
+        self.assertIsNone(row["total_spending"])
 
     def test_client_profile_returns_period_lifetime_and_membership(self):
         with patch("analytics.views.date", wraps=date) as mocked_date:
@@ -1066,7 +1064,7 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(response.data["selected_period"]["membership_months"], 2)
         self.assertEqual(response.data["selected_period"]["first_visit_date"], "2026-04-07")
         self.assertEqual(response.data["selected_period"]["last_visit_date"], "2026-05-20")
-        self.assertEqual(response.data["selected_period"]["service_spending"], 275.0)
+        self.assertEqual(response.data["selected_period"]["total_spending"], 320.0)
         self.assertEqual(response.data["lifetime"]["attended_visits"], 8)
         self.assertEqual(
             response.data["current_membership"]["status"],
@@ -1118,8 +1116,114 @@ class ClientDirectoryTests(TestCase):
         self.assertNotIn("scope", response.data)
         self.assertEqual(response.data["selected_period"]["attended_visits"], 5)
         self.assertEqual(response.data["selected_period"]["membership_months"], 1)
-        self.assertIsNone(response.data["selected_period"]["service_spending"])
+        self.assertIsNone(response.data["selected_period"]["total_spending"])
         self.assertEqual(
             response.data["current_membership"]["status"],
             MembershipMonthStatus.STATUS_RETAINED,
         )
+
+    def test_client_histories_are_paginated_and_chronological(self):
+        AttendanceVisit.objects.create(
+            site=self.site,
+            natural_key="history-visit-1",
+            current_row_hash="history-visit-hash-1",
+            client=self.client_a,
+            visit_studio=self.studio_a,
+            visit_date=date(2026, 5, 20),
+            visit_time_raw="09:00",
+            revenue=Decimal("25.00"),
+        )
+        AttendanceVisit.objects.create(
+            site=self.site,
+            natural_key="history-visit-2",
+            current_row_hash="history-visit-hash-2",
+            client=self.client_a,
+            visit_studio=self.studio_b,
+            visit_date=date(2026, 5, 21),
+            visit_time_raw="10:00",
+            no_show=True,
+            revenue=Decimal("0.00"),
+        )
+        SaleLine.objects.create(
+            site=self.site,
+            studio=self.studio_b,
+            natural_key="history-sale",
+            current_row_hash="history-sale-hash",
+            client=self.client_a,
+            sale_date=date(2026, 5, 22),
+            sale_number="SALE-1",
+            item_name="Socks",
+            quantity=Decimal("1.00"),
+            paid_total=Decimal("30.00"),
+        )
+        SaleLine.objects.create(
+            site=self.site,
+            studio=self.studio_a,
+            natural_key="history-membership-sale-1",
+            current_row_hash="history-membership-sale-hash-1",
+            client=self.client_a,
+            sale_date=date(2026, 5, 1),
+            sale_number="MEMBERSHIP-1",
+            item_name="Monthly Membership",
+            quantity=Decimal("1.00"),
+            paid_total=Decimal("100.00"),
+        )
+        SaleLine.objects.create(
+            site=self.site,
+            studio=self.studio_a,
+            natural_key="history-membership-sale-2",
+            current_row_hash="history-membership-sale-hash-2",
+            client=self.client_a,
+            sale_date=date(2026, 5, 1),
+            sale_number="MEMBERSHIP-1",
+            item_name="Monthly Membership",
+            quantity=Decimal("1.00"),
+            paid_total=Decimal("50.00"),
+        )
+
+        attendance_response = self.api.get(
+            reverse("analytics-client-history", args=[self.client_a.id]),
+            {"type": "attendance", "page": 1, "page_size": 1},
+        )
+        self.assertEqual(attendance_response.status_code, 200)
+        self.assertEqual(attendance_response.data["count"], 2)
+        self.assertEqual(attendance_response.data["pages"], 2)
+        self.assertEqual(attendance_response.data["results"][0]["date"], "2026-05-21")
+        self.assertEqual(attendance_response.data["results"][0]["outcome"], "no_show")
+
+        timeline_response = self.api.get(
+            reverse("analytics-client-history", args=[self.client_a.id]),
+            {"type": "timeline", "page_size": 100},
+        )
+        self.assertEqual(timeline_response.status_code, 200)
+        event_types = [row["type"] for row in timeline_response.data["results"]]
+        self.assertIn("attendance", event_types)
+        self.assertIn("purchase", event_types)
+        self.assertIn("membership", event_types)
+        dates = [row["date"] for row in timeline_response.data["results"]]
+        self.assertEqual(dates, sorted(dates, reverse=True))
+        membership_purchases = [
+            row for row in timeline_response.data["results"]
+            if row["type"] == "purchase" and row["item"] == "Monthly Membership"
+        ]
+        self.assertEqual(len(membership_purchases), 1)
+        self.assertEqual(membership_purchases[0]["amount"], 150.0)
+        self.assertEqual(membership_purchases[0]["activation_date"], "2026-05-01")
+
+    def test_client_histories_hide_money_without_permission(self):
+        viewer = CustomUser.objects.create_user(
+            email="history-viewer@example.com",
+            password="testpass123",
+        )
+        profile, _ = UserAccessProfile.objects.get_or_create(user=viewer)
+        profile.allowed_sites.add(self.site)
+        self.api.force_authenticate(viewer)
+
+        response = self.api.get(
+            reverse("analytics-client-history", args=[self.client_a.id]),
+            {"type": "purchases"},
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertGreater(response.data["count"], 0)
+        self.assertIsNone(response.data["results"][0]["amount"])
