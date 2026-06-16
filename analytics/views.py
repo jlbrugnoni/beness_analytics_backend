@@ -104,6 +104,74 @@ def client_directory_sort_value(row, field):
     return value
 
 
+def client_directory_rankings(rows, can_see_money, limit=5):
+    def ranked(field, eligible, secondary_fields=()):
+        candidates = [row for row in rows if eligible(row)]
+
+        def key(row):
+            values = []
+            for value_field in (field, *secondary_fields):
+                value = row.get(value_field)
+                if isinstance(value, str):
+                    try:
+                        value = date.fromisoformat(value).toordinal()
+                    except ValueError:
+                        value = 0
+                values.append(-(value or 0))
+            values.append(row["client"].casefold())
+            return tuple(values)
+
+        return [
+            {
+                "client_id": row["client_id"],
+                "client": row["client"],
+                "membership_status": row["membership_status"],
+                "value": row[field],
+                "total_bookings": row["total_bookings"],
+            }
+            for row in sorted(candidates, key=key)[:limit]
+        ]
+
+    rankings = {
+        "most_attended": ranked(
+            "attended_visits",
+            lambda row: row["attended_visits"] > 0,
+            ("active_weeks",),
+        ),
+        "most_active_weeks": ranked(
+            "active_weeks",
+            lambda row: row["active_weeks"] > 0,
+            ("attended_visits",),
+        ),
+        "best_attendance_rate": ranked(
+            "attendance_rate",
+            lambda row: row["total_bookings"] > 0,
+            ("total_bookings", "attended_visits"),
+        ),
+        "highest_no_show_rate": ranked(
+            "no_show_rate",
+            lambda row: row["total_bookings"] > 0,
+            ("total_bookings",),
+        ),
+        "most_recently_active": ranked(
+            "last_visit_date",
+            lambda row: row["last_visit_date"] is not None,
+            ("attended_visits",),
+        ),
+    }
+    rankings["highest_total_spending"] = (
+        ranked(
+            "total_spending",
+            lambda row: row["total_spending"] is not None
+            and row["total_spending"] > 0,
+            ("attended_visits",),
+        )
+        if can_see_money
+        else None
+    )
+    return rankings
+
+
 def client_profile_summary(metrics, can_see_money):
     metrics = list(metrics)
     totals = aggregate_client_monthly_metrics(metrics)
@@ -494,6 +562,7 @@ def client_directory_view(request):
         if not status_value or row["membership_status"] == status_value:
             rows.append(row)
 
+    rankings = client_directory_rankings(rows, can_see_money)
     sort_field = request.query_params.get("ordering", "client")
     descending = sort_field.startswith("-")
     sort_field = sort_field.lstrip("-")
@@ -563,6 +632,7 @@ def client_directory_view(request):
         "page_size": page_size,
         "pages": pages,
         "ordering": f"-{sort_field}" if descending else sort_field,
+        "rankings": rankings,
         "results": rows[offset:offset + page_size],
         "filters": {
             "sites": list(available_sites),

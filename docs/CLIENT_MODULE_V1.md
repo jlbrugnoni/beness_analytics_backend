@@ -556,7 +556,7 @@ Validation:
 
 ### Phase 2.4: Basic Rankings
 
-Status: Not started
+Status: Complete
 
 Rank clients by site or studio for:
 
@@ -572,6 +572,51 @@ Supported scopes:
 - Selected month
 - Last 3, 6, and 12 months
 - Lifetime
+
+Ranking definitions:
+
+- Rankings are presented in a dedicated monthly dashboard report named
+  `Top Clients`, rather than inside the operational Clients directory.
+- The report uses the same dashboard filter bar style as the other reports:
+  a centered month selected by previous/next arrows, with site and studio as
+  primary filters.
+- All filters are visible in the toolbar: site, studio, membership status, and
+  metric period. Metric period can widen the values to the last 3, 6, or 12
+  months or lifetime, anchored to the selected month.
+- Rankings reuse the permission-scoped Client directory API calculation so
+  metric values remain identical between rankings, directory rows, and client
+  profiles.
+- Each leaderboard returns up to five clients before directory pagination.
+- Most attended ranks by attended visits, then active weeks.
+- Highest total spending uses canonical Sales spending and is unavailable
+  without `can_view_money`.
+- Most active weeks ranks by distinct active weeks, then attended visits.
+- Best attendance rate and highest no-show rate require at least one booking.
+  Rate ties favor the client with more bookings so a larger sample ranks first.
+- Most recently active ranks by last visit date, then attended visits.
+- Clients with no qualifying activity are excluded from the corresponding
+  leaderboard.
+- Client names in ranking cards open the individual profile and return to the
+  exact Top Clients dashboard filters.
+
+Validation:
+
+- [x] Rankings use the selected metric period
+- [x] Site, studio, and status filters constrain ranking population
+- [x] Rankings are calculated before table pagination
+- [x] Spending ranking respects financial permissions
+- [x] Ranking values match directory metric values
+- [x] Rankings are removed from the Clients directory
+- [x] Monthly dashboard includes a dedicated Top Clients card and report
+- [x] Top Clients uses the standard dashboard filter bar with all filters shown
+- [x] Full Client Module regression suite passes 36 tests
+- [x] Django system and migration checks pass
+- [x] Frontend lint completes with existing unrelated warnings only
+- [x] Frontend production build passes
+- [x] Local lifetime rankings for 982 clients return in 0.572 seconds using
+  the directory's existing 6 database queries
+- [x] User reviewed
+- [x] Committed
 
 ### Phase 2.5: Directory And Profile Review
 

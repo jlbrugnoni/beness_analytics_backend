@@ -981,6 +981,51 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(ana["primary_studio"], "Piantini")
         self.assertEqual(ana["last_visit_date"], "2026-05-20")
 
+    def test_rankings_use_filtered_population_and_metric_period(self):
+        response = self.api.get(
+            reverse("analytics-client-directory"),
+            {
+                "site": self.site.id,
+                "studio": self.studio_b.id,
+                "month": "2026-05",
+                "metric_period": "month",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        rankings = response.data["rankings"]
+        self.assertEqual(rankings["most_attended"][0]["client_id"], self.client_a.id)
+        self.assertEqual(rankings["most_attended"][0]["value"], 5)
+        self.assertEqual(rankings["most_active_weeks"][0]["value"], 3)
+        self.assertEqual(rankings["highest_total_spending"][0]["value"], 200.0)
+        self.assertEqual(
+            rankings["best_attendance_rate"][0]["client_id"],
+            self.client_a.id,
+        )
+        self.assertEqual(
+            rankings["highest_no_show_rate"][0]["client_id"],
+            self.client_b.id,
+        )
+        self.assertEqual(
+            rankings["most_recently_active"][0]["client_id"],
+            self.client_b.id,
+        )
+
+        filtered_response = self.api.get(
+            reverse("analytics-client-directory"),
+            {
+                "site": self.site.id,
+                "month": "2026-05",
+                "status": "not_renewed",
+            },
+        )
+        self.assertEqual(filtered_response.status_code, 200)
+        for ranking in filtered_response.data["rankings"].values():
+            self.assertTrue(
+                ranking is None
+                or all(row["client_id"] == self.client_b.id for row in ranking)
+            )
+
     def test_studio_status_search_sorting_and_pagination(self):
         response = self.api.get(
             reverse("analytics-client-directory"),
@@ -1048,6 +1093,7 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(row["attended_visits"], 8)
         self.assertEqual(row["active_weeks"], 5)
         self.assertIsNone(row["total_spending"])
+        self.assertIsNone(response.data["rankings"]["highest_total_spending"])
 
     def test_client_profile_returns_period_lifetime_and_membership(self):
         with patch("analytics.views.date", wraps=date) as mocked_date:
