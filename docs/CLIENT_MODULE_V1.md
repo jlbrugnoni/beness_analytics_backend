@@ -620,13 +620,41 @@ Validation:
 
 ### Phase 2.5: Directory And Profile Review
 
-Status: Not started
+Status: Implemented; awaiting user review
 
-- [ ] Metrics match raw records for representative clients
-- [ ] Rankings match profile values
-- [ ] Site and studio scopes behave correctly
-- [ ] Pagination and permissions reviewed
-- [ ] Phase review completed
+Review results:
+
+- Profile metrics matched raw records for Ilonka Weber and Manuel Vicente Diez
+  Cabral across total bookings, attended visits, no-shows, late cancellations,
+  active weeks, and canonical Sales spending.
+- Top Clients ranking values matched individual profile values for the leading
+  clients in most attended, highest total spending, most active weeks, best
+  attendance rate, and highest no-show rate.
+- A studio-filtered May 2026 Top Clients request for studio 24 returned only
+  ranked clients represented by a May 2026 metric row for that studio.
+- A not-renewed May 2026 Top Clients request returned only ranked clients with
+  `not_renewed` membership status.
+- Directory pagination remains independent from rankings: a request with
+  `page_size=1` returned one directory row while each leaderboard still
+  returned up to five clients.
+- A restricted viewer without `can_view_money` received `None` for both row
+  total spending and the highest-total-spending leaderboard.
+- The Top Clients dashboard round trip preserves filter state when opening a
+  client profile and returning to the dashboard report.
+
+Validation:
+
+- [x] Metrics match raw records for representative clients
+- [x] Rankings match profile values
+- [x] Site and studio scopes behave correctly
+- [x] Pagination and permissions reviewed
+- [x] Full Client Module regression suite passes 36 tests
+- [x] Django system and migration checks pass
+- [x] Frontend lint completes with existing unrelated warnings only
+- [x] Frontend production build passes
+- [x] Phase review completed
+- [ ] User reviewed
+- [ ] Committed
 
 ## Phase 3: Regularity And Engagement
 
