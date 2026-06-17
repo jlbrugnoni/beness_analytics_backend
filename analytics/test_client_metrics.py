@@ -219,6 +219,7 @@ class ClientStudioMonthlyMetricTests(TestCase):
         self.assertEqual(studio_a.active_week_starts, ["2026-03-30"])
         self.assertEqual(studio_a.attendance_revenue, Decimal("10.00"))
         self.assertEqual(studio_a.service_purchase_count, 3)
+        self.assertEqual(studio_a.tracked_purchase_count, 1)
         self.assertEqual(studio_a.service_spending, Decimal("155.00"))
         self.assertEqual(studio_a.membership_spending, Decimal("120.00"))
         self.assertEqual(studio_a.non_membership_spending, Decimal("30.00"))
@@ -226,6 +227,7 @@ class ClientStudioMonthlyMetricTests(TestCase):
         self.assertEqual(studio_a.first_visit_date, date(2026, 4, 1))
         self.assertEqual(studio_a.last_visit_date, date(2026, 4, 9))
         self.assertEqual(studio_a.first_purchase_date, date(2026, 4, 3))
+        self.assertEqual(studio_a.first_non_trial_purchase_date, date(2026, 4, 3))
         self.assertEqual(studio_a.last_purchase_date, date(2026, 4, 15))
         self.assertEqual(studio_a.active_membership_days, 30)
         self.assertEqual(studio_a.membership_status, MembershipMonthStatus.STATUS_NEW)
@@ -239,6 +241,8 @@ class ClientStudioMonthlyMetricTests(TestCase):
         self.assertEqual(site_totals["attended_visits"], 2)
         self.assertEqual(site_totals["active_weeks"], 1)
         self.assertEqual(site_totals["active_membership_days"], 30)
+        self.assertEqual(site_totals["tracked_purchase_count"], 1)
+        self.assertEqual(site_totals["first_non_trial_purchase_date"], date(2026, 4, 3))
         self.assertEqual(site_totals["service_spending"], Decimal("155.00"))
         self.assertEqual(site_totals["general_sales_spending"], Decimal("500.00"))
 
@@ -867,9 +871,11 @@ class ClientDirectoryTests(TestCase):
                 f"2026-04-{day:02d}" for day in range(1, 21)
             ],
             service_spending=Decimal("100.00"),
+            tracked_purchase_count=1,
             general_sales_spending=Decimal("120.00"),
             first_visit_date=date(2026, 4, 7),
             last_visit_date=date(2026, 4, 15),
+            first_non_trial_purchase_date=date(2026, 4, 1),
             membership_status=MembershipMonthStatus.STATUS_NEW,
         )
         ClientStudioMonthlyMetric.objects.create(
@@ -887,9 +893,11 @@ class ClientDirectoryTests(TestCase):
                 f"2026-05-{day:02d}" for day in range(1, 21)
             ],
             service_spending=Decimal("150.00"),
+            tracked_purchase_count=1,
             general_sales_spending=Decimal("175.00"),
             first_visit_date=date(2026, 5, 4),
             last_visit_date=date(2026, 5, 20),
+            first_non_trial_purchase_date=date(2026, 5, 1),
             membership_status=MembershipMonthStatus.STATUS_RETAINED,
         )
         ClientStudioMonthlyMetric.objects.create(
@@ -905,6 +913,7 @@ class ClientDirectoryTests(TestCase):
             general_sales_spending=Decimal("25.00"),
             first_visit_date=date(2026, 5, 12),
             last_visit_date=date(2026, 5, 12),
+            first_non_trial_purchase_date=date(2026, 5, 12),
         )
         ClientStudioMonthlyMetric.objects.create(
             site=self.site,
@@ -920,6 +929,7 @@ class ClientDirectoryTests(TestCase):
             general_sales_spending=Decimal("60.00"),
             first_visit_date=date(2026, 5, 25),
             last_visit_date=date(2026, 5, 25),
+            first_non_trial_purchase_date=date(2026, 5, 25),
             membership_status=MembershipMonthStatus.STATUS_NOT_RENEWED,
         )
         MembershipMonthStatus.objects.create(
@@ -974,6 +984,8 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(response.data["metric_period"]["mode"], "lifetime")
         self.assertEqual(ana["attended_visits"], 8)
         self.assertEqual(ana["active_weeks"], 5)
+        self.assertEqual(ana["tracked_purchase_count"], 2)
+        self.assertEqual(ana["client_since"], "2026-04-01")
         self.assertEqual(ana["total_bookings"], 10)
         self.assertEqual(ana["attendance_rate"], 80.0)
         self.assertEqual(ana["late_cancel_rate"], 10.0)
@@ -1061,6 +1073,8 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.data["results"][0]["primary_studio"], "Piantini")
         self.assertEqual(response.data["results"][0]["attended_visits"], 5)
+        self.assertEqual(response.data["results"][0]["tracked_purchase_count"], 1)
+        self.assertEqual(response.data["results"][0]["client_since"], "2026-05-01")
         self.assertEqual(response.data["results"][0]["total_spending"], 200.0)
 
     def test_rolling_period_and_money_permission(self):
@@ -1092,6 +1106,8 @@ class ClientDirectoryTests(TestCase):
         row = response.data["results"][0]
         self.assertEqual(row["attended_visits"], 8)
         self.assertEqual(row["active_weeks"], 5)
+        self.assertEqual(row["tracked_purchase_count"], 2)
+        self.assertEqual(row["client_since"], "2026-04-01")
         self.assertIsNone(row["total_spending"])
         self.assertIsNone(response.data["rankings"]["highest_total_spending"])
 
@@ -1107,6 +1123,8 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(response.data["client"]["name"], "Ana Client")
         self.assertEqual(response.data["selected_period"]["attended_visits"], 8)
         self.assertEqual(response.data["selected_period"]["active_weeks"], 5)
+        self.assertEqual(response.data["selected_period"]["tracked_purchase_count"], 2)
+        self.assertEqual(response.data["selected_period"]["client_since"], "2026-04-01")
         self.assertEqual(response.data["selected_period"]["membership_months"], 2)
         self.assertEqual(response.data["selected_period"]["first_visit_date"], "2026-04-07")
         self.assertEqual(response.data["selected_period"]["last_visit_date"], "2026-05-20")

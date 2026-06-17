@@ -90,6 +90,7 @@ def empty_metric():
         "active_week_starts": set(),
         "attendance_revenue": ZERO,
         "service_purchase_count": 0,
+        "tracked_purchase_count": 0,
         "service_spending": ZERO,
         "membership_spending": ZERO,
         "non_membership_spending": ZERO,
@@ -98,6 +99,7 @@ def empty_metric():
         "last_visit_date": None,
         "first_purchase_date": None,
         "last_purchase_date": None,
+        "first_non_trial_purchase_date": None,
         "active_membership_dates": set(),
         "membership_status": None,
     }
@@ -146,9 +148,14 @@ def rebuild_client_studio_monthly_metrics(site_id, target_month):
         metric["service_purchase_count"] += 1
         metric["service_spending"] += amount
         if purchase.pricing_option.track_retention:
+            metric["tracked_purchase_count"] += 1
             metric["membership_spending"] += amount
         elif not purchase.pricing_option.is_trial_class:
             metric["non_membership_spending"] += amount
+        if not purchase.pricing_option.is_trial_class:
+            current = metric["first_non_trial_purchase_date"]
+            if current is None or purchase.sale_date < current:
+                metric["first_non_trial_purchase_date"] = purchase.sale_date
         update_date_bounds(metric, "purchase", purchase.sale_date)
 
     sale_lines = SaleLine.objects.filter(
@@ -208,6 +215,7 @@ def rebuild_client_studio_monthly_metrics(site_id, target_month):
                 active_week_starts=active_week_starts,
                 attendance_revenue=metric["attendance_revenue"],
                 service_purchase_count=metric["service_purchase_count"],
+                tracked_purchase_count=metric["tracked_purchase_count"],
                 service_spending=metric["service_spending"],
                 membership_spending=metric["membership_spending"],
                 non_membership_spending=metric["non_membership_spending"],
@@ -216,6 +224,7 @@ def rebuild_client_studio_monthly_metrics(site_id, target_month):
                 last_visit_date=metric["last_visit_date"],
                 first_purchase_date=metric["first_purchase_date"],
                 last_purchase_date=metric["last_purchase_date"],
+                first_non_trial_purchase_date=metric["first_non_trial_purchase_date"],
                 active_membership_days=len(active_membership_dates),
                 active_membership_dates=active_membership_dates,
                 membership_status=metric["membership_status"],
@@ -239,6 +248,7 @@ def aggregate_client_monthly_metrics(rows):
         "late_cancels": 0,
         "attendance_revenue": ZERO,
         "service_purchase_count": 0,
+        "tracked_purchase_count": 0,
         "service_spending": ZERO,
         "membership_spending": ZERO,
         "non_membership_spending": ZERO,
@@ -247,6 +257,7 @@ def aggregate_client_monthly_metrics(rows):
         "last_visit_date": None,
         "first_purchase_date": None,
         "last_purchase_date": None,
+        "first_non_trial_purchase_date": None,
         "membership_status": None,
     }
     active_week_starts = set()
@@ -260,6 +271,7 @@ def aggregate_client_monthly_metrics(rows):
             "no_shows",
             "late_cancels",
             "service_purchase_count",
+            "tracked_purchase_count",
         ):
             totals[field] += getattr(row, field)
         for field in (
@@ -281,6 +293,11 @@ def aggregate_client_monthly_metrics(rows):
                 totals[first_key] = first_value
             if last_value and (totals[last_key] is None or last_value > totals[last_key]):
                 totals[last_key] = last_value
+        if row.first_non_trial_purchase_date and (
+            totals["first_non_trial_purchase_date"] is None
+            or row.first_non_trial_purchase_date < totals["first_non_trial_purchase_date"]
+        ):
+            totals["first_non_trial_purchase_date"] = row.first_non_trial_purchase_date
         if (
             row.membership_status
             and (membership_status_month is None or row.month > membership_status_month)

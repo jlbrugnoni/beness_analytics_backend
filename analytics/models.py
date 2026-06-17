@@ -95,6 +95,7 @@ class ClientStudioMonthlyMetric(models.Model):
     attendance_revenue = models.DecimalField(max_digits=14, decimal_places=2, default=0)
 
     service_purchase_count = models.PositiveIntegerField(default=0)
+    tracked_purchase_count = models.PositiveIntegerField(default=0)
     service_spending = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     membership_spending = models.DecimalField(max_digits=14, decimal_places=2, default=0)
     non_membership_spending = models.DecimalField(max_digits=14, decimal_places=2, default=0)
@@ -104,6 +105,7 @@ class ClientStudioMonthlyMetric(models.Model):
     last_visit_date = models.DateField(null=True, blank=True)
     first_purchase_date = models.DateField(null=True, blank=True)
     last_purchase_date = models.DateField(null=True, blank=True)
+    first_non_trial_purchase_date = models.DateField(null=True, blank=True)
 
     active_membership_days = models.PositiveIntegerField(default=0)
     active_membership_dates = models.JSONField(default=list, blank=True)

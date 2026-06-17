@@ -36,6 +36,64 @@ Suggested commit format:
 Phase 1.1: Add monthly client metrics
 ```
 
+## Version 2 Additions
+
+Development branch: `feature/client-module-v2`
+
+### V2.1: Tracked Purchases And Client Since
+
+Status: Complete
+
+Add two client health facts to the existing directory and profile:
+
+- `tracked_purchase_count`: number of Sales by Service purchases whose pricing
+  option has `track_retention=True`.
+- `client_since`: the first Sales by Service purchase date whose pricing
+  option is not marked as a trial.
+
+Also add a CSV export to the Clients directory.
+
+Definitions:
+
+- Tracked purchases are counted by sale date inside the selected metric period.
+- Client since follows the same metric scope shown on the page. In lifetime
+  scope it is the client's first-ever non-trial purchase date; in a selected
+  or rolling period it is the first non-trial purchase within that scope.
+- Trial purchases are excluded from client since even when they are the
+  client's first imported purchase.
+- The values are stored in `ClientStudioMonthlyMetric` so site/studio
+  aggregation, sorting, directory rows, and profile summaries remain fast.
+- Existing historical rows require a client-metrics rebuild after deployment
+  so the new stored fields are populated.
+
+Implemented behavior:
+
+- The monthly metric rebuild stores tracked purchase count and first non-trial
+  purchase date per client, studio, and month.
+- Aggregation sums tracked purchases and selects the earliest non-trial
+  purchase date across the active scope.
+- The Clients directory returns, displays, and sorts by tracked purchases and
+  client since.
+- The individual client profile shows tracked purchases in summary cards and
+  client since in the date section.
+- The Clients directory can export the full filtered and sorted result set to
+  CSV, not only the currently visible page.
+
+Validation:
+
+- [x] Monthly metric rebuild tests cover tracked purchase count and first
+  non-trial purchase date
+- [x] Directory and profile API tests cover the new fields
+- [x] Migration consistency check passes
+- [x] Focused Client Module tests pass 19 tests
+- [x] Full Client Module regression suite passes 36 tests
+- [x] Django system and migration checks pass
+- [x] Frontend lint completes with existing unrelated warnings only
+- [x] Frontend production build passes
+- [x] CSV export added to the Clients directory
+- [x] User reviewed
+- [x] Committed
+
 ## Metric Principles
 
 - Store factual counts and amounts; derive percentages, rankings, and labels.

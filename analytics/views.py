@@ -98,6 +98,8 @@ def client_directory_sort_value(row, field):
     if value is None:
         if field in {"client", "membership_status", "primary_studio"}:
             return ""
+        if field in {"client_since"}:
+            return date.min.isoformat()
         return -1
     if isinstance(value, str):
         return value.casefold()
@@ -190,6 +192,7 @@ def client_profile_summary(metrics, can_see_money):
         "no_shows": totals["no_shows"],
         "late_cancels": totals["late_cancels"],
         "active_weeks": totals["active_weeks"],
+        "tracked_purchase_count": totals["tracked_purchase_count"],
         "membership_months": membership_months,
         "attendance_rate": percentage(totals["attended_visits"], total_bookings),
         "no_show_rate": percentage(totals["no_shows"], total_bookings),
@@ -207,6 +210,11 @@ def client_profile_summary(metrics, can_see_money):
         "first_purchase_date": (
             totals["first_purchase_date"].isoformat()
             if totals["first_purchase_date"]
+            else None
+        ),
+        "client_since": (
+            totals["first_non_trial_purchase_date"].isoformat()
+            if totals["first_non_trial_purchase_date"]
             else None
         ),
         "last_purchase_date": (
@@ -549,6 +557,12 @@ def client_directory_view(request):
             "days_since_last_visit": (today - last_visit).days if last_visit else None,
             "attended_visits": totals["attended_visits"],
             "active_weeks": totals["active_weeks"],
+            "tracked_purchase_count": totals["tracked_purchase_count"],
+            "client_since": (
+                totals["first_non_trial_purchase_date"].isoformat()
+                if totals["first_non_trial_purchase_date"]
+                else None
+            ),
             "total_bookings": total_bookings,
             "attendance_rate": percentage(totals["attended_visits"], total_bookings),
             "no_show_rate": percentage(totals["no_shows"], total_bookings),
@@ -574,6 +588,8 @@ def client_directory_view(request):
         "days_since_last_visit",
         "attended_visits",
         "active_weeks",
+        "tracked_purchase_count",
+        "client_since",
         "attendance_rate",
         "no_show_rate",
         "late_cancel_rate",
