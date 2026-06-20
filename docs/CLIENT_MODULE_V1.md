@@ -678,7 +678,7 @@ Validation:
 
 ### Phase 2.5: Directory And Profile Review
 
-Status: Implemented; awaiting user review
+Status: Complete
 
 Review results:
 
@@ -711,8 +711,8 @@ Validation:
 - [x] Frontend lint completes with existing unrelated warnings only
 - [x] Frontend production build passes
 - [x] Phase review completed
-- [ ] User reviewed
-- [ ] Committed
+- [x] User reviewed
+- [x] Committed
 
 ## Phase 3: Regularity And Engagement
 
