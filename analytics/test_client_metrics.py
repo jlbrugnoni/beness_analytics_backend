@@ -277,6 +277,47 @@ class ClientStudioMonthlyMetricTests(TestCase):
         self.assertEqual(corrected.no_shows, 0)
         self.assertEqual(corrected.attendance_revenue, Decimal("25.00"))
 
+    def test_negative_tracked_correction_does_not_create_membership_coverage(self):
+        self.create_purchase(
+            "positive-membership",
+            self.studio_a,
+            self.membership,
+            date(2026, 1, 8),
+            "6800.00",
+            activation_date=date(2026, 1, 8),
+            expiration_date=date(2026, 2, 6),
+        )
+        ServicePurchase.objects.create(
+            site=self.site,
+            studio=self.studio_a,
+            natural_key="negative-membership-correction",
+            current_row_hash="negative-membership-correction-hash",
+            client=self.client,
+            pricing_option=self.membership,
+            sale_date=date(2026, 1, 8),
+            activation_date=date(2026, 1, 8),
+            expiration_date=None,
+            total_amount=Decimal("-6800.00"),
+            quantity=Decimal("-1.00"),
+        )
+
+        rebuild_client_studio_monthly_metrics(self.site.id, date(2026, 2, 1))
+        rebuild_client_studio_monthly_metrics(self.site.id, date(2026, 6, 1))
+
+        february = ClientStudioMonthlyMetric.objects.get(
+            client=self.client,
+            studio=self.studio_a,
+            month=date(2026, 2, 1),
+        )
+        self.assertEqual(february.active_membership_days, 6)
+        self.assertFalse(
+            ClientStudioMonthlyMetric.objects.filter(
+                client=self.client,
+                studio=self.studio_a,
+                month=date(2026, 6, 1),
+            ).exists()
+        )
+
     def test_monthly_aggregation_uses_latest_membership_status(self):
         older = ClientStudioMonthlyMetric.objects.create(
             site=self.site,
@@ -932,6 +973,30 @@ class ClientDirectoryTests(TestCase):
             first_non_trial_purchase_date=date(2026, 5, 25),
             membership_status=MembershipMonthStatus.STATUS_NOT_RENEWED,
         )
+        for index, week in enumerate((
+            date(2026, 4, 6),
+            date(2026, 4, 13),
+            date(2026, 5, 4),
+            date(2026, 5, 11),
+            date(2026, 5, 18),
+        )):
+            ClientStudioWeeklyMetric.objects.create(
+                site=self.site,
+                studio=self.studio_a,
+                client=self.client_a,
+                week_start=week,
+                total_bookings=2 if index in {2, 3, 4} else 1,
+                attended_visits=2 if index in {2, 3, 4} else 1,
+            )
+        ClientStudioWeeklyMetric.objects.create(
+            site=self.site,
+            studio=self.studio_b,
+            client=self.client_b,
+            week_start=date(2026, 5, 25),
+            total_bookings=2,
+            attended_visits=1,
+            no_shows=1,
+        )
         MembershipMonthStatus.objects.create(
             site=self.site,
             studio=self.studio_a,
@@ -984,6 +1049,17 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(response.data["metric_period"]["mode"], "lifetime")
         self.assertEqual(ana["attended_visits"], 8)
         self.assertEqual(ana["active_weeks"], 5)
+        self.assertEqual(ana["regularity_8_weeks"], 62.5)
+        self.assertEqual(ana["average_visits_per_active_week_8"], 1.6)
+        self.assertEqual(
+            ana["regularity_windows"]["4"],
+            {
+                "active_weeks": 3,
+                "eligible_weeks": 4,
+                "regularity_rate": 75.0,
+                "average_visits_per_active_week": 2.0,
+            },
+        )
         self.assertEqual(ana["tracked_purchase_count"], 2)
         self.assertEqual(ana["client_since"], "2026-04-01")
         self.assertEqual(ana["total_bookings"], 10)
@@ -1009,6 +1085,8 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(rankings["most_attended"][0]["client_id"], self.client_a.id)
         self.assertEqual(rankings["most_attended"][0]["value"], 5)
         self.assertEqual(rankings["most_active_weeks"][0]["value"], 3)
+        self.assertEqual(rankings["most_regular_8_weeks"][0]["client_id"], self.client_a.id)
+        self.assertEqual(rankings["most_regular_8_weeks"][0]["value"], 62.5)
         self.assertEqual(rankings["highest_total_spending"][0]["value"], 200.0)
         self.assertEqual(
             rankings["best_attendance_rate"][0]["client_id"],
@@ -1123,6 +1201,11 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(response.data["client"]["name"], "Ana Client")
         self.assertEqual(response.data["selected_period"]["attended_visits"], 8)
         self.assertEqual(response.data["selected_period"]["active_weeks"], 5)
+        self.assertEqual(response.data["selected_period"]["regularity_8_weeks"], 62.5)
+        self.assertEqual(
+            response.data["selected_period"]["regularity_windows"]["8"]["eligible_weeks"],
+            8,
+        )
         self.assertEqual(response.data["selected_period"]["tracked_purchase_count"], 2)
         self.assertEqual(response.data["selected_period"]["client_since"], "2026-04-01")
         self.assertEqual(response.data["selected_period"]["membership_months"], 2)

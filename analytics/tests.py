@@ -155,6 +155,65 @@ class ReactivatedMembershipHistoryTests(TestCase):
         )
         self.assertEqual(status.status, MembershipMonthStatus.STATUS_REACTIVATED)
 
+    def test_negative_tracked_correction_does_not_create_active_membership(self):
+        site = Site.objects.create(name="Santo Domingo", country_code=Site.COUNTRY_DOMINICAN_REPUBLIC)
+        client = Client.objects.create(site=site, name="Carmen Rodriguez", mindbody_id="289")
+        category = ServiceCategory.objects.create(site=site, name="Memberships")
+        option = PricingOption.objects.create(
+            site=site,
+            name="2 veces por semana",
+            service_category=category,
+            track_retention=True,
+        )
+        ServicePurchase.objects.create(
+            site=site,
+            natural_key="january-membership",
+            current_row_hash="january-membership-hash",
+            client=client,
+            pricing_option=option,
+            sale_date=date(2026, 1, 8),
+            activation_date=date(2026, 1, 8),
+            expiration_date=date(2026, 2, 6),
+            total_amount=Decimal("6800.00"),
+            quantity=Decimal("1.00"),
+        )
+        ServicePurchase.objects.create(
+            site=site,
+            natural_key="january-negative-correction",
+            current_row_hash="january-negative-correction-hash",
+            client=client,
+            pricing_option=option,
+            sale_date=date(2026, 1, 8),
+            activation_date=date(2026, 1, 8),
+            expiration_date=None,
+            total_amount=Decimal("-6800.00"),
+            quantity=Decimal("-1.00"),
+        )
+
+        rebuild_membership_month(site.id, date(2026, 1, 1))
+        rebuild_membership_month(site.id, date(2026, 2, 1))
+        rebuild_membership_month(site.id, date(2026, 6, 1))
+
+        january = MembershipMonthStatus.objects.get(
+            site=site,
+            client=client,
+            month=date(2026, 1, 1),
+        )
+        february = MembershipMonthStatus.objects.get(
+            site=site,
+            client=client,
+            month=date(2026, 2, 1),
+        )
+        self.assertEqual(january.status, MembershipMonthStatus.STATUS_NEW)
+        self.assertEqual(february.status, MembershipMonthStatus.STATUS_NOT_RENEWED)
+        self.assertFalse(
+            MembershipMonthStatus.objects.filter(
+                site=site,
+                client=client,
+                month=date(2026, 6, 1),
+            ).exists()
+        )
+
     def test_membership_snapshot_uses_purchase_studio_not_attendance(self):
         site = Site.objects.create(name="Studio Site", country_code=Site.COUNTRY_SPAIN)
         purchase_studio = Studio.objects.create(site=site, name="Purchase Studio")

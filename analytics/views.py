@@ -12,8 +12,12 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
-from analytics.client_metrics import aggregate_client_monthly_metrics
-from analytics.models import ClientStudioMonthlyMetric, MembershipMonthStatus
+from analytics.client_metrics import aggregate_client_monthly_metrics, week_start
+from analytics.models import (
+    ClientStudioMonthlyMetric,
+    ClientStudioWeeklyMetric,
+    MembershipMonthStatus,
+)
 from core_data.access import scoped_queryset_for_user, user_has_capability
 from core_data.models import (
     AttendanceClassMatch,
@@ -106,6 +110,65 @@ def client_directory_sort_value(row, field):
     return value
 
 
+REGULARITY_WINDOWS = (4, 8, 12, 16)
+
+
+def empty_regularity_windows():
+    return {
+        str(window): {
+            "active_weeks": 0,
+            "eligible_weeks": 0,
+            "regularity_rate": 0.0,
+            "average_visits_per_active_week": 0.0,
+        }
+        for window in REGULARITY_WINDOWS
+    }
+
+
+def first_client_activity_date(totals):
+    candidates = [
+        totals["first_non_trial_purchase_date"],
+        totals["first_visit_date"],
+        totals["first_purchase_date"],
+    ]
+    candidates = [value for value in candidates if value]
+    return min(candidates) if candidates else None
+
+
+def client_regularity_windows(weekly_rows, selected_month, first_activity_date):
+    if not first_activity_date:
+        return empty_regularity_windows()
+
+    rows = list(weekly_rows)
+    end_week = week_start(month_end(selected_month))
+    first_activity_week = week_start(first_activity_date)
+    windows = {}
+    for window in REGULARITY_WINDOWS:
+        start_week = end_week - timedelta(days=7 * (window - 1))
+        eligible_start = max(start_week, first_activity_week)
+        if eligible_start > end_week:
+            eligible_weeks = 0
+        else:
+            eligible_weeks = ((end_week - eligible_start).days // 7) + 1
+
+        active_rows = [
+            row
+            for row in rows
+            if start_week <= row.week_start <= end_week and row.attended_visits > 0
+        ]
+        active_weeks = len({row.week_start for row in active_rows})
+        attended_visits = sum(row.attended_visits for row in active_rows)
+        windows[str(window)] = {
+            "active_weeks": active_weeks,
+            "eligible_weeks": eligible_weeks,
+            "regularity_rate": percentage(active_weeks, eligible_weeks),
+            "average_visits_per_active_week": (
+                round(attended_visits / active_weeks, 2) if active_weeks else 0.0
+            ),
+        }
+    return windows
+
+
 def client_directory_rankings(rows, can_see_money, limit=5):
     def ranked(field, eligible, secondary_fields=()):
         candidates = [row for row in rows if eligible(row)]
@@ -145,6 +208,13 @@ def client_directory_rankings(rows, can_see_money, limit=5):
             lambda row: row["active_weeks"] > 0,
             ("attended_visits",),
         ),
+        "most_regular_8_weeks": ranked(
+            "regularity_8_weeks",
+            lambda row: row["regularity_8_weeks"] > 0
+            and row["regularity_windows"]["8"]["eligible_weeks"] >= 4
+            and row["regularity_windows"]["8"]["active_weeks"] >= 2,
+            ("active_weeks", "attended_visits"),
+        ),
         "best_attendance_rate": ranked(
             "attendance_rate",
             lambda row: row["total_bookings"] > 0,
@@ -174,9 +244,20 @@ def client_directory_rankings(rows, can_see_money, limit=5):
     return rankings
 
 
-def client_profile_summary(metrics, can_see_money):
+def client_profile_summary(
+    metrics,
+    can_see_money,
+    selected_month=None,
+    weekly_metrics=None,
+    activity_metrics=None,
+):
     metrics = list(metrics)
     totals = aggregate_client_monthly_metrics(metrics)
+    activity_totals = (
+        aggregate_client_monthly_metrics(activity_metrics)
+        if activity_metrics is not None
+        else totals
+    )
     membership_dates_by_month = {}
     for metric in metrics:
         membership_dates_by_month.setdefault(metric.month, set()).update(
@@ -186,12 +267,26 @@ def client_profile_summary(metrics, can_see_money):
         1 for dates in membership_dates_by_month.values() if len(dates) >= 15
     )
     total_bookings = totals["total_bookings"]
+    regularity_windows = (
+        client_regularity_windows(
+            weekly_metrics or [],
+            selected_month,
+            first_client_activity_date(activity_totals),
+        )
+        if selected_month
+        else empty_regularity_windows()
+    )
     return {
         "total_bookings": total_bookings,
         "attended_visits": totals["attended_visits"],
         "no_shows": totals["no_shows"],
         "late_cancels": totals["late_cancels"],
         "active_weeks": totals["active_weeks"],
+        "regularity_windows": regularity_windows,
+        "regularity_8_weeks": regularity_windows["8"]["regularity_rate"],
+        "average_visits_per_active_week_8": regularity_windows["8"][
+            "average_visits_per_active_week"
+        ],
         "tracked_purchase_count": totals["tracked_purchase_count"],
         "membership_months": membership_months,
         "attendance_rate": percentage(totals["attended_visits"], total_bookings),
@@ -499,6 +594,27 @@ def client_directory_view(request):
     for metric in metric_scope.iterator():
         metrics_by_client.setdefault(metric.client_id, []).append(metric)
 
+    lifetime_metrics_by_client = {}
+    for metric in lifetime_metrics.iterator():
+        lifetime_metrics_by_client.setdefault(metric.client_id, []).append(metric)
+
+    regularity_start = week_start(month_end(selected_month)) - timedelta(days=7 * 15)
+    weekly_scope = scoped_queryset_for_user(
+        ClientStudioWeeklyMetric.objects.filter(
+            client_id__in=client_ids,
+            week_start__range=(regularity_start, week_start(month_end(selected_month))),
+        ),
+        request.user,
+        site_field="site_id",
+        studio_field="studio_id",
+        include_null_studio=True,
+    )
+    if site_id:
+        weekly_scope = weekly_scope.filter(site_id=site_id)
+    weekly_metrics_by_client = {}
+    for metric in weekly_scope.iterator():
+        weekly_metrics_by_client.setdefault(metric.client_id, []).append(metric)
+
     primary_candidates = {}
     for metric in lifetime_metrics.select_related("studio").iterator():
         if not metric.studio_id or metric.attended_visits <= 0:
@@ -539,6 +655,14 @@ def client_directory_view(request):
     rows = []
     for client in client_rows:
         totals = aggregate_client_monthly_metrics(metrics_by_client.get(client["id"], []))
+        lifetime_totals = aggregate_client_monthly_metrics(
+            lifetime_metrics_by_client.get(client["id"], [])
+        )
+        regularity_windows = client_regularity_windows(
+            weekly_metrics_by_client.get(client["id"], []),
+            selected_month,
+            first_client_activity_date(lifetime_totals),
+        )
         last_visit = totals["last_visit_date"]
         primary = primary_by_client.get(client["id"])
         total_bookings = totals["total_bookings"]
@@ -557,6 +681,11 @@ def client_directory_view(request):
             "days_since_last_visit": (today - last_visit).days if last_visit else None,
             "attended_visits": totals["attended_visits"],
             "active_weeks": totals["active_weeks"],
+            "regularity_windows": regularity_windows,
+            "regularity_8_weeks": regularity_windows["8"]["regularity_rate"],
+            "average_visits_per_active_week_8": regularity_windows["8"][
+                "average_visits_per_active_week"
+            ],
             "tracked_purchase_count": totals["tracked_purchase_count"],
             "client_since": (
                 totals["first_non_trial_purchase_date"].isoformat()
@@ -588,6 +717,8 @@ def client_directory_view(request):
         "days_since_last_visit",
         "attended_visits",
         "active_weeks",
+        "regularity_8_weeks",
+        "average_visits_per_active_week_8",
         "tracked_purchase_count",
         "client_since",
         "attendance_rate",
@@ -708,6 +839,19 @@ def client_profile_view(request, client_id):
     else:
         selected_rows = lifetime_rows
 
+    regularity_start = week_start(month_end(selected_month)) - timedelta(days=7 * 15)
+    weekly_metrics = list(scoped_queryset_for_user(
+        ClientStudioWeeklyMetric.objects.filter(
+            client_id=client.id,
+            site_id=client.site_id,
+            week_start__range=(regularity_start, week_start(month_end(selected_month))),
+        ),
+        request.user,
+        site_field="site_id",
+        studio_field="studio_id",
+        include_null_studio=True,
+    ))
+
     statuses = scoped_queryset_for_user(
         MembershipMonthStatus.objects.select_related(
             "source_purchase__pricing_option",
@@ -769,8 +913,20 @@ def client_profile_view(request, client_id):
                 else None
             ),
         } if membership else None,
-        "selected_period": client_profile_summary(selected_rows, can_see_money),
-        "lifetime": client_profile_summary(lifetime_rows, can_see_money),
+        "selected_period": client_profile_summary(
+            selected_rows,
+            can_see_money,
+            selected_month,
+            weekly_metrics,
+            lifetime_rows,
+        ),
+        "lifetime": client_profile_summary(
+            lifetime_rows,
+            can_see_money,
+            selected_month,
+            weekly_metrics,
+            lifetime_rows,
+        ),
     })
 
 
@@ -1416,13 +1572,14 @@ def membership_data_for_month(site_id, target_month):
             pricing_option__track_retention=True,
             sale_date__lte=end,
         )
+        .filter(Q(quantity__gt=0) | Q(quantity=0, total_amount__gt=0))
         .filter(Q(expiration_date__gte=start) | Q(expiration_date__isnull=True))
         .order_by("client_id", "sale_date", "id")
     )
     grouped = {}
     for purchase in purchases:
         active_start = purchase.activation_date or purchase.sale_date
-        active_end = purchase.expiration_date or end
+        active_end = purchase.expiration_date or month_end(active_start)
         if not active_start:
             continue
         overlap_days = inclusive_overlap_days(active_start, active_end, start, end)
@@ -1467,6 +1624,7 @@ def historical_member_ids(site_id, before_month):
             site_id=site_id,
             pricing_option__track_retention=True,
         )
+        .filter(Q(quantity__gt=0) | Q(quantity=0, total_amount__gt=0))
         .filter(
             Q(activation_date__lt=before_month)
             | Q(activation_date__isnull=True, sale_date__lt=before_month)
@@ -1478,7 +1636,7 @@ def historical_member_ids(site_id, before_month):
         active_start = purchase.activation_date or purchase.sale_date
         if not active_start or active_start >= before_month:
             continue
-        active_end = purchase.expiration_date or before_month - timedelta(days=1)
+        active_end = purchase.expiration_date or month_end(active_start)
         active_end = min(active_end, before_month - timedelta(days=1))
         if active_start <= active_end:
             intervals_by_client.setdefault(purchase.client_id, []).append((active_start, active_end))
