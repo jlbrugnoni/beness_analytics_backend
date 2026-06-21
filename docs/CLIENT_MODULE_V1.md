@@ -128,7 +128,7 @@ Defer:
 
 ### V2.2: Regularity Windows
 
-Status: Implemented; awaiting user review
+Status: Complete
 
 Use weekly metrics to calculate:
 
@@ -174,10 +174,12 @@ Validation:
 - [x] Profile API returns regularity summary values
 - [x] Top Clients ranking excludes clients with too little eligible history
 - [x] Focused Client Module backend tests pass 23 tests
+- [x] User reviewed
+- [x] Committed
 
 ### V2.2.1: Retention Coverage Correction
 
-Status: Implemented; awaiting user review
+Status: Complete
 
 Fix a retention-status edge case found while reviewing the Clients directory:
 negative tracked Sales by Service correction rows could create active membership
@@ -206,10 +208,12 @@ Validation:
 - [x] Local Carmen Rodriguez rebuild changes 2026-02 to `not_renewed` and
   removes later false retained rows
 - [x] Focused retention and client metric backend tests pass 34 tests
+- [x] User reviewed
+- [x] Committed
 
 ### V2.3: Streaks And Inactivity
 
-Status: Not started
+Status: Implemented; awaiting user review
 
 Calculate:
 
@@ -220,6 +224,43 @@ Calculate:
 
 These values should distinguish inactive non-members from active members who
 are not attending.
+
+Implemented behavior:
+
+- Streaks are calculated dynamically from `ClientStudioWeeklyMetric` rows using
+  the week containing the latest uploaded attendance report date in the selected site scope,
+  avoiding a new migration.
+- Current attendance streak counts consecutive attended weeks ending in the
+  week containing the latest imported attendance date, not the calendar week
+  containing the selected month end.
+- Longest attendance streak scans all attended weekly rows up to the selected
+  streak anchor week.
+- Consecutive inactive weeks counts backward from the streak anchor week until
+  the last attended week, starting no earlier than the client's lifetime first
+  meaningful activity. This avoids breaking streaks during the current
+  incomplete week before the weekend import is uploaded.
+- Active membership inactive weeks counts weeks where the client had active
+  membership coverage but no attended visit.
+- The API exposes `streak_as_of_week` so the UI can show which imported week
+  the current metrics are calculated through. This value is based on attendance
+  report coverage, so membership-only weekly rows do not break current streaks,
+  and it does not move backward when the user selects older months.
+- The Clients directory exposes current streak and inactive weeks as sortable
+  columns and CSV fields.
+- Client profiles show current streak, longest streak, inactive weeks, and
+  member inactive weeks.
+- Top Clients includes a longest current streak ranking.
+
+Validation:
+
+- [x] Directory API returns streak and inactivity values
+- [x] Profile API returns streak and inactivity values
+- [x] Streaks ignore incomplete calendar weeks without imported data
+- [x] Membership-only weekly rows after the latest attendance import do not
+  break current streaks
+- [x] Current streaks remain anchored to the latest upload when selecting older
+  months
+- [x] Focused Client Module backend tests pass 24 tests
 
 ### V2.4: Membership Continuity
 

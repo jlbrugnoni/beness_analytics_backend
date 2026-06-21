@@ -990,12 +990,51 @@ class ClientDirectoryTests(TestCase):
             )
         ClientStudioWeeklyMetric.objects.create(
             site=self.site,
+            studio=self.studio_a,
+            client=self.client_a,
+            week_start=date(2026, 5, 25),
+            active_membership_days=7,
+            active_membership_dates=[
+                f"2026-05-{day:02d}" for day in range(25, 32)
+            ],
+            had_active_membership=True,
+        )
+        ClientStudioWeeklyMetric.objects.create(
+            site=self.site,
             studio=self.studio_b,
             client=self.client_b,
             week_start=date(2026, 5, 25),
             total_bookings=2,
             attended_visits=1,
             no_shows=1,
+        )
+        ClientStudioWeeklyMetric.objects.create(
+            site=self.site,
+            studio=self.studio_b,
+            client=self.client_b,
+            week_start=date(2026, 6, 8),
+            total_bookings=1,
+            attended_visits=1,
+        )
+        ClientStudioWeeklyMetric.objects.create(
+            site=self.site,
+            studio=self.studio_a,
+            client=self.client_a,
+            week_start=date(2026, 6, 15),
+            active_membership_days=7,
+            active_membership_dates=[
+                f"2026-06-{day:02d}" for day in range(15, 22)
+            ],
+            had_active_membership=True,
+        )
+        AttendanceVisit.objects.create(
+            site=self.site,
+            natural_key="latest-imported-attendance",
+            current_row_hash="latest-imported-attendance-hash",
+            client=self.client_b,
+            visit_studio=self.studio_b,
+            visit_date=date(2026, 6, 14),
+            visit_time_raw="10:00 AM",
         )
         MembershipMonthStatus.objects.create(
             site=self.site,
@@ -1043,6 +1082,7 @@ class ClientDirectoryTests(TestCase):
         )
 
         self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["streak_as_of_week"], "2026-06-08")
         self.assertEqual(response.data["count"], 2)
         ana = next(row for row in response.data["results"] if row["client_id"] == self.client_a.id)
         self.assertEqual(ana["membership_status"], MembershipMonthStatus.STATUS_RETAINED)
@@ -1051,6 +1091,10 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(ana["active_weeks"], 5)
         self.assertEqual(ana["regularity_8_weeks"], 62.5)
         self.assertEqual(ana["average_visits_per_active_week_8"], 1.6)
+        self.assertEqual(ana["current_attendance_streak"], 0)
+        self.assertEqual(ana["longest_attendance_streak"], 3)
+        self.assertEqual(ana["consecutive_inactive_weeks"], 3)
+        self.assertEqual(ana["active_membership_inactive_weeks"], 1)
         self.assertEqual(
             ana["regularity_windows"]["4"],
             {
@@ -1068,6 +1112,41 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(ana["total_spending"], 320.0)
         self.assertEqual(ana["primary_studio"], "Piantini")
         self.assertEqual(ana["last_visit_date"], "2026-05-20")
+
+    def test_streaks_use_latest_imported_week_not_selected_month(self):
+        may_response = self.api.get(
+            reverse("analytics-client-directory"),
+            {
+                "site": self.site.id,
+                "period": "last_3_months",
+                "month": "2026-05",
+            },
+        )
+        june_response = self.api.get(
+            reverse("analytics-client-directory"),
+            {
+                "site": self.site.id,
+                "period": "last_3_months",
+                "month": "2026-06",
+            },
+        )
+
+        self.assertEqual(may_response.status_code, 200)
+        self.assertEqual(june_response.status_code, 200)
+        self.assertEqual(may_response.data["streak_as_of_week"], "2026-06-08")
+        self.assertEqual(june_response.data["streak_as_of_week"], "2026-06-08")
+        may_bea = next(
+            row for row in may_response.data["results"]
+            if row["client_id"] == self.client_b.id
+        )
+        june_bea = next(
+            row for row in june_response.data["results"]
+            if row["client_id"] == self.client_b.id
+        )
+        self.assertEqual(may_bea["current_attendance_streak"], 1)
+        self.assertEqual(june_bea["current_attendance_streak"], 1)
+        self.assertEqual(may_bea["consecutive_inactive_weeks"], 0)
+        self.assertEqual(june_bea["consecutive_inactive_weeks"], 0)
 
     def test_rankings_use_filtered_population_and_metric_period(self):
         response = self.api.get(
@@ -1206,6 +1285,11 @@ class ClientDirectoryTests(TestCase):
             response.data["selected_period"]["regularity_windows"]["8"]["eligible_weeks"],
             8,
         )
+        self.assertEqual(response.data["selected_period"]["current_attendance_streak"], 0)
+        self.assertEqual(response.data["selected_period"]["longest_attendance_streak"], 3)
+        self.assertEqual(response.data["streak_as_of_week"], "2026-06-08")
+        self.assertEqual(response.data["selected_period"]["consecutive_inactive_weeks"], 3)
+        self.assertEqual(response.data["selected_period"]["active_membership_inactive_weeks"], 1)
         self.assertEqual(response.data["selected_period"]["tracked_purchase_count"], 2)
         self.assertEqual(response.data["selected_period"]["client_since"], "2026-04-01")
         self.assertEqual(response.data["selected_period"]["membership_months"], 2)

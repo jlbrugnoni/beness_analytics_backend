@@ -135,6 +135,15 @@ def first_client_activity_date(totals):
     return min(candidates) if candidates else None
 
 
+def empty_streak_metrics():
+    return {
+        "current_attendance_streak": 0,
+        "longest_attendance_streak": 0,
+        "consecutive_inactive_weeks": 0,
+        "active_membership_inactive_weeks": 0,
+    }
+
+
 def client_regularity_windows(weekly_rows, selected_month, first_activity_date):
     if not first_activity_date:
         return empty_regularity_windows()
@@ -167,6 +176,61 @@ def client_regularity_windows(weekly_rows, selected_month, first_activity_date):
             ),
         }
     return windows
+
+
+def client_streak_metrics(weekly_rows, as_of_week, first_activity_date):
+    if not first_activity_date or not as_of_week:
+        return empty_streak_metrics()
+
+    end_week = as_of_week
+    first_activity_week = week_start(first_activity_date)
+    attended_weeks = {
+        row.week_start
+        for row in weekly_rows
+        if row.week_start <= end_week and row.attended_visits > 0
+    }
+    active_membership_inactive_weeks = len({
+        row.week_start
+        for row in weekly_rows
+        if row.week_start <= end_week
+        and row.had_active_membership
+        and row.attended_visits == 0
+    })
+
+    current_streak = 0
+    current_week = end_week
+    while current_week >= first_activity_week and current_week in attended_weeks:
+        current_streak += 1
+        current_week -= timedelta(days=7)
+
+    consecutive_inactive_weeks = 0
+    current_week = end_week
+    while current_week >= first_activity_week and current_week not in attended_weeks:
+        consecutive_inactive_weeks += 1
+        current_week -= timedelta(days=7)
+
+    longest_streak = 0
+    running_streak = 0
+    current_week = first_activity_week
+    while current_week <= end_week:
+        if current_week in attended_weeks:
+            running_streak += 1
+            longest_streak = max(longest_streak, running_streak)
+        else:
+            running_streak = 0
+        current_week += timedelta(days=7)
+
+    return {
+        "current_attendance_streak": current_streak,
+        "longest_attendance_streak": longest_streak,
+        "consecutive_inactive_weeks": consecutive_inactive_weeks,
+        "active_membership_inactive_weeks": active_membership_inactive_weeks,
+    }
+
+
+def latest_attendance_week(queryset):
+    latest_visit_date = queryset.aggregate(Max("visit_date"))["visit_date__max"]
+    return week_start(latest_visit_date) if latest_visit_date else None
 
 
 def client_directory_rankings(rows, can_see_money, limit=5):
@@ -215,6 +279,11 @@ def client_directory_rankings(rows, can_see_money, limit=5):
             and row["regularity_windows"]["8"]["active_weeks"] >= 2,
             ("active_weeks", "attended_visits"),
         ),
+        "longest_current_streak": ranked(
+            "current_attendance_streak",
+            lambda row: row["current_attendance_streak"] > 0,
+            ("regularity_8_weeks", "attended_visits"),
+        ),
         "best_attendance_rate": ranked(
             "attendance_rate",
             lambda row: row["total_bookings"] > 0,
@@ -250,6 +319,7 @@ def client_profile_summary(
     selected_month=None,
     weekly_metrics=None,
     activity_metrics=None,
+    streak_as_of_week=None,
 ):
     metrics = list(metrics)
     totals = aggregate_client_monthly_metrics(metrics)
@@ -276,6 +346,15 @@ def client_profile_summary(
         if selected_month
         else empty_regularity_windows()
     )
+    streak_metrics = (
+        client_streak_metrics(
+            weekly_metrics or [],
+            streak_as_of_week,
+            first_client_activity_date(activity_totals),
+        )
+        if selected_month
+        else empty_streak_metrics()
+    )
     return {
         "total_bookings": total_bookings,
         "attended_visits": totals["attended_visits"],
@@ -287,6 +366,7 @@ def client_profile_summary(
         "average_visits_per_active_week_8": regularity_windows["8"][
             "average_visits_per_active_week"
         ],
+        **streak_metrics,
         "tracked_purchase_count": totals["tracked_purchase_count"],
         "membership_months": membership_months,
         "attendance_rate": percentage(totals["attended_visits"], total_bookings),
@@ -598,19 +678,27 @@ def client_directory_view(request):
     for metric in lifetime_metrics.iterator():
         lifetime_metrics_by_client.setdefault(metric.client_id, []).append(metric)
 
-    regularity_start = week_start(month_end(selected_month)) - timedelta(days=7 * 15)
-    weekly_scope = scoped_queryset_for_user(
-        ClientStudioWeeklyMetric.objects.filter(
-            client_id__in=client_ids,
-            week_start__range=(regularity_start, week_start(month_end(selected_month))),
-        ),
+    weekly_base_scope = scoped_queryset_for_user(
+        ClientStudioWeeklyMetric.objects.all(),
         request.user,
         site_field="site_id",
         studio_field="studio_id",
         include_null_studio=True,
     )
     if site_id:
-        weekly_scope = weekly_scope.filter(site_id=site_id)
+        weekly_base_scope = weekly_base_scope.filter(site_id=site_id)
+    attendance_anchor_scope = scoped_queryset_for_user(
+        AttendanceVisit.objects.all(),
+        request.user,
+        site_field="site_id",
+        studio_field="visit_studio_id",
+    )
+    if site_id:
+        attendance_anchor_scope = attendance_anchor_scope.filter(site_id=site_id)
+    streak_as_of_week = latest_attendance_week(attendance_anchor_scope)
+    weekly_scope = weekly_base_scope.filter(client_id__in=client_ids)
+    if streak_as_of_week:
+        weekly_scope = weekly_scope.filter(week_start__lte=streak_as_of_week)
     weekly_metrics_by_client = {}
     for metric in weekly_scope.iterator():
         weekly_metrics_by_client.setdefault(metric.client_id, []).append(metric)
@@ -663,6 +751,11 @@ def client_directory_view(request):
             selected_month,
             first_client_activity_date(lifetime_totals),
         )
+        streak_metrics = client_streak_metrics(
+            weekly_metrics_by_client.get(client["id"], []),
+            streak_as_of_week,
+            first_client_activity_date(lifetime_totals),
+        )
         last_visit = totals["last_visit_date"]
         primary = primary_by_client.get(client["id"])
         total_bookings = totals["total_bookings"]
@@ -686,6 +779,7 @@ def client_directory_view(request):
             "average_visits_per_active_week_8": regularity_windows["8"][
                 "average_visits_per_active_week"
             ],
+            **streak_metrics,
             "tracked_purchase_count": totals["tracked_purchase_count"],
             "client_since": (
                 totals["first_non_trial_purchase_date"].isoformat()
@@ -719,6 +813,10 @@ def client_directory_view(request):
         "active_weeks",
         "regularity_8_weeks",
         "average_visits_per_active_week_8",
+        "current_attendance_streak",
+        "longest_attendance_streak",
+        "consecutive_inactive_weeks",
+        "active_membership_inactive_weeks",
         "tracked_purchase_count",
         "client_since",
         "attendance_rate",
@@ -774,6 +872,9 @@ def client_directory_view(request):
             "from": metric_start.isoformat() if metric_start else None,
             "to": month_end(metric_end).isoformat() if metric_end else None,
         },
+        "streak_as_of_week": (
+            streak_as_of_week.isoformat() if streak_as_of_week else None
+        ),
         "count": count,
         "page": page,
         "page_size": page_size,
@@ -839,13 +940,25 @@ def client_profile_view(request, client_id):
     else:
         selected_rows = lifetime_rows
 
-    regularity_start = week_start(month_end(selected_month)) - timedelta(days=7 * 15)
+    profile_attendance_anchor_scope = scoped_queryset_for_user(
+        AttendanceVisit.objects.filter(site_id=client.site_id),
+        request.user,
+        site_field="site_id",
+        studio_field="visit_studio_id",
+    )
+    streak_as_of_week = latest_attendance_week(profile_attendance_anchor_scope)
+    profile_weekly_client_scope = ClientStudioWeeklyMetric.objects.filter(
+        client_id=client.id,
+        site_id=client.site_id,
+    )
+    if streak_as_of_week:
+        profile_weekly_client_scope = profile_weekly_client_scope.filter(
+            week_start__lte=streak_as_of_week,
+        )
+    else:
+        profile_weekly_client_scope = profile_weekly_client_scope.none()
     weekly_metrics = list(scoped_queryset_for_user(
-        ClientStudioWeeklyMetric.objects.filter(
-            client_id=client.id,
-            site_id=client.site_id,
-            week_start__range=(regularity_start, week_start(month_end(selected_month))),
-        ),
+        profile_weekly_client_scope,
         request.user,
         site_field="site_id",
         studio_field="studio_id",
@@ -886,6 +999,9 @@ def client_profile_view(request, client_id):
             "to": month_end(end_month).isoformat() if end_month else None,
         },
         "membership_as_of_month": current_month.isoformat(),
+        "streak_as_of_week": (
+            streak_as_of_week.isoformat() if streak_as_of_week else None
+        ),
         "current_membership": {
             "status": membership.status,
             "month": membership.month.isoformat(),
@@ -919,6 +1035,7 @@ def client_profile_view(request, client_id):
             selected_month,
             weekly_metrics,
             lifetime_rows,
+            streak_as_of_week,
         ),
         "lifetime": client_profile_summary(
             lifetime_rows,
@@ -926,6 +1043,7 @@ def client_profile_view(request, client_id):
             selected_month,
             weekly_metrics,
             lifetime_rows,
+            streak_as_of_week,
         ),
     })
 
