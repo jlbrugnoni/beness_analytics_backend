@@ -358,7 +358,7 @@ Validation:
 
 ### Phase 5.1: Transparent Health Labels
 
-Status: Not started
+Status: Complete
 
 Add documented labels only after regularity, streaks, and membership
 continuity are validated. Candidate labels:
@@ -375,6 +375,40 @@ continuity are validated. Candidate labels:
 - High-value at risk
 
 Every label must expose its rule.
+
+Implemented behavior:
+
+- Client directory rows and client profiles now return `health_labels`.
+- Each label includes a stable `key` and a stable `rule` so the UI can show the
+  label and explain why it appeared.
+- Labels are calculated dynamically from existing client facts rather than
+  stored in a new table.
+- Current labels:
+  - New client: current membership status is new.
+  - Active and consistent: 8-week regularity is at least 75%, attendance rate
+    is at least 80%, and current streak is at least 4 weeks.
+  - Recently inactive: no attended visits in the last 2 or more imported weeks.
+  - Member not attending: active membership weeks without attendance.
+  - Frequent no-shows: at least 5 bookings and no-show rate is 20% or higher.
+  - Frequent late cancels: at least 5 bookings and late-cancel rate is 20% or
+    higher.
+  - Membership expired: current membership status is not renewed.
+  - Reactivated: current membership status is reactivated.
+  - High-value at risk: not renewed with at least 3 tracked purchases, 3 member
+    months, or RD$25,000 in visible spending.
+- The Clients directory shows health labels as compact chips and includes them
+  in CSV exports.
+- The Client profile shows health labels with their rules.
+
+Validation:
+
+- [x] Directory API returns health labels
+- [x] Profile API returns health labels and rules
+- [x] Focused Client Module backend tests pass 24 tests
+- [x] Backend retention/client regression suite passes 35 tests
+- [x] Frontend production build passes
+- [x] User reviewed
+- [x] Committed
 
 ### Phase 3.4: Preferences
 

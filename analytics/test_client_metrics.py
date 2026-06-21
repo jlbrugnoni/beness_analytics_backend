@@ -1112,6 +1112,10 @@ class ClientDirectoryTests(TestCase):
         )
         self.assertEqual(ana["tracked_purchase_count"], 2)
         self.assertEqual(ana["client_since"], "2026-04-01")
+        self.assertEqual(
+            ana["health_labels"],
+            [{"key": "recently_inactive", "rule": "inactive_two_weeks"}],
+        )
         self.assertEqual(ana["total_bookings"], 10)
         self.assertEqual(ana["attendance_rate"], 80.0)
         self.assertEqual(ana["late_cancel_rate"], 10.0)
@@ -1310,6 +1314,20 @@ class ClientDirectoryTests(TestCase):
         )
         self.assertEqual(response.data["selected_period"]["tracked_purchase_count"], 2)
         self.assertEqual(response.data["selected_period"]["client_since"], "2026-04-01")
+        self.assertEqual(
+            response.data["health_labels"],
+            [
+                {
+                    "key": "membership_expired",
+                    "rule": "current_status_not_renewed",
+                },
+                {"key": "recently_inactive", "rule": "inactive_two_weeks"},
+            ],
+        )
+        self.assertEqual(
+            response.data["selected_period"]["health_labels"],
+            response.data["health_labels"],
+        )
         self.assertEqual(response.data["selected_period"]["membership_months"], 2)
         self.assertEqual(response.data["selected_period"]["first_visit_date"], "2026-04-07")
         self.assertEqual(response.data["selected_period"]["last_visit_date"], "2026-05-20")

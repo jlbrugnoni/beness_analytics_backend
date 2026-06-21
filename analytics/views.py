@@ -368,6 +368,53 @@ def client_directory_rankings(rows, can_see_money, limit=5):
     return rankings
 
 
+def add_health_label(labels, key, rule):
+    if not any(label["key"] == key for label in labels):
+        labels.append({"key": key, "rule": rule})
+
+
+def client_health_labels(row):
+    labels = []
+    status = row.get("membership_status")
+    total_bookings = row.get("total_bookings") or 0
+    no_show_rate = row.get("no_show_rate") or 0
+    late_cancel_rate = row.get("late_cancel_rate") or 0
+    regularity_8 = row.get("regularity_8_weeks") or 0
+    attendance_rate = row.get("attendance_rate") or 0
+    current_streak = row.get("current_attendance_streak") or 0
+    inactive_weeks = row.get("consecutive_inactive_weeks") or 0
+    member_inactive_weeks = row.get("active_membership_inactive_weeks") or 0
+    tracked_purchases = row.get("tracked_purchase_count") or 0
+    membership_months = row.get("total_membership_months") or row.get("membership_months") or 0
+    total_spending = row.get("total_spending")
+
+    if status == MembershipMonthStatus.STATUS_NEW:
+        add_health_label(labels, "new_client", "current_status_new")
+    if status == MembershipMonthStatus.STATUS_REACTIVATED:
+        add_health_label(labels, "reactivated", "current_status_reactivated")
+    if status == MembershipMonthStatus.STATUS_NOT_RENEWED:
+        add_health_label(labels, "membership_expired", "current_status_not_renewed")
+        if (
+            tracked_purchases >= 3
+            or membership_months >= 3
+            or (total_spending is not None and Decimal(str(total_spending)) >= Decimal("25000"))
+        ):
+            add_health_label(labels, "high_value_at_risk", "not_renewed_with_history")
+
+    if regularity_8 >= 75 and attendance_rate >= 80 and current_streak >= 4:
+        add_health_label(labels, "active_consistent", "regularity_attendance_streak")
+    if inactive_weeks >= 2:
+        add_health_label(labels, "recently_inactive", "inactive_two_weeks")
+    if status != MembershipMonthStatus.STATUS_NOT_RENEWED and member_inactive_weeks >= 2:
+        add_health_label(labels, "member_not_attending", "active_membership_without_attendance")
+    if total_bookings >= 5 and no_show_rate >= 20:
+        add_health_label(labels, "frequent_no_shows", "no_show_rate_20")
+    if total_bookings >= 5 and late_cancel_rate >= 20:
+        add_health_label(labels, "frequent_late_cancels", "late_cancel_rate_20")
+
+    return labels
+
+
 def client_profile_summary(
     metrics,
     can_see_money,
@@ -410,7 +457,7 @@ def client_profile_summary(
         if selected_month
         else empty_streak_metrics()
     )
-    return {
+    summary = {
         "total_bookings": total_bookings,
         "attended_visits": totals["attended_visits"],
         "no_shows": totals["no_shows"],
@@ -458,6 +505,7 @@ def client_profile_summary(
             else None
         ),
     }
+    return summary
 
 
 def client_history_page(request, rows):
@@ -872,6 +920,7 @@ def client_directory_view(request):
                 else None
             ),
         }
+        row["health_labels"] = client_health_labels(row)
         if not status_value or row["membership_status"] == status_value:
             rows.append(row)
 
@@ -1068,6 +1117,36 @@ def client_profile_view(request, client_id):
     )[0] if status_rows else None
     source_purchase = membership.source_purchase if membership else None
     can_see_money = can_view_money(request)
+    selected_summary = client_profile_summary(
+        selected_rows,
+        can_see_money,
+        selected_month,
+        weekly_metrics,
+        lifetime_rows,
+        streak_as_of_week,
+    )
+    lifetime_summary = client_profile_summary(
+        lifetime_rows,
+        can_see_money,
+        selected_month,
+        weekly_metrics,
+        lifetime_rows,
+        streak_as_of_week,
+    )
+    continuity = client_membership_continuity(status_rows)
+    current_status = membership.status if membership else None
+    selected_health_row = {
+        **selected_summary,
+        **continuity,
+        "membership_status": current_status,
+    }
+    selected_summary["health_labels"] = client_health_labels(selected_health_row)
+    lifetime_health_row = {
+        **lifetime_summary,
+        **continuity,
+        "membership_status": current_status,
+    }
+    lifetime_summary["health_labels"] = client_health_labels(lifetime_health_row)
 
     return Response({
         "client": {
@@ -1086,7 +1165,8 @@ def client_profile_view(request, client_id):
             "to": month_end(end_month).isoformat() if end_month else None,
         },
         "membership_as_of_month": current_month.isoformat(),
-        "membership_continuity": client_membership_continuity(status_rows),
+        "membership_continuity": continuity,
+        "health_labels": selected_summary["health_labels"],
         "streak_as_of_week": (
             streak_as_of_week.isoformat() if streak_as_of_week else None
         ),
@@ -1117,22 +1197,8 @@ def client_profile_view(request, client_id):
                 else None
             ),
         } if membership else None,
-        "selected_period": client_profile_summary(
-            selected_rows,
-            can_see_money,
-            selected_month,
-            weekly_metrics,
-            lifetime_rows,
-            streak_as_of_week,
-        ),
-        "lifetime": client_profile_summary(
-            lifetime_rows,
-            can_see_money,
-            selected_month,
-            weekly_metrics,
-            lifetime_rows,
-            streak_as_of_week,
-        ),
+        "selected_period": selected_summary,
+        "lifetime": lifetime_summary,
     })
 
 
