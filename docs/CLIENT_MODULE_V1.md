@@ -266,7 +266,7 @@ Validation:
 
 ### Phase 4.1: Membership Continuity
 
-Status: Implemented; awaiting user review
+Status: Complete
 
 Improve membership-history dimensions:
 
@@ -309,10 +309,12 @@ Validation:
 - [x] Directory API returns membership continuity values
 - [x] Profile API returns membership continuity values
 - [x] Focused Client Module backend tests pass 24 tests
+- [x] User reviewed
+- [x] Committed
 
 ### Phase 5.2: Not-Renewed Prioritization
 
-Status: Not started
+Status: Complete
 
 Create operational rankings for not-renewed clients:
 
@@ -323,6 +325,36 @@ Create operational rankings for not-renewed clients:
 
 This should connect to the retention follow-up workflow rather than duplicating
 the same analysis only inside the client profile.
+
+Implemented behavior:
+
+- Not-renewed retention rows now include `priority_level`, `priority_score`,
+  `priority_relationship_score`, `priority_opportunity_score`, and
+  `priority_reasons`.
+- The relationship score uses available retention facts: tracked membership
+  purchase count, lifetime membership value, and tenure from first tracked
+  membership purchase.
+- The opportunity score uses follow-up facts: attending unpaid, attending paid,
+  post-expiration attendance count, and recent post-expiration activity.
+- Priority levels are transparent:
+  - High: score of 6 or more.
+  - Medium: score of 3 to 5.
+  - Low: score below 3.
+- Not-renewed rows are sorted by priority score first, then by activity and
+  client name, so high-value inactive clients can rise above lower-priority
+  activity rows.
+- The Retention Follow-up page and Dashboard Retention modal show priority for
+  not-renewed clients.
+- Retention Follow-up CSV exports include priority level, score, and reasons.
+
+Validation:
+
+- [x] Follow-up API returns priority fields for not-renewed rows
+- [x] Dashboard retention table payload returns the same priority fields
+- [x] Backend retention regression tests pass 35 tests
+- [x] Frontend production build passes
+- [x] User reviewed
+- [x] Committed
 
 ### Phase 5.1: Transparent Health Labels
 

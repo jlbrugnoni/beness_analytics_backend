@@ -570,6 +570,17 @@ class RetentionFollowupActivityTests(TestCase):
             [row["not_renewed_activity_status"] for row in response.data["rows"]],
             ["attending_unpaid", "attending_paid", "inactive"],
         )
+        self.assertEqual(
+            [row["priority_level"] for row in response.data["rows"]],
+            ["medium", "medium", "low"],
+        )
+        self.assertGreater(
+            response.data["rows"][0]["priority_score"],
+            response.data["rows"][2]["priority_score"],
+        )
+        self.assertIn("attending_unpaid", response.data["rows"][0]["priority_reasons"])
+        self.assertIn("priority_relationship_score", response.data["rows"][0])
+        self.assertIn("priority_opportunity_score", response.data["rows"][0])
 
         filtered_response = self.api.get(
             reverse("analytics-retention-followup"),
@@ -610,6 +621,13 @@ class RetentionFollowupActivityTests(TestCase):
                 for row in tables_response.data["tables"]["not_renewed"]["rows"]
             ],
             ["Unpaid Client", "Paid Client", "Follow-up Client"],
+        )
+        self.assertEqual(
+            [
+                row["priority_level"]
+                for row in tables_response.data["tables"]["not_renewed"]["rows"]
+            ],
+            ["medium", "medium", "low"],
         )
 
         limited_tables_response = self.api.get(

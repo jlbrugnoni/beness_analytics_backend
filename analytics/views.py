@@ -2161,9 +2161,101 @@ def serialize_membership_status_rows(statuses):
     status_rows, membership_history = membership_history_for_statuses(statuses)
     not_renewed_activity = not_renewed_activity_for_statuses(status_rows)
     return [
-        serialize_membership_status(row, membership_history, not_renewed_activity)
+        apply_not_renewed_priority(
+            serialize_membership_status(row, membership_history, not_renewed_activity)
+        )
         for row in status_rows
     ]
+
+
+def parse_iso_date(value):
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def add_priority_reason(reasons, reason):
+    if reason not in reasons:
+        reasons.append(reason)
+
+
+def apply_not_renewed_priority(row):
+    if row.get("status") != MembershipMonthStatus.STATUS_NOT_RENEWED:
+        return row
+
+    purchase_count = int(row.get("tracked_membership_purchase_count") or 0)
+    lifetime_value = Decimal(str(row.get("lifetime_membership_value") or 0))
+    attendance_count = int(row.get("post_expiration_attendance_count") or 0)
+    activity_status = row.get("not_renewed_activity_status") or "inactive"
+    month = parse_iso_date(row.get("month"))
+    first_purchase = parse_iso_date(row.get("first_membership_purchase_date"))
+    last_visit = parse_iso_date(row.get("post_expiration_last_visit_date"))
+    anchor_date = month_end(month) if month else None
+
+    relationship_score = 0
+    opportunity_score = 0
+    reasons = []
+
+    if purchase_count >= 6:
+        relationship_score += 2
+        add_priority_reason(reasons, "frequent_member")
+    elif purchase_count >= 3:
+        relationship_score += 1
+        add_priority_reason(reasons, "repeat_member")
+
+    if lifetime_value >= Decimal("75000"):
+        relationship_score += 2
+        add_priority_reason(reasons, "high_lifetime_value")
+    elif lifetime_value >= Decimal("25000"):
+        relationship_score += 1
+        add_priority_reason(reasons, "meaningful_lifetime_value")
+
+    if first_purchase and anchor_date:
+        tenure_days = (anchor_date - first_purchase).days
+        if tenure_days >= 365:
+            relationship_score += 2
+            add_priority_reason(reasons, "long_tenure")
+        elif tenure_days >= 180:
+            relationship_score += 1
+            add_priority_reason(reasons, "established_client")
+
+    if activity_status == "attending_unpaid":
+        opportunity_score += 3
+        add_priority_reason(reasons, "attending_unpaid")
+    elif activity_status == "attending_paid":
+        opportunity_score += 2
+        add_priority_reason(reasons, "attending_paid")
+
+    if attendance_count >= 4:
+        opportunity_score += 2
+        add_priority_reason(reasons, "multiple_post_expiration_visits")
+    elif attendance_count > 0:
+        opportunity_score += 1
+        add_priority_reason(reasons, "post_expiration_visit")
+
+    if last_visit and anchor_date and 0 <= (anchor_date - last_visit).days <= 30:
+        opportunity_score += 1
+        add_priority_reason(reasons, "recent_activity")
+
+    score = relationship_score + opportunity_score
+    if score >= 6:
+        level = "high"
+    elif score >= 3:
+        level = "medium"
+    else:
+        level = "low"
+
+    row.update({
+        "priority_score": score,
+        "priority_level": level,
+        "priority_relationship_score": relationship_score,
+        "priority_opportunity_score": opportunity_score,
+        "priority_reasons": reasons,
+    })
+    return row
 
 
 NOT_RENEWED_ACTIVITY_ORDER = {
@@ -2175,6 +2267,7 @@ NOT_RENEWED_ACTIVITY_ORDER = {
 
 def sort_not_renewed_rows(rows):
     return sorted(rows, key=lambda row: (
+        -int(row.get("priority_score") or 0),
         NOT_RENEWED_ACTIVITY_ORDER.get(row.get("not_renewed_activity_status"), 99),
         str(row.get("client") or "").casefold(),
         row.get("month") or "",
