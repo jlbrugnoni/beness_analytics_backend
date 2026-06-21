@@ -1095,6 +1095,12 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(ana["longest_attendance_streak"], 3)
         self.assertEqual(ana["consecutive_inactive_weeks"], 3)
         self.assertEqual(ana["active_membership_inactive_weeks"], 1)
+        self.assertEqual(ana["total_membership_months"], 2)
+        self.assertEqual(ana["current_membership_streak_months"], 0)
+        self.assertEqual(ana["renewal_count"], 1)
+        self.assertEqual(ana["reactivation_count"], 0)
+        self.assertEqual(ana["not_renewed_count"], 1)
+        self.assertEqual(ana["longest_membership_gap_months"], 0)
         self.assertEqual(
             ana["regularity_windows"]["4"],
             {
@@ -1290,6 +1296,18 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(response.data["streak_as_of_week"], "2026-06-08")
         self.assertEqual(response.data["selected_period"]["consecutive_inactive_weeks"], 3)
         self.assertEqual(response.data["selected_period"]["active_membership_inactive_weeks"], 1)
+        self.assertEqual(response.data["membership_continuity"]["total_membership_months"], 2)
+        self.assertEqual(
+            response.data["membership_continuity"]["current_membership_streak_months"],
+            0,
+        )
+        self.assertEqual(response.data["membership_continuity"]["renewal_count"], 1)
+        self.assertEqual(response.data["membership_continuity"]["reactivation_count"], 0)
+        self.assertEqual(response.data["membership_continuity"]["not_renewed_count"], 1)
+        self.assertEqual(
+            response.data["membership_continuity"]["longest_membership_gap_months"],
+            0,
+        )
         self.assertEqual(response.data["selected_period"]["tracked_purchase_count"], 2)
         self.assertEqual(response.data["selected_period"]["client_since"], "2026-04-01")
         self.assertEqual(response.data["selected_period"]["membership_months"], 2)

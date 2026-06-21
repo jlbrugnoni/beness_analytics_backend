@@ -228,6 +228,61 @@ def client_streak_metrics(weekly_rows, as_of_week, first_activity_date):
     }
 
 
+def month_distance(start_month, end_month):
+    return (end_month.year - start_month.year) * 12 + (
+        end_month.month - start_month.month
+    )
+
+
+def client_membership_continuity(status_rows):
+    rows = sorted(status_rows, key=lambda status: (status.month, status.id))
+    member_months = [
+        status.month
+        for status in rows
+        if status.current_month_member or status.membership_days >= 15
+    ]
+    member_month_set = set(member_months)
+    if not rows:
+        return {
+            "total_membership_months": 0,
+            "current_membership_streak_months": 0,
+            "renewal_count": 0,
+            "reactivation_count": 0,
+            "not_renewed_count": 0,
+            "longest_membership_gap_months": 0,
+        }
+
+    latest = rows[-1]
+    current_streak = 0
+    if latest.month in member_month_set:
+        current_month = latest.month
+        while current_month in member_month_set:
+            current_streak += 1
+            current_month = add_months(current_month, -1)
+
+    longest_gap = 0
+    for previous_month, next_month in zip(member_months, member_months[1:]):
+        longest_gap = max(longest_gap, month_distance(previous_month, next_month) - 1)
+
+    return {
+        "total_membership_months": len(member_months),
+        "current_membership_streak_months": current_streak,
+        "renewal_count": sum(
+            1 for status in rows
+            if status.status == MembershipMonthStatus.STATUS_RETAINED
+        ),
+        "reactivation_count": sum(
+            1 for status in rows
+            if status.status == MembershipMonthStatus.STATUS_REACTIVATED
+        ),
+        "not_renewed_count": sum(
+            1 for status in rows
+            if status.status == MembershipMonthStatus.STATUS_NOT_RENEWED
+        ),
+        "longest_membership_gap_months": longest_gap,
+    }
+
+
 def latest_attendance_week(queryset):
     latest_visit_date = queryset.aggregate(Max("visit_date"))["visit_date__max"]
     return week_start(latest_visit_date) if latest_visit_date else None
@@ -657,6 +712,23 @@ def client_directory_view(request):
             population_status_by_client[metric.client_id] = metric.membership_status
             population_status_month_by_client[metric.client_id] = metric.month
 
+    current_month = month_start(date.today())
+    continuity_status_scope = scoped_queryset_for_user(
+        MembershipMonthStatus.objects.filter(
+            client_id__in=client_ids,
+            month__lte=current_month,
+        ),
+        request.user,
+        site_field="site_id",
+        studio_field="studio_id",
+        include_null_studio=True,
+    )
+    if site_id:
+        continuity_status_scope = continuity_status_scope.filter(site_id=site_id)
+    continuity_statuses_by_client = {}
+    for status in continuity_status_scope.iterator():
+        continuity_statuses_by_client.setdefault(status.client_id, []).append(status)
+
     lifetime_metrics = scoped_queryset_for_user(
         ClientStudioMonthlyMetric.objects.filter(client_id__in=client_ids),
         request.user,
@@ -756,6 +828,9 @@ def client_directory_view(request):
             streak_as_of_week,
             first_client_activity_date(lifetime_totals),
         )
+        continuity_metrics = client_membership_continuity(
+            continuity_statuses_by_client.get(client["id"], [])
+        )
         last_visit = totals["last_visit_date"]
         primary = primary_by_client.get(client["id"])
         total_bookings = totals["total_bookings"]
@@ -780,6 +855,7 @@ def client_directory_view(request):
                 "average_visits_per_active_week"
             ],
             **streak_metrics,
+            **continuity_metrics,
             "tracked_purchase_count": totals["tracked_purchase_count"],
             "client_since": (
                 totals["first_non_trial_purchase_date"].isoformat()
@@ -817,6 +893,12 @@ def client_directory_view(request):
         "longest_attendance_streak",
         "consecutive_inactive_weeks",
         "active_membership_inactive_weeks",
+        "total_membership_months",
+        "current_membership_streak_months",
+        "renewal_count",
+        "reactivation_count",
+        "not_renewed_count",
+        "longest_membership_gap_months",
         "tracked_purchase_count",
         "client_since",
         "attendance_rate",
@@ -978,7 +1060,12 @@ def client_profile_view(request, client_id):
     )
     current_month = month_start(date.today())
     statuses = statuses.filter(month__lte=current_month)
-    membership = statuses.order_by("-month", "-id").first()
+    status_rows = list(statuses)
+    membership = sorted(
+        status_rows,
+        key=lambda status: (status.month, status.id),
+        reverse=True,
+    )[0] if status_rows else None
     source_purchase = membership.source_purchase if membership else None
     can_see_money = can_view_money(request)
 
@@ -999,6 +1086,7 @@ def client_profile_view(request, client_id):
             "to": month_end(end_month).isoformat() if end_month else None,
         },
         "membership_as_of_month": current_month.isoformat(),
+        "membership_continuity": client_membership_continuity(status_rows),
         "streak_as_of_week": (
             streak_as_of_week.isoformat() if streak_as_of_week else None
         ),

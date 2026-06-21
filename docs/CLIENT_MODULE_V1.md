@@ -126,7 +126,7 @@ Defer:
   option preferences. These are useful, but they are secondary to regularity,
   continuity, and reactivation priority.
 
-### V2.2: Regularity Windows
+### Phase 3.1: Weekly Regularity
 
 Status: Complete
 
@@ -177,7 +177,7 @@ Validation:
 - [x] User reviewed
 - [x] Committed
 
-### V2.2.1: Retention Coverage Correction
+### Phase 3.1.1: Retention Coverage Correction
 
 Status: Complete
 
@@ -211,9 +211,9 @@ Validation:
 - [x] User reviewed
 - [x] Committed
 
-### V2.3: Streaks And Inactivity
+### Phase 3.2: Attendance Streaks And Inactivity
 
-Status: Implemented; awaiting user review
+Status: Complete
 
 Calculate:
 
@@ -261,10 +261,12 @@ Validation:
 - [x] Current streaks remain anchored to the latest upload when selecting older
   months
 - [x] Focused Client Module backend tests pass 24 tests
+- [x] User reviewed
+- [x] Committed
 
-### V2.4: Membership Continuity
+### Phase 4.1: Membership Continuity
 
-Status: Not started
+Status: Implemented; awaiting user review
 
 Improve membership-history dimensions:
 
@@ -279,7 +281,36 @@ This phase builds on `MembershipMonthStatus` and tracked Sales by Service
 purchases. It should not create a permanent row for every client-month unless
 the sparse snapshot model proves insufficient.
 
-### V2.5: Not-Renewed Prioritization
+Implemented behavior:
+
+- Membership continuity is calculated dynamically from `MembershipMonthStatus`
+  rows, avoiding a new migration and keeping the values aligned with retention
+  status logic.
+- The API returns total membership months, current consecutive membership
+  months, renewal count, reactivation count, not-renewed event count, and
+  longest membership gap.
+- Current consecutive membership months returns zero when the latest current
+  status is not-renewed.
+- Longest membership gap is measured as the largest number of non-member months
+  between two member months.
+- The Clients directory exposes member months and current member streak as
+  sortable columns and CSV fields.
+- Client profiles show all membership continuity metrics in the current
+  membership section.
+
+Deferred:
+
+- Days between expiration and next tracked purchase remains deferred until we
+  decide whether to calculate it from status transitions, raw tracked
+  purchases, or the retention follow-up purchase-matching helper.
+
+Validation:
+
+- [x] Directory API returns membership continuity values
+- [x] Profile API returns membership continuity values
+- [x] Focused Client Module backend tests pass 24 tests
+
+### Phase 5.2: Not-Renewed Prioritization
 
 Status: Not started
 
@@ -293,7 +324,7 @@ Create operational rankings for not-renewed clients:
 This should connect to the retention follow-up workflow rather than duplicating
 the same analysis only inside the client profile.
 
-### V2.6: Transparent Health Labels
+### Phase 5.1: Transparent Health Labels
 
 Status: Not started
 
@@ -313,7 +344,7 @@ continuity are validated. Candidate labels:
 
 Every label must expose its rule.
 
-### V2.7: Preferences
+### Phase 3.4: Preferences
 
 Status: Deferred
 
@@ -325,7 +356,7 @@ Later client-profile enrichment:
 - Most-used pricing options.
 - Group/private attendance where classification is reliable.
 
-### V2 Later: Optional Health Score
+### Later: Optional Health Score
 
 Status: Deferred
 
@@ -333,8 +364,7 @@ Consider a configurable score only after the individual dimensions and labels
 are trusted by users. Until then, show explainable dimensions separately.
 
 Note: the original Phase 3, 4, and 5 sections below remain as historical
-reference. For Client Module V2 development, follow the V2.2 through V2 Later
-roadmap above.
+reference. For Client Module V2 development, follow the phase roadmap above.
 
 ## Metric Principles
 
