@@ -1,18 +1,27 @@
 from calendar import monthrange
+import csv
+import datetime as datetime_module
 from datetime import date, datetime, timedelta
 from decimal import Decimal
 from math import ceil
 import re
 
 from django.db import transaction
+from django.http import HttpResponse
 from django.db.models import Count, DecimalField, F, Max, Min, OuterRef, Q, Subquery, Sum
 from django.db.models.functions import Coalesce, TruncDate
 from django.utils import timezone
-from rest_framework.decorators import api_view, permission_classes
+from rest_framework.decorators import api_view, permission_classes, renderer_classes
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.renderers import BaseRenderer, JSONRenderer
 from rest_framework.response import Response
 
 from analytics.client_metrics import aggregate_client_monthly_metrics, week_start
+from analytics.churn_research import (
+    CHURN_RESEARCH_FIELDS,
+    build_churn_research_dataset,
+    parse_month as parse_research_month,
+)
 from analytics.models import (
     ClientStudioMonthlyMetric,
     ClientStudioWeeklyMetric,
@@ -31,6 +40,14 @@ from core_data.models import (
     Studio,
     StudioClosure,
 )
+
+
+class CsvRenderer(BaseRenderer):
+    media_type = "text/csv"
+    format = "csv"
+
+    def render(self, data, accepted_media_type=None, renderer_context=None):
+        return data
 
 
 def parse_date(value):
@@ -95,6 +112,86 @@ def client_directory_metric_period(request, selected_month):
         "last_12_months": 12,
     }[period]
     return period, add_months(selected_month, -(month_count - 1)), selected_month
+
+
+def months_between(start_month, end_month):
+    if not start_month or not end_month:
+        return []
+    months = []
+    current = start_month
+    while current <= end_month:
+        months.append(current)
+        current = add_months(current, 1)
+    return months
+
+
+def statuses_in_period(statuses, start_month, end_month):
+    if not start_month or not end_month:
+        return list(statuses)
+    return [
+        status
+        for status in statuses
+        if start_month <= status["month"] <= end_month
+    ]
+
+
+def latest_status(statuses):
+    rows = sorted(statuses, key=lambda status: (status["month"], status["id"]))
+    return rows[-1] if rows else None
+
+
+def smart_status_match(statuses, status_value, start_month, end_month, current_month):
+    if not status_value:
+        return True
+
+    period_rows = statuses_in_period(statuses, start_month, end_month)
+    if not period_rows:
+        return False
+
+    single_month = start_month and end_month and start_month == end_month
+    if single_month:
+        latest = latest_status(period_rows)
+        return bool(latest and latest["status"] == status_value)
+
+    latest_current = latest_status([
+        status for status in statuses if status["month"] <= current_month
+    ])
+    if status_value == MembershipMonthStatus.STATUS_RETAINED and start_month and end_month:
+        status_by_month = {}
+        for status in sorted(period_rows, key=lambda item: (item["month"], item["id"])):
+            status_by_month[status["month"]] = status["status"]
+        return all(
+            status_by_month.get(month) == MembershipMonthStatus.STATUS_RETAINED
+            for month in months_between(start_month, end_month)
+        )
+    if status_value == MembershipMonthStatus.STATUS_NOT_RENEWED:
+        return (
+            any(
+                status["status"] == MembershipMonthStatus.STATUS_NOT_RENEWED
+                for status in period_rows
+            )
+            and latest_current is not None
+            and latest_current["status"] == MembershipMonthStatus.STATUS_NOT_RENEWED
+        )
+    if status_value in {
+        MembershipMonthStatus.STATUS_NEW,
+        MembershipMonthStatus.STATUS_REACTIVATED,
+    }:
+        return any(status["status"] == status_value for status in period_rows)
+
+    latest = latest_status(period_rows)
+    return bool(latest and latest["status"] == status_value)
+
+
+def status_context_key(status_value, start_month, end_month):
+    if not start_month or not end_month or start_month == end_month:
+        return "status_as_of_month"
+    return {
+        MembershipMonthStatus.STATUS_RETAINED: "retained_every_month",
+        MembershipMonthStatus.STATUS_NOT_RENEWED: "not_renewed_still_inactive",
+        MembershipMonthStatus.STATUS_NEW: "new_in_period",
+        MembershipMonthStatus.STATUS_REACTIVATED: "reactivated_in_period",
+    }.get(status_value) if status_value else "latest_status_in_period"
 
 
 def client_directory_sort_value(row, field):
@@ -373,9 +470,28 @@ def add_health_label(labels, key, rule):
         labels.append({"key": key, "rule": rule})
 
 
+def month_distance(start, end):
+    if not start or not end:
+        return None
+    return (end.year - start.year) * 12 + end.month - start.month
+
+
+def coerce_month(value):
+    if not value:
+        return None
+    if isinstance(value, datetime_module.date):
+        return month_start(value)
+    if isinstance(value, str):
+        parsed = parse_date(value)
+        return month_start(parsed) if parsed else None
+    return None
+
+
 def client_health_labels(row):
     labels = []
     status = row.get("membership_status")
+    current_month = coerce_month(row.get("current_month")) or month_start(date.today())
+    status_month = coerce_month(row.get("membership_status_month"))
     total_bookings = row.get("total_bookings") or 0
     no_show_rate = row.get("no_show_rate") or 0
     late_cancel_rate = row.get("late_cancel_rate") or 0
@@ -393,7 +509,9 @@ def client_health_labels(row):
     if status == MembershipMonthStatus.STATUS_REACTIVATED:
         add_health_label(labels, "reactivated", "current_status_reactivated")
     if status == MembershipMonthStatus.STATUS_NOT_RENEWED:
-        add_health_label(labels, "membership_expired", "current_status_not_renewed")
+        expired_months_ago = month_distance(status_month, current_month)
+        if expired_months_ago is not None and 0 <= expired_months_ago <= 2:
+            add_health_label(labels, "membership_expired", "not_renewed_last_three_months")
         if (
             tracked_purchases >= 3
             or membership_months >= 3
@@ -403,8 +521,8 @@ def client_health_labels(row):
 
     if regularity_8 >= 75 and attendance_rate >= 80 and current_streak >= 4:
         add_health_label(labels, "active_consistent", "regularity_attendance_streak")
-    if inactive_weeks >= 2:
-        add_health_label(labels, "recently_inactive", "inactive_two_weeks")
+    if 2 <= inactive_weeks <= 8:
+        add_health_label(labels, "recently_inactive", "inactive_two_to_eight_weeks")
     if status != MembershipMonthStatus.STATUS_NOT_RENEWED and member_inactive_weeks >= 2:
         add_health_label(labels, "member_not_attending", "active_membership_without_attendance")
     if total_bookings >= 5 and no_show_rate >= 20:
@@ -689,6 +807,19 @@ def membership_history_row(request, status):
     }
 
 
+def parse_int_param(value):
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def truthy_param(value):
+    return str(value).lower() in {"1", "true", "yes", "y"}
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def client_directory_view(request):
@@ -750,16 +881,6 @@ def client_directory_view(request):
     ))
     client_ids = [row["id"] for row in client_rows]
 
-    population_status_by_client = {}
-    population_status_month_by_client = {}
-    for metric in population_period_scope.filter(client_id__in=client_ids).iterator():
-        current_month = population_status_month_by_client.get(metric.client_id)
-        if metric.membership_status and (
-            current_month is None or metric.month > current_month
-        ):
-            population_status_by_client[metric.client_id] = metric.membership_status
-            population_status_month_by_client[metric.client_id] = metric.month
-
     current_month = month_start(date.today())
     continuity_status_scope = scoped_queryset_for_user(
         MembershipMonthStatus.objects.filter(
@@ -776,6 +897,7 @@ def client_directory_view(request):
     continuity_statuses_by_client = {}
     for status in continuity_status_scope.iterator():
         continuity_statuses_by_client.setdefault(status.client_id, []).append(status)
+    status_context = status_context_key(status_value, start_month, end_month)
 
     lifetime_metrics = scoped_queryset_for_user(
         ClientStudioMonthlyMetric.objects.filter(client_id__in=client_ids),
@@ -879,6 +1001,24 @@ def client_directory_view(request):
         continuity_metrics = client_membership_continuity(
             continuity_statuses_by_client.get(client["id"], [])
         )
+        status_rows_by_month = {}
+        for metric in lifetime_metrics_by_client.get(client["id"], []):
+            if metric.membership_status:
+                status_rows_by_month[metric.month] = {
+                    "id": metric.id,
+                    "month": metric.month,
+                    "status": metric.membership_status,
+                }
+        for status in continuity_statuses_by_client.get(client["id"], []):
+            status_rows_by_month[status.month] = {
+                "id": status.id,
+                "month": status.month,
+                "status": status.status,
+            }
+        client_status_rows = list(status_rows_by_month.values())
+        period_status = latest_status(
+            statuses_in_period(client_status_rows, start_month, end_month)
+        )
         last_visit = totals["last_visit_date"]
         primary = primary_by_client.get(client["id"])
         total_bookings = totals["total_bookings"]
@@ -890,7 +1030,12 @@ def client_directory_view(request):
             "phone": client["phone"],
             "site_id": client["site_id"],
             "site": client["site__name"],
-            "membership_status": population_status_by_client.get(client["id"]),
+            "membership_status": period_status["status"] if period_status else None,
+            "membership_status_month": (
+                period_status["month"].isoformat() if period_status else None
+            ),
+            "current_month": current_month.isoformat(),
+            "membership_status_context": status_context,
             "primary_studio_id": primary["studio_id"] if primary else None,
             "primary_studio": primary["studio"] if primary else None,
             "last_visit_date": last_visit.isoformat() if last_visit else None,
@@ -921,7 +1066,13 @@ def client_directory_view(request):
             ),
         }
         row["health_labels"] = client_health_labels(row)
-        if not status_value or row["membership_status"] == status_value:
+        if smart_status_match(
+            client_status_rows,
+            status_value,
+            start_month,
+            end_month,
+            current_month,
+        ):
             rows.append(row)
 
     rankings = client_directory_rankings(rows, can_see_money)
@@ -1034,6 +1185,78 @@ def client_directory_view(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+def client_search_view(request):
+    query = (request.query_params.get("q") or "").strip()
+    if len(query) < 2:
+        return Response({"results": []})
+
+    clients = scoped_queryset_for_user(
+        Client.objects.select_related("site"),
+        request.user,
+        site_field="site_id",
+    ).filter(
+        Q(name__icontains=query)
+        | Q(mindbody_id__icontains=query)
+    ).order_by("name")[:8]
+
+    return Response({
+        "results": [
+            {
+                "id": client.id,
+                "name": client.name,
+                "mindbody_id": client.mindbody_id,
+                "site": client.site.name if client.site_id else None,
+                "email": client.email,
+                "phone": client.phone,
+            }
+            for client in clients
+        ],
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+@renderer_classes([JSONRenderer, CsvRenderer])
+def churn_research_dataset_view(request):
+    month_from = parse_research_month(
+        request.query_params.get("month_from") or request.query_params.get("from")
+    )
+    month_to = parse_research_month(
+        request.query_params.get("month_to") or request.query_params.get("to")
+    )
+    rows = build_churn_research_dataset(
+        request,
+        site_id=parse_int_param(request.query_params.get("site")),
+        studio_id=parse_int_param(request.query_params.get("studio")),
+        month_from=month_from,
+        month_to=month_to,
+        include_unknown=truthy_param(request.query_params.get("include_unknown")),
+        include_money=can_view_money(request),
+    )
+
+    if request.query_params.get("format") == "csv":
+        response = HttpResponse(content_type="text/csv")
+        response["Content-Disposition"] = 'attachment; filename="churn_research_dataset.csv"'
+        writer = csv.DictWriter(response, fieldnames=CHURN_RESEARCH_FIELDS)
+        writer.writeheader()
+        for row in rows:
+            writer.writerow({field: row.get(field) for field in CHURN_RESEARCH_FIELDS})
+        return response
+
+    return Response({
+        "temporary": True,
+        "description": (
+            "One active-member client-month row with backward-looking features "
+            "and next-month renewal/churn targets for churn research."
+        ),
+        "count": len(rows),
+        "fields": CHURN_RESEARCH_FIELDS,
+        "results": rows,
+    })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def client_profile_view(request, client_id):
     client = (
         scoped_queryset_for_user(
@@ -1134,17 +1357,30 @@ def client_profile_view(request, client_id):
         streak_as_of_week,
     )
     continuity = client_membership_continuity(status_rows)
+    if start_month and end_month:
+        selected_status_rows = [
+            status
+            for status in status_rows
+            if start_month <= status.month <= end_month
+        ]
+    else:
+        selected_status_rows = status_rows
+    selected_continuity = client_membership_continuity(selected_status_rows)
     current_status = membership.status if membership else None
     selected_health_row = {
         **selected_summary,
-        **continuity,
+        **selected_continuity,
         "membership_status": current_status,
+        "membership_status_month": membership.month if membership else None,
+        "current_month": current_month,
     }
     selected_summary["health_labels"] = client_health_labels(selected_health_row)
     lifetime_health_row = {
         **lifetime_summary,
         **continuity,
         "membership_status": current_status,
+        "membership_status_month": membership.month if membership else None,
+        "current_month": current_month,
     }
     lifetime_summary["health_labels"] = client_health_labels(lifetime_health_row)
 
@@ -1166,6 +1402,8 @@ def client_profile_view(request, client_id):
         },
         "membership_as_of_month": current_month.isoformat(),
         "membership_continuity": continuity,
+        "selected_period_membership_continuity": selected_continuity,
+        "lifetime_membership_continuity": continuity,
         "health_labels": selected_summary["health_labels"],
         "streak_as_of_week": (
             streak_as_of_week.isoformat() if streak_as_of_week else None

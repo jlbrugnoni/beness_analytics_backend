@@ -21,7 +21,7 @@ from analytics.models import (
     ClientStudioWeeklyMetric,
     MembershipMonthStatus,
 )
-from analytics.views import rebuild_membership_month
+from analytics.views import client_health_labels, rebuild_membership_month
 from core_data.models import (
     AttendanceVisit,
     AttendanceRawRow,
@@ -1086,6 +1086,8 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(response.data["count"], 2)
         ana = next(row for row in response.data["results"] if row["client_id"] == self.client_a.id)
         self.assertEqual(ana["membership_status"], MembershipMonthStatus.STATUS_RETAINED)
+        self.assertEqual(ana["membership_status_month"], "2026-05-01")
+        self.assertEqual(ana["membership_status_context"], "status_as_of_month")
         self.assertEqual(response.data["metric_period"]["mode"], "lifetime")
         self.assertEqual(ana["attended_visits"], 8)
         self.assertEqual(ana["active_weeks"], 5)
@@ -1114,7 +1116,7 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(ana["client_since"], "2026-04-01")
         self.assertEqual(
             ana["health_labels"],
-            [{"key": "recently_inactive", "rule": "inactive_two_weeks"}],
+            [{"key": "recently_inactive", "rule": "inactive_two_to_eight_weeks"}],
         )
         self.assertEqual(ana["total_bookings"], 10)
         self.assertEqual(ana["attendance_rate"], 80.0)
@@ -1122,6 +1124,82 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(ana["total_spending"], 320.0)
         self.assertEqual(ana["primary_studio"], "Piantini")
         self.assertEqual(ana["last_visit_date"], "2026-05-20")
+
+    def test_client_search_returns_compact_matches(self):
+        short_response = self.api.get(
+            reverse("analytics-client-search"),
+            {"q": "a"},
+        )
+        name_response = self.api.get(
+            reverse("analytics-client-search"),
+            {"q": "Ana"},
+        )
+        id_response = self.api.get(
+            reverse("analytics-client-search"),
+            {"q": "client-b"},
+        )
+
+        self.assertEqual(short_response.status_code, 200)
+        self.assertEqual(short_response.data["results"], [])
+        self.assertEqual(name_response.status_code, 200)
+        self.assertEqual(name_response.data["results"][0]["name"], "Ana Client")
+        self.assertEqual(id_response.status_code, 200)
+        self.assertEqual(id_response.data["results"][0]["mindbody_id"], "client-b")
+
+    def test_range_status_filters_use_smart_defaults(self):
+        new_response = self.api.get(
+            reverse("analytics-client-directory"),
+            {
+                "site": self.site.id,
+                "period": "last_3_months",
+                "month": "2026-05",
+                "status": "new",
+            },
+        )
+        retained_response = self.api.get(
+            reverse("analytics-client-directory"),
+            {
+                "site": self.site.id,
+                "period": "last_3_months",
+                "month": "2026-05",
+                "status": "retained",
+            },
+        )
+        not_renewed_response = self.api.get(
+            reverse("analytics-client-directory"),
+            {
+                "site": self.site.id,
+                "period": "last_3_months",
+                "month": "2026-05",
+                "status": "not_renewed",
+            },
+        )
+
+        self.assertEqual(new_response.status_code, 200)
+        self.assertEqual(new_response.data["count"], 1)
+        self.assertEqual(new_response.data["results"][0]["client_id"], self.client_a.id)
+        self.assertEqual(
+            new_response.data["results"][0]["membership_status"],
+            MembershipMonthStatus.STATUS_RETAINED,
+        )
+        self.assertEqual(
+            new_response.data["results"][0]["membership_status_context"],
+            "new_in_period",
+        )
+
+        self.assertEqual(retained_response.status_code, 200)
+        self.assertEqual(retained_response.data["count"], 0)
+
+        self.assertEqual(not_renewed_response.status_code, 200)
+        self.assertEqual(not_renewed_response.data["count"], 1)
+        self.assertEqual(
+            not_renewed_response.data["results"][0]["client_id"],
+            self.client_b.id,
+        )
+        self.assertEqual(
+            not_renewed_response.data["results"][0]["membership_status_context"],
+            "not_renewed_still_inactive",
+        )
 
     def test_streaks_use_latest_imported_week_not_selected_month(self):
         may_response = self.api.get(
@@ -1312,6 +1390,14 @@ class ClientDirectoryTests(TestCase):
             response.data["membership_continuity"]["longest_membership_gap_months"],
             0,
         )
+        self.assertEqual(
+            response.data["selected_period_membership_continuity"]["total_membership_months"],
+            2,
+        )
+        self.assertEqual(
+            response.data["lifetime_membership_continuity"],
+            response.data["membership_continuity"],
+        )
         self.assertEqual(response.data["selected_period"]["tracked_purchase_count"], 2)
         self.assertEqual(response.data["selected_period"]["client_since"], "2026-04-01")
         self.assertEqual(
@@ -1319,9 +1405,9 @@ class ClientDirectoryTests(TestCase):
             [
                 {
                     "key": "membership_expired",
-                    "rule": "current_status_not_renewed",
+                    "rule": "not_renewed_last_three_months",
                 },
-                {"key": "recently_inactive", "rule": "inactive_two_weeks"},
+                {"key": "recently_inactive", "rule": "inactive_two_to_eight_weeks"},
             ],
         )
         self.assertEqual(
@@ -1388,6 +1474,49 @@ class ClientDirectoryTests(TestCase):
             response.data["current_membership"]["status"],
             MembershipMonthStatus.STATUS_RETAINED,
         )
+
+    def test_churn_research_dataset_returns_training_rows(self):
+        response = self.api.get(
+            reverse("analytics-churn-research-dataset"),
+            {
+                "site": self.site.id,
+                "month_from": "2026-05",
+                "month_to": "2026-05",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.data["temporary"])
+        row = next(
+            item
+            for item in response.data["results"]
+            if item["client_id"] == self.client_a.id
+        )
+        self.assertEqual(row["observation_month"], "2026-05-01")
+        self.assertEqual(row["status"], MembershipMonthStatus.STATUS_RETAINED)
+        self.assertEqual(row["next_month_status"], MembershipMonthStatus.STATUS_NOT_RENEWED)
+        self.assertTrue(row["target_churned_next_month"])
+        self.assertFalse(row["target_renewed_next_month"])
+        self.assertEqual(row["current_month_attended_visits"], 5)
+        self.assertEqual(row["last_3_months_attended_visits"], 8)
+        self.assertEqual(row["lifetime_to_month_tracked_purchases"], 2)
+
+    def test_churn_research_dataset_can_export_csv(self):
+        response = self.api.get(
+            reverse("analytics-churn-research-dataset"),
+            {
+                "site": self.site.id,
+                "month_from": "2026-05",
+                "month_to": "2026-05",
+                "format": "csv",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/csv")
+        content = response.content.decode()
+        self.assertIn("target_churned_next_month", content)
+        self.assertIn("Ana Client", content)
 
     def test_client_histories_are_paginated_and_chronological(self):
         AttendanceVisit.objects.create(
@@ -1494,3 +1623,49 @@ class ClientDirectoryTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertGreater(response.data["count"], 0)
         self.assertIsNone(response.data["results"][0]["amount"])
+
+
+class ClientHealthLabelRuleTests(TestCase):
+    def test_recently_inactive_is_limited_to_two_to_eight_weeks(self):
+        recent_labels = client_health_labels({
+            "membership_status": MembershipMonthStatus.STATUS_RETAINED,
+            "membership_status_month": date(2026, 6, 1),
+            "current_month": date(2026, 6, 1),
+            "consecutive_inactive_weeks": 8,
+        })
+        stale_labels = client_health_labels({
+            "membership_status": MembershipMonthStatus.STATUS_RETAINED,
+            "membership_status_month": date(2026, 6, 1),
+            "current_month": date(2026, 6, 1),
+            "consecutive_inactive_weeks": 9,
+        })
+
+        self.assertIn(
+            {"key": "recently_inactive", "rule": "inactive_two_to_eight_weeks"},
+            recent_labels,
+        )
+        self.assertNotIn(
+            {"key": "recently_inactive", "rule": "inactive_two_to_eight_weeks"},
+            stale_labels,
+        )
+
+    def test_membership_expired_is_limited_to_last_three_months(self):
+        recent_labels = client_health_labels({
+            "membership_status": MembershipMonthStatus.STATUS_NOT_RENEWED,
+            "membership_status_month": date(2026, 4, 1),
+            "current_month": date(2026, 6, 1),
+        })
+        stale_labels = client_health_labels({
+            "membership_status": MembershipMonthStatus.STATUS_NOT_RENEWED,
+            "membership_status_month": date(2026, 3, 1),
+            "current_month": date(2026, 6, 1),
+        })
+
+        self.assertIn(
+            {"key": "membership_expired", "rule": "not_renewed_last_three_months"},
+            recent_labels,
+        )
+        self.assertNotIn(
+            {"key": "membership_expired", "rule": "not_renewed_last_three_months"},
+            stale_labels,
+        )

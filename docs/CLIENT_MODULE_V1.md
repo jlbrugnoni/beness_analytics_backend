@@ -387,12 +387,13 @@ Implemented behavior:
   - New client: current membership status is new.
   - Active and consistent: 8-week regularity is at least 75%, attendance rate
     is at least 80%, and current streak is at least 4 weeks.
-  - Recently inactive: no attended visits in the last 2 or more imported weeks.
+  - Recently inactive: no attended visits for 2 to 8 imported weeks.
   - Member not attending: active membership weeks without attendance.
   - Frequent no-shows: at least 5 bookings and no-show rate is 20% or higher.
   - Frequent late cancels: at least 5 bookings and late-cancel rate is 20% or
     higher.
-  - Membership expired: current membership status is not renewed.
+  - Membership expired: current membership status is not renewed and the status
+    started within the last 3 months.
   - Reactivated: current membership status is reactivated.
   - High-value at risk: not renewed with at least 3 tracked purchases, 3 member
     months, or RD$25,000 in visible spending.
@@ -409,6 +410,79 @@ Validation:
 - [x] Frontend production build passes
 - [x] User reviewed
 - [x] Committed
+
+### Review Phase: Client Module V2 Stabilization
+
+Status: In progress
+
+Goal:
+
+- Review the complete V2 client module before merge.
+- Catch confusing UI, inconsistent definitions, fragile calculations, missing
+  translations, and API/UI mismatches.
+- Make small adjustments based on live review so the final branch is solid.
+- Keep any larger new feature for a future branch unless it blocks the V2
+  release.
+
+Review checklist:
+
+- [x] Backend/API consistency review
+- [x] Frontend UX and translation review
+- [x] Sorting/filtering/export behavior review
+- [x] Regression test pass after adjustments
+- [ ] User review
+- [ ] Committed
+
+Review notes:
+
+- The new history, profile, directory, retention priority, and top-client paths
+  are aligned with existing API parameters.
+- Health labels now show an explicit "No labels" state in the Clients directory
+  and profile so blank space is not confused with missing data.
+- The Clients page keeps the main status filter month-based by default.
+- Multi-month client selection moved into the expandable metrics/options area.
+- Multi-month status filters use smart defaults:
+  - Retained means retained every month in the selection period.
+  - Not renewed means became not renewed in the selection period and is still
+    not renewed.
+  - New means new at least once in the selection period.
+  - Reactivated means reactivated at least once in the selection period.
+- Directory rows include a status context so event-style range matches are
+  explained even when the latest displayed monthly status is different.
+- The smart status filter uses saved membership snapshots when present and
+  falls back to monthly metric status rows for existing calculated data.
+- The Clients table removes 8-week regularity and inactive weeks from the
+  default view; those period-sensitive metrics remain available in the client
+  profile.
+- The Clients table also removes tracked purchases, no-show rate, and
+  late-cancel rate from the default view to keep the table focused. These
+  remain available in exports and/or the client profile.
+- The Client profile removes total bookings, tracked purchases, and member
+  inactive weeks from the summary card set to reduce duplicated/noisy signals.
+- Membership continuity cards moved out of Current Membership and into the
+  selected/lifetime period summary blocks.
+- Health labels moved next to the client name as color-coded chips; clicking a
+  chip opens the rule explanation dialog.
+- Long studio names in profile membership cards can wrap instead of overflowing.
+- Temporary churn research dataset endpoint added at
+  `/api/data/analytics/research/churn-dataset/`.
+  - It returns one active-member client-month row with backward-looking
+    purchase, attendance, regularity, spending, and membership-expiration
+    features.
+  - The target is next-month outcome:
+    `target_churned_next_month=true` when the following month is `not_renewed`,
+    and `target_renewed_next_month=true` when the following month remains an
+    active membership status.
+  - Rows with unknown next-month outcome are excluded by default and can be
+    included with `include_unknown=1`.
+  - The endpoint supports `format=csv` for exporting the research dataset to an
+    external model/pattern-analysis workflow.
+  - This code is intentionally isolated in `analytics/churn_research.py` so it
+    can be removed after the research pass.
+- Frontend lint reports only existing unrelated warnings outside the client
+  module.
+- Backend retention/client regression suite passes 36 tests.
+- Frontend production build passes.
 
 ### Phase 3.4: Preferences
 
