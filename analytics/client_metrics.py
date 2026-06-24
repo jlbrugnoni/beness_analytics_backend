@@ -81,6 +81,11 @@ def date_strings(start, end):
     return values
 
 
+def is_positive_service_purchase(purchase):
+    amount = purchase.total_amount or ZERO
+    return purchase.quantity > 0 or (purchase.quantity == 0 and amount > 0)
+
+
 def empty_metric():
     return {
         "total_bookings": 0,
@@ -148,11 +153,12 @@ def rebuild_client_studio_monthly_metrics(site_id, target_month):
         metric["service_purchase_count"] += 1
         metric["service_spending"] += amount
         if purchase.pricing_option.track_retention:
-            metric["tracked_purchase_count"] += 1
+            if is_positive_service_purchase(purchase):
+                metric["tracked_purchase_count"] += 1
             metric["membership_spending"] += amount
         elif not purchase.pricing_option.is_trial_class:
             metric["non_membership_spending"] += amount
-        if not purchase.pricing_option.is_trial_class:
+        if not purchase.pricing_option.is_trial_class and is_positive_service_purchase(purchase):
             current = metric["first_non_trial_purchase_date"]
             if current is None or purchase.sale_date < current:
                 metric["first_non_trial_purchase_date"] = purchase.sale_date
@@ -174,12 +180,13 @@ def rebuild_client_studio_monthly_metrics(site_id, target_month):
             pricing_option__track_retention=True,
             sale_date__lte=end,
         )
+        .filter(Q(quantity__gt=0) | Q(quantity=0, total_amount__gt=0))
         .filter(Q(expiration_date__gte=target_month) | Q(expiration_date__isnull=True))
         .iterator()
     )
     for purchase in tracked_coverage:
         active_start = purchase.activation_date or purchase.sale_date
-        active_end = purchase.expiration_date or end
+        active_end = purchase.expiration_date or month_end(active_start)
         if not active_start:
             continue
         overlap_start = max(active_start, target_month)
@@ -347,12 +354,13 @@ def rebuild_client_studio_weekly_metrics(site_id, target_week):
             pricing_option__track_retention=True,
             sale_date__lte=end,
         )
+        .filter(Q(quantity__gt=0) | Q(quantity=0, total_amount__gt=0))
         .filter(Q(expiration_date__gte=start) | Q(expiration_date__isnull=True))
         .iterator()
     )
     for purchase in tracked_coverage:
         active_start = purchase.activation_date or purchase.sale_date
-        active_end = purchase.expiration_date or end
+        active_end = purchase.expiration_date or month_end(active_start)
         if not active_start:
             continue
         overlap_start = max(active_start, start)
@@ -447,9 +455,9 @@ def client_metric_periods_for_import(report_import):
         ).select_related("pricing_option")
         for purchase in purchases:
             months.add(month_start(purchase.sale_date))
-            if purchase.pricing_option.track_retention:
+            if purchase.pricing_option.track_retention and is_positive_service_purchase(purchase):
                 start = purchase.activation_date or purchase.sale_date
-                end = purchase.expiration_date or start
+                end = purchase.expiration_date or month_end(start)
                 months.update(months_between(start, end))
                 weeks.update(weeks_between(start, end))
 
@@ -497,11 +505,16 @@ def client_metric_periods_for_import(report_import):
                 months.add(month_start(sale_date))
             if snapshot.get("pricing_option_id") not in tracked_option_ids:
                 continue
+            quantity = Decimal(str(snapshot.get("quantity") or "0"))
+            total_amount = Decimal(str(snapshot.get("total_amount") or "0"))
+            if quantity < 0 or total_amount < 0:
+                continue
             start = metric_date(snapshot.get("activation_date")) or sale_date
-            end = metric_date(snapshot.get("expiration_date")) or start
-            if start and end:
-                months.update(months_between(start, end))
-                weeks.update(weeks_between(start, end))
+            if not start:
+                continue
+            end = metric_date(snapshot.get("expiration_date")) or month_end(start)
+            months.update(months_between(start, end))
+            weeks.update(weeks_between(start, end))
 
     return {
         "months": sorted(months),

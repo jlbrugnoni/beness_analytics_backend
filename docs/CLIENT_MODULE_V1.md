@@ -94,6 +94,418 @@ Validation:
 - [x] User reviewed
 - [x] Committed
 
+### V2 Planning Decisions
+
+Status: Accepted
+
+These decisions supersede the original Phase 3, 4, and 5 ordering below while
+preserving their useful ideas.
+
+Keep and prioritize:
+
+- Weekly regularity and active-week windows.
+- Attendance streaks and inactivity streaks.
+- Membership continuity, gaps, and interruptions.
+- Not-renewed prioritization for retention follow-up.
+- Transparent health labels once the dimensions are stable.
+
+Remove or reframe:
+
+- Do not show lifetime service spending as a separate user-facing value.
+  Sales remains the canonical spending source; Sales by Service enriches
+  purchase metadata.
+- Do not combine overlapping revenue sources into one artificial total.
+- Do not build a single health or loyalty score until the individual
+  dimensions are validated.
+- Do not duplicate not-renewed operational work inside every client profile
+  when it belongs in retention follow-up and ranking views.
+
+Defer:
+
+- Staff/instructor affinity, favorite weekdays, favorite hours, and pricing
+  option preferences. These are useful, but they are secondary to regularity,
+  continuity, and reactivation priority.
+
+### Phase 3.1: Weekly Regularity
+
+Status: Complete
+
+Use weekly metrics to calculate:
+
+- Active weeks in the last 4, 8, 12, and 16 weeks.
+- Eligible weeks in each window.
+- Regularity percentage for each window.
+- Average visits per active week.
+- Lifetime active weeks remains available from existing monthly aggregation.
+
+Definition:
+
+```text
+regularity = weeks with at least one attended visit / eligible weeks
+```
+
+Eligibility should begin when the client first became meaningfully active,
+using the earliest non-trial purchase, first tracked membership activation, or
+first attended visit, whichever is most appropriate after validation.
+
+Implemented behavior:
+
+- The API calculates 4, 8, 12, and 16-week regularity windows from existing
+  `ClientStudioWeeklyMetric` rows, avoiding a new migration and avoiding a
+  required production backfill.
+- Windows end at the week containing the selected dashboard/client month.
+- Eligibility starts from the client's lifetime first meaningful activity, not
+  from the selected metrics period, so changing the metric period does not make
+  older clients look artificially more regular.
+- Each window returns active weeks, eligible weeks, regularity percentage, and
+  average visits per active week.
+- The Clients directory exposes 8-week regularity as a sortable column and
+  CSV field.
+- Client profiles show 8-week regularity and average visits per active week in
+  the summary cards.
+- Top Clients includes a "most regular, 8 weeks" ranking. To avoid misleading
+  one-week newcomers, this ranking requires at least four eligible weeks and at
+  least two active weeks.
+
+Validation:
+
+- [x] Directory API returns 4 and 8-week window details for representative
+  clients
+- [x] Profile API returns regularity summary values
+- [x] Top Clients ranking excludes clients with too little eligible history
+- [x] Focused Client Module backend tests pass 23 tests
+- [x] User reviewed
+- [x] Committed
+
+### Phase 3.1.1: Retention Coverage Correction
+
+Status: Complete
+
+Fix a retention-status edge case found while reviewing the Clients directory:
+negative tracked Sales by Service correction rows could create active membership
+coverage when the row had no expiration date. Example: a January negative
+correction with no expiration made Carmen Rodriguez, Mindbody ID 289, appear
+retained in later months even though the correction was not an active
+membership.
+
+Implemented behavior:
+
+- Only positive tracked service purchases create active membership coverage for
+  retention snapshots and client monthly/weekly metrics.
+- A service purchase is considered positive when it has `quantity > 0`, or when
+  it is a legacy/manual row with `quantity = 0` and `total_amount > 0`.
+- Explicit negative quantities or negative amounts are ignored for membership
+  coverage.
+- Tracked purchases with no expiration are capped to the activation/sale month
+  instead of being treated as active forever.
+- Financial totals can still reflect negative rows; the correction only changes
+  membership coverage and tracked purchase counts.
+
+Validation:
+
+- [x] Regression test covers negative tracked correction rows with no expiration
+- [x] Regression test covers client monthly metric coverage for the same case
+- [x] Local Carmen Rodriguez rebuild changes 2026-02 to `not_renewed` and
+  removes later false retained rows
+- [x] Focused retention and client metric backend tests pass 34 tests
+- [x] User reviewed
+- [x] Committed
+
+### Phase 3.2: Attendance Streaks And Inactivity
+
+Status: Complete
+
+Calculate:
+
+- Current weekly attendance streak.
+- Longest historical weekly attendance streak.
+- Consecutive inactive weeks.
+- Active membership weeks without attendance.
+
+These values should distinguish inactive non-members from active members who
+are not attending.
+
+Implemented behavior:
+
+- Streaks are calculated dynamically from `ClientStudioWeeklyMetric` rows using
+  the week containing the latest uploaded attendance report date in the selected site scope,
+  avoiding a new migration.
+- Current attendance streak counts consecutive attended weeks ending in the
+  week containing the latest imported attendance date, not the calendar week
+  containing the selected month end.
+- Longest attendance streak scans all attended weekly rows up to the selected
+  streak anchor week.
+- Consecutive inactive weeks counts backward from the streak anchor week until
+  the last attended week, starting no earlier than the client's lifetime first
+  meaningful activity. This avoids breaking streaks during the current
+  incomplete week before the weekend import is uploaded.
+- Active membership inactive weeks counts weeks where the client had active
+  membership coverage but no attended visit.
+- The API exposes `streak_as_of_week` so the UI can show which imported week
+  the current metrics are calculated through. This value is based on attendance
+  report coverage, so membership-only weekly rows do not break current streaks,
+  and it does not move backward when the user selects older months.
+- The Clients directory exposes current streak and inactive weeks as sortable
+  columns and CSV fields.
+- Client profiles show current streak, longest streak, inactive weeks, and
+  member inactive weeks.
+- Top Clients includes a longest current streak ranking.
+
+Validation:
+
+- [x] Directory API returns streak and inactivity values
+- [x] Profile API returns streak and inactivity values
+- [x] Streaks ignore incomplete calendar weeks without imported data
+- [x] Membership-only weekly rows after the latest attendance import do not
+  break current streaks
+- [x] Current streaks remain anchored to the latest upload when selecting older
+  months
+- [x] Focused Client Module backend tests pass 24 tests
+- [x] User reviewed
+- [x] Committed
+
+### Phase 4.1: Membership Continuity
+
+Status: Complete
+
+Improve membership-history dimensions:
+
+- Consecutive membership months.
+- Total membership months.
+- Renewal and reactivation count.
+- Not-renewed events.
+- Membership interruptions and longest gap.
+- Days between expiration and next tracked purchase.
+
+This phase builds on `MembershipMonthStatus` and tracked Sales by Service
+purchases. It should not create a permanent row for every client-month unless
+the sparse snapshot model proves insufficient.
+
+Implemented behavior:
+
+- Membership continuity is calculated dynamically from `MembershipMonthStatus`
+  rows, avoiding a new migration and keeping the values aligned with retention
+  status logic.
+- The API returns total membership months, current consecutive membership
+  months, renewal count, reactivation count, not-renewed event count, and
+  longest membership gap.
+- Current consecutive membership months returns zero when the latest current
+  status is not-renewed.
+- Longest membership gap is measured as the largest number of non-member months
+  between two member months.
+- The Clients directory exposes member months and current member streak as
+  sortable columns and CSV fields.
+- Client profiles show all membership continuity metrics in the current
+  membership section.
+
+Deferred:
+
+- Days between expiration and next tracked purchase remains deferred until we
+  decide whether to calculate it from status transitions, raw tracked
+  purchases, or the retention follow-up purchase-matching helper.
+
+Validation:
+
+- [x] Directory API returns membership continuity values
+- [x] Profile API returns membership continuity values
+- [x] Focused Client Module backend tests pass 24 tests
+- [x] User reviewed
+- [x] Committed
+
+### Phase 5.2: Not-Renewed Prioritization
+
+Status: Complete
+
+Create operational rankings for not-renewed clients:
+
+- Historically important clients: tenure, lifetime visits, active weeks,
+  tracked purchases, and canonical spending.
+- Reactivation opportunity: recent attendance, post-expiration attendance,
+  latest expiration, inactive weeks, and reachable activity.
+
+This should connect to the retention follow-up workflow rather than duplicating
+the same analysis only inside the client profile.
+
+Implemented behavior:
+
+- Not-renewed retention rows now include `priority_level`, `priority_score`,
+  `priority_relationship_score`, `priority_opportunity_score`, and
+  `priority_reasons`.
+- The relationship score uses available retention facts: tracked membership
+  purchase count, lifetime membership value, and tenure from first tracked
+  membership purchase.
+- The opportunity score uses follow-up facts: attending unpaid, attending paid,
+  post-expiration attendance count, and recent post-expiration activity.
+- Priority levels are transparent:
+  - High: score of 6 or more.
+  - Medium: score of 3 to 5.
+  - Low: score below 3.
+- Not-renewed rows are sorted by priority score first, then by activity and
+  client name, so high-value inactive clients can rise above lower-priority
+  activity rows.
+- The Retention Follow-up page and Dashboard Retention modal show priority for
+  not-renewed clients.
+- Retention Follow-up CSV exports include priority level, score, and reasons.
+
+Validation:
+
+- [x] Follow-up API returns priority fields for not-renewed rows
+- [x] Dashboard retention table payload returns the same priority fields
+- [x] Backend retention regression tests pass 35 tests
+- [x] Frontend production build passes
+- [x] User reviewed
+- [x] Committed
+
+### Phase 5.1: Transparent Health Labels
+
+Status: Complete
+
+Add documented labels only after regularity, streaks, and membership
+continuity are validated. Candidate labels:
+
+- New client
+- Active and consistent
+- Declining attendance
+- Recently inactive
+- Frequent no-shows
+- Frequent late cancellations
+- Membership expired
+- Attending after expiration
+- Reactivated
+- High-value at risk
+
+Every label must expose its rule.
+
+Implemented behavior:
+
+- Client directory rows and client profiles now return `health_labels`.
+- Each label includes a stable `key` and a stable `rule` so the UI can show the
+  label and explain why it appeared.
+- Labels are calculated dynamically from existing client facts rather than
+  stored in a new table.
+- Current labels:
+  - New client: current membership status is new.
+  - Active and consistent: 8-week regularity is at least 75%, attendance rate
+    is at least 80%, and current streak is at least 4 weeks.
+  - Recently inactive: no attended visits for 2 to 8 imported weeks.
+  - Member not attending: active membership weeks without attendance.
+  - Frequent no-shows: at least 5 bookings and no-show rate is 20% or higher.
+  - Frequent late cancels: at least 5 bookings and late-cancel rate is 20% or
+    higher.
+  - Membership expired: current membership status is not renewed and the status
+    started within the last 3 months.
+  - Reactivated: current membership status is reactivated.
+  - High-value at risk: not renewed with at least 3 tracked purchases, 3 member
+    months, or RD$25,000 in visible spending.
+- The Clients directory shows health labels as compact chips and includes them
+  in CSV exports.
+- The Client profile shows health labels with their rules.
+
+Validation:
+
+- [x] Directory API returns health labels
+- [x] Profile API returns health labels and rules
+- [x] Focused Client Module backend tests pass 24 tests
+- [x] Backend retention/client regression suite passes 35 tests
+- [x] Frontend production build passes
+- [x] User reviewed
+- [x] Committed
+
+### Review Phase: Client Module V2 Stabilization
+
+Status: In progress
+
+Goal:
+
+- Review the complete V2 client module before merge.
+- Catch confusing UI, inconsistent definitions, fragile calculations, missing
+  translations, and API/UI mismatches.
+- Make small adjustments based on live review so the final branch is solid.
+- Keep any larger new feature for a future branch unless it blocks the V2
+  release.
+
+Review checklist:
+
+- [x] Backend/API consistency review
+- [x] Frontend UX and translation review
+- [x] Sorting/filtering/export behavior review
+- [x] Regression test pass after adjustments
+- [ ] User review
+- [ ] Committed
+
+Review notes:
+
+- The new history, profile, directory, retention priority, and top-client paths
+  are aligned with existing API parameters.
+- Health labels now show an explicit "No labels" state in the Clients directory
+  and profile so blank space is not confused with missing data.
+- The Clients page keeps the main status filter month-based by default.
+- Multi-month client selection moved into the expandable metrics/options area.
+- Multi-month status filters use smart defaults:
+  - Retained means retained every month in the selection period.
+  - Not renewed means became not renewed in the selection period and is still
+    not renewed.
+  - New means new at least once in the selection period.
+  - Reactivated means reactivated at least once in the selection period.
+- Directory rows include a status context so event-style range matches are
+  explained even when the latest displayed monthly status is different.
+- The smart status filter uses saved membership snapshots when present and
+  falls back to monthly metric status rows for existing calculated data.
+- The Clients table removes 8-week regularity and inactive weeks from the
+  default view; those period-sensitive metrics remain available in the client
+  profile.
+- The Clients table also removes tracked purchases, no-show rate, and
+  late-cancel rate from the default view to keep the table focused. These
+  remain available in exports and/or the client profile.
+- The Client profile removes total bookings, tracked purchases, and member
+  inactive weeks from the summary card set to reduce duplicated/noisy signals.
+- Membership continuity cards moved out of Current Membership and into the
+  selected/lifetime period summary blocks.
+- Health labels moved next to the client name as color-coded chips; clicking a
+  chip opens the rule explanation dialog.
+- Long studio names in profile membership cards can wrap instead of overflowing.
+- Temporary churn research dataset endpoint added at
+  `/api/data/analytics/research/churn-dataset/`.
+  - It returns one active-member client-month row with backward-looking
+    purchase, attendance, regularity, spending, and membership-expiration
+    features.
+  - The target is next-month outcome:
+    `target_churned_next_month=true` when the following month is `not_renewed`,
+    and `target_renewed_next_month=true` when the following month remains an
+    active membership status.
+  - Rows with unknown next-month outcome are excluded by default and can be
+    included with `include_unknown=1`.
+  - The endpoint supports `format=csv` for exporting the research dataset to an
+    external model/pattern-analysis workflow.
+  - This code is intentionally isolated in `analytics/churn_research.py` so it
+    can be removed after the research pass.
+- Frontend lint reports only existing unrelated warnings outside the client
+  module.
+- Backend retention/client regression suite passes 36 tests.
+- Frontend production build passes.
+
+### Phase 3.4: Preferences
+
+Status: Deferred
+
+Later client-profile enrichment:
+
+- Favorite instructor or staff affinity.
+- Preferred weekdays and hours.
+- Primary studio and cross-studio attendance pattern.
+- Most-used pricing options.
+- Group/private attendance where classification is reliable.
+
+### Later: Optional Health Score
+
+Status: Deferred
+
+Consider a configurable score only after the individual dimensions and labels
+are trusted by users. Until then, show explainable dimensions separately.
+
+Note: the original Phase 3, 4, and 5 sections below remain as historical
+reference. For Client Module V2 development, follow the phase roadmap above.
+
 ## Metric Principles
 
 - Store factual counts and amounts; derive percentages, rankings, and labels.
@@ -678,7 +1090,7 @@ Validation:
 
 ### Phase 2.5: Directory And Profile Review
 
-Status: Implemented; awaiting user review
+Status: Complete
 
 Review results:
 
@@ -711,8 +1123,8 @@ Validation:
 - [x] Frontend lint completes with existing unrelated warnings only
 - [x] Frontend production build passes
 - [x] Phase review completed
-- [ ] User reviewed
-- [ ] Committed
+- [x] User reviewed
+- [x] Committed
 
 ## Phase 3: Regularity And Engagement
 
