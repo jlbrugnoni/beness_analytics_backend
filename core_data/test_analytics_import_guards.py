@@ -15,6 +15,7 @@ from core_data.models import (
     AttendanceVisitVersion,
     Client,
     CustomUser,
+    ExpectedClassSlot,
     PaymentMethod,
     PricingOption,
     ReportImport,
@@ -311,6 +312,107 @@ class AnalyticsImportGuardTests(APITestCase):
         self.assertEqual(AttendanceVisit.objects.count(), 1)
         self.assertEqual(AttendanceClassMatch.objects.count(), 1)
         self.assertEqual(response.data["visits_processed"], 1)
+
+    def test_cancel_scheduled_classes_for_day_uses_selected_scope(self):
+        room_one = Room.objects.create(site=self.site, studio=self.studio, name="Sala 1", group_capacity=8)
+        room_two = Room.objects.create(site=self.site, studio=self.studio, name="Sala 2", group_capacity=8)
+        staff = StaffMember.objects.create(site=self.site, name="Entrenador Uno")
+        category = ServiceCategory.objects.create(site=self.site, name="Clases Grupales")
+        pricing_option = PricingOption.objects.create(
+            site=self.site,
+            name="Bono 5 clases",
+            service_category=category,
+        )
+        client = Client.objects.create(
+            site=self.site,
+            name="Cliente Prueba",
+            mindbody_id="100001",
+        )
+        class_one = ScheduledClass.objects.create(
+            site=self.site,
+            studio=self.studio,
+            room=room_one,
+            staff_member=staff,
+            name="Pilates",
+            class_date=date(2026, 4, 15),
+            start_time=time(10, 0),
+            end_time=time(10, 50),
+            capacity=8,
+        )
+        class_two = ScheduledClass.objects.create(
+            site=self.site,
+            studio=self.studio,
+            room=room_one,
+            staff_member=staff,
+            name="Pilates",
+            class_date=date(2026, 4, 15),
+            start_time=time(11, 0),
+            end_time=time(11, 50),
+            capacity=8,
+        )
+        other_room_class = ScheduledClass.objects.create(
+            site=self.site,
+            studio=self.studio,
+            room=room_two,
+            staff_member=staff,
+            name="Pilates",
+            class_date=date(2026, 4, 15),
+            start_time=time(12, 0),
+            end_time=time(12, 50),
+            capacity=8,
+        )
+        ExpectedClassSlot.objects.create(
+            site=self.site,
+            studio=self.studio,
+            room=room_one,
+            staff_member=staff,
+            scheduled_class=class_one,
+            slot_date=date(2026, 4, 15),
+            start_time=time(10, 0),
+            end_time=time(10, 50),
+            status=ExpectedClassSlot.STATUS_MATCHED,
+        )
+        visit = AttendanceVisit.objects.create(
+            site=self.site,
+            natural_key="attendance-key",
+            current_row_hash="attendance-hash",
+            client=client,
+            staff_member=staff,
+            visit_studio=self.studio,
+            service_category=category,
+            pricing_option=pricing_option,
+            visit_date=date(2026, 4, 15),
+            visit_time_raw="10:00 AM",
+        )
+        AttendanceClassMatch.objects.create(
+            attendance_visit=visit,
+            scheduled_class=class_one,
+            match_method=AttendanceClassMatch.METHOD_EXACT_INSTRUCTOR_TIME,
+        )
+
+        response = self.client.post(
+            "/api/data/scheduled-classes/cancel-day/",
+            {
+                "site": self.site.id,
+                "studio": self.studio.id,
+                "room": room_one.id,
+                "date": "2026-04-15",
+                "reason": "Holiday",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["classes_found"], 2)
+        self.assertEqual(response.data["classes_cancelled"], 2)
+        self.assertEqual(response.data["attended_count"], 1)
+        class_one.refresh_from_db()
+        class_two.refresh_from_db()
+        other_room_class.refresh_from_db()
+        self.assertEqual(class_one.status, ScheduledClass.STATUS_CANCELLED)
+        self.assertEqual(class_two.status, ScheduledClass.STATUS_CANCELLED)
+        self.assertEqual(other_room_class.status, ScheduledClass.STATUS_SCHEDULED)
+        self.assertEqual(ExpectedClassSlot.objects.get(scheduled_class=class_one).status, ExpectedClassSlot.STATUS_CANCELLED)
 
     def test_sales_by_service_preview_requires_studio_before_parsing(self):
         response = self.client.post(

@@ -1598,6 +1598,7 @@ class ScheduledClassViewSet(ImportedDataFilterMixin, viewsets.ModelViewSet):
     write_capability = "can_edit_data"
     capability_by_action = {
         "reconcile_from_templates": "can_edit_data",
+        "cancel_day": "can_edit_data",
     }
     search_fields = ["name", "studio__name", "room__name", "staff_member__name"]
 
@@ -1676,6 +1677,72 @@ class ScheduledClassViewSet(ImportedDataFilterMixin, viewsets.ModelViewSet):
         return Response({
             "date_range": {"from": start.isoformat(), "to": end.isoformat()},
             **stats,
+        })
+
+    @action(detail=False, methods=["post"], url_path="cancel-day")
+    def cancel_day(self, request):
+        class_date = parse_iso_date(request.data.get("date") or request.query_params.get("date"))
+        if not class_date:
+            return Response({"error": "date is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        site_id = request.data.get("site") or request.query_params.get("site")
+        if not site_id:
+            return Response({"error": "site is required."}, status=status.HTTP_400_BAD_REQUEST)
+
+        studio_id = request.data.get("studio") or request.query_params.get("studio")
+        room_id = request.data.get("room") or request.query_params.get("room")
+        reason = request.data.get("reason") or "Cancelled from schedule day action."
+
+        queryset = ScheduledClass.objects.filter(site_id=site_id, class_date=class_date)
+        if studio_id:
+            queryset = queryset.filter(studio_id=studio_id)
+        if room_id:
+            queryset = queryset.filter(room_id=room_id)
+
+        classes = list(
+            queryset.annotate(
+                attended_total=Count(
+                    "attendance_matches",
+                    filter=Q(
+                        attendance_matches__attendance_visit__no_show=False,
+                        attendance_matches__attendance_visit__late_cancel=False,
+                    ),
+                ),
+                match_total=Count("attendance_matches"),
+            )
+        )
+        classes_to_cancel = [
+            scheduled_class
+            for scheduled_class in classes
+            if scheduled_class.status != ScheduledClass.STATUS_CANCELLED
+        ]
+
+        with transaction.atomic():
+            updated = 0
+            for scheduled_class in classes_to_cancel:
+                scheduled_class.status = ScheduledClass.STATUS_CANCELLED
+                scheduled_class.reason = reason
+                scheduled_class.manually_modified = True
+                scheduled_class.save(update_fields=["status", "reason", "manually_modified", "updated_at"])
+                updated += 1
+
+            expected_slots_updated = ExpectedClassSlot.objects.filter(
+                scheduled_class_id__in=[scheduled_class.id for scheduled_class in classes_to_cancel]
+            ).update(
+                status=ExpectedClassSlot.STATUS_CANCELLED,
+                resolution_notes=reason,
+            )
+
+        return Response({
+            "date": class_date.isoformat(),
+            "site_id": site_id,
+            "studio_id": studio_id,
+            "room_id": room_id,
+            "classes_found": len(classes),
+            "classes_cancelled": updated,
+            "expected_slots_updated": expected_slots_updated,
+            "attendance_count": sum(scheduled_class.match_total or 0 for scheduled_class in classes),
+            "attended_count": sum(scheduled_class.attended_total or 0 for scheduled_class in classes),
         })
 
 
