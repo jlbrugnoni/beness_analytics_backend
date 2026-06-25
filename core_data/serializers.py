@@ -436,6 +436,12 @@ class AttendanceClassMatchSerializer(serializers.ModelSerializer):
     attendance_date = serializers.DateField(source="attendance_visit.visit_date", read_only=True)
     attendance_time = serializers.CharField(source="attendance_visit.visit_time_raw", read_only=True)
     client_name = serializers.CharField(source="attendance_visit.client.name", read_only=True)
+    client_mindbody_id = serializers.CharField(source="attendance_visit.client.mindbody_id", read_only=True)
+    staff_member_name = serializers.CharField(source="attendance_visit.staff_member.name", read_only=True)
+    pricing_option_name = serializers.CharField(source="attendance_visit.pricing_option.name", read_only=True)
+    visit_type = serializers.CharField(source="attendance_visit.visit_type", read_only=True)
+    source_import_id = serializers.IntegerField(source="attendance_visit.last_seen_import_id", read_only=True)
+    source_file_name = serializers.CharField(source="attendance_visit.last_seen_import.file_name", read_only=True)
     scheduled_class_name = serializers.CharField(source="scheduled_class.name", read_only=True)
 
     class Meta:

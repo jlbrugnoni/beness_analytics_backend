@@ -28,6 +28,7 @@ from analytics.models import (
     MembershipMonthStatus,
 )
 from core_data.access import scoped_queryset_for_user, user_has_capability
+from core_data.attendance_repair import repair_attendance_staff_duplicates
 from core_data.models import (
     AttendanceClassMatch,
     AttendanceVisit,
@@ -818,6 +819,10 @@ def parse_int_param(value):
 
 def truthy_param(value):
     return str(value).lower() in {"1", "true", "yes", "y"}
+
+
+def falsey_param(value):
+    return str(value).lower() in {"0", "false", "no", "n"}
 
 
 @api_view(["GET"])
@@ -3566,7 +3571,7 @@ def match_visit_to_class(visit, scheduled_by_slot):
     }
 
 
-def rebuild_attendance_class_matches(site_id=None, start=None, end=None):
+def rebuild_attendance_class_matches(site_id=None, studio_id=None, start=None, end=None):
     visits = AttendanceVisit.objects.select_related("staff_member").filter(visit_date__range=(start, end))
     scheduled_classes = ScheduledClass.objects.select_related("staff_member").filter(
         class_date__range=(start, end),
@@ -3574,6 +3579,9 @@ def rebuild_attendance_class_matches(site_id=None, start=None, end=None):
     if site_id:
         visits = visits.filter(site_id=site_id)
         scheduled_classes = scheduled_classes.filter(site_id=site_id)
+    if studio_id:
+        visits = visits.filter(visit_studio_id=studio_id)
+        scheduled_classes = scheduled_classes.filter(studio_id=studio_id)
 
     scheduled_by_slot = {}
     for scheduled_class in scheduled_classes:
@@ -3626,13 +3634,35 @@ def rebuild_attendance_class_matches_view(request):
     if not start or not end:
         start, end = date_bounds(request)
     site_id = request.data.get("site") or request.query_params.get("site")
+    studio_id = request.data.get("studio") or request.query_params.get("studio")
+    repair_duplicates = not falsey_param(
+        request.data.get("repair_attendance_duplicates")
+        or request.query_params.get("repair_attendance_duplicates")
+    )
+
+    repair_stats = None
+    if repair_duplicates:
+        repair_stats = repair_attendance_staff_duplicates(
+            site_id=site_id,
+            studio_id=studio_id,
+            date_from=start,
+            date_to=end,
+            rebuild_metrics=True,
+        )
 
     with transaction.atomic():
-        stats = rebuild_attendance_class_matches(site_id=site_id, start=start, end=end)
+        stats = rebuild_attendance_class_matches(
+            site_id=site_id,
+            studio_id=studio_id,
+            start=start,
+            end=end,
+        )
 
     return Response({
         "date_range": {"from": start.isoformat(), "to": end.isoformat()},
         "site_id": site_id,
+        "studio_id": studio_id,
+        "attendance_duplicate_repair": repair_stats,
         **stats,
     })
 

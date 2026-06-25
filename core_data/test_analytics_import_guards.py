@@ -10,13 +10,17 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from core_data.models import (
+    AttendanceClassMatch,
+    AttendanceVisit,
     AttendanceVisitVersion,
     Client,
     CustomUser,
+    ExpectedClassSlot,
     PaymentMethod,
     PricingOption,
     ReportImport,
     Room,
+    ScheduledClass,
     ServiceCategory,
     Site,
     StaffMember,
@@ -97,12 +101,11 @@ def xlsx_upload(name, headers, rows):
 
 class AnalyticsImportGuardTests(APITestCase):
     def setUp(self):
-        self.user = CustomUser.objects.create_user(
+        self.user = CustomUser.objects.create_superuser(
             email="admin@example.com",
             password="testpass123",
             first_name="Admin",
             last_name="User",
-            is_staff=True,
         )
         self.client.force_authenticate(self.user)
         self.site = Site.objects.create(name="Santo Domingo", country_code=Site.COUNTRY_DOMINICAN_REPUBLIC)
@@ -117,7 +120,7 @@ class AnalyticsImportGuardTests(APITestCase):
             content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         )
 
-    def attendance_upload(self, remaining_visits="4", revenue="25"):
+    def attendance_upload(self, remaining_visits="4", revenue="25", staff="Entrenador Uno"):
         headers = [
             "Fecha",
             "Día de la semana",
@@ -153,7 +156,7 @@ class AnalyticsImportGuardTests(APITestCase):
             "Bono 5 clases",
             excel_serial(date(2026, 4, 30)),
             remaining_visits,
-            "Entrenador Uno",
+            staff,
             "Pi Tao",
             "Pi Tao",
             "Sí",
@@ -202,6 +205,214 @@ class AnalyticsImportGuardTests(APITestCase):
             report_import_id=corrected_result["import"]["report_import_id"],
         )
         self.assertEqual(corrected_version.changed_fields, ["revenue"])
+
+    def test_attendance_staff_change_updates_existing_visit(self):
+        first_result = import_attendance_report(
+            self.attendance_upload(staff="Entrenador Uno"),
+            self.site,
+            self.user,
+        )
+        self.assertEqual(first_result["import"]["attendance_created"], 1)
+
+        preview = preview_attendance_report(
+            self.attendance_upload(staff="Entrenador Dos"),
+            self.site,
+        )
+        impact = preview["data_quality"]["import_impact"]
+        self.assertEqual(impact["current_records_to_create"], 0)
+        self.assertEqual(impact["current_records_to_update"], 1)
+
+        second_result = import_attendance_report(
+            self.attendance_upload(staff="Entrenador Dos"),
+            self.site,
+            self.user,
+        )
+
+        self.assertEqual(second_result["import"]["attendance_created"], 0)
+        self.assertEqual(second_result["import"]["attendance_changed"], 1)
+        self.assertEqual(AttendanceVisitVersion.objects.count(), 2)
+        visit = AttendanceVisitVersion.objects.latest("id").attendance_visit
+        self.assertEqual(visit.staff_member.name, "Entrenador dos")
+        self.assertEqual(visit.versions.count(), 2)
+
+    def test_rebuild_matches_repairs_staff_change_duplicates(self):
+        category = ServiceCategory.objects.create(site=self.site, name="Clases Grupales")
+        pricing_option = PricingOption.objects.create(
+            site=self.site,
+            name="Bono 5 clases",
+            service_category=category,
+        )
+        staff_one = StaffMember.objects.create(site=self.site, name="Entrenador Uno")
+        staff_two = StaffMember.objects.create(site=self.site, name="Entrenador Dos")
+        scheduled_class = ScheduledClass.objects.create(
+            site=self.site,
+            studio=self.studio,
+            name="Pilates",
+            class_date=date(2026, 4, 15),
+            start_time=time(10, 0),
+            end_time=time(10, 50),
+            capacity=8,
+            staff_member=staff_two,
+        )
+        client = Client.objects.create(
+            site=self.site,
+            name="Cliente Prueba",
+            mindbody_id="100001",
+        )
+        old_visit = AttendanceVisit.objects.create(
+            site=self.site,
+            natural_key="old-staff-key",
+            current_row_hash="old-staff-hash",
+            client=client,
+            staff_member=staff_one,
+            visit_studio=self.studio,
+            service_category=category,
+            pricing_option=pricing_option,
+            visit_date=date(2026, 4, 15),
+            visit_time_raw="10:00 AM",
+        )
+        new_visit = AttendanceVisit.objects.create(
+            site=self.site,
+            natural_key="new-staff-key",
+            current_row_hash="new-staff-hash",
+            client=client,
+            staff_member=staff_two,
+            visit_studio=self.studio,
+            service_category=category,
+            pricing_option=pricing_option,
+            visit_date=date(2026, 4, 15),
+            visit_time_raw="10:00 AM",
+        )
+        AttendanceClassMatch.objects.create(
+            attendance_visit=old_visit,
+            scheduled_class=scheduled_class,
+            match_method=AttendanceClassMatch.METHOD_SINGLE_CLASS_SAME_TIME,
+        )
+        AttendanceClassMatch.objects.create(
+            attendance_visit=new_visit,
+            scheduled_class=scheduled_class,
+            match_method=AttendanceClassMatch.METHOD_EXACT_INSTRUCTOR_TIME,
+        )
+
+        response = self.client.post(
+            "/api/data/analytics/class-matches/rebuild/",
+            {
+                "site": self.site.id,
+                "date_from": "2026-04-15",
+                "date_to": "2026-04-15",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(
+            response.data["attendance_duplicate_repair"]["duplicate_visits_deleted"],
+            1,
+        )
+        self.assertEqual(AttendanceVisit.objects.count(), 1)
+        self.assertEqual(AttendanceClassMatch.objects.count(), 1)
+        self.assertEqual(response.data["visits_processed"], 1)
+
+    def test_cancel_scheduled_classes_for_day_uses_selected_scope(self):
+        room_one = Room.objects.create(site=self.site, studio=self.studio, name="Sala 1", group_capacity=8)
+        room_two = Room.objects.create(site=self.site, studio=self.studio, name="Sala 2", group_capacity=8)
+        staff = StaffMember.objects.create(site=self.site, name="Entrenador Uno")
+        category = ServiceCategory.objects.create(site=self.site, name="Clases Grupales")
+        pricing_option = PricingOption.objects.create(
+            site=self.site,
+            name="Bono 5 clases",
+            service_category=category,
+        )
+        client = Client.objects.create(
+            site=self.site,
+            name="Cliente Prueba",
+            mindbody_id="100001",
+        )
+        class_one = ScheduledClass.objects.create(
+            site=self.site,
+            studio=self.studio,
+            room=room_one,
+            staff_member=staff,
+            name="Pilates",
+            class_date=date(2026, 4, 15),
+            start_time=time(10, 0),
+            end_time=time(10, 50),
+            capacity=8,
+        )
+        class_two = ScheduledClass.objects.create(
+            site=self.site,
+            studio=self.studio,
+            room=room_one,
+            staff_member=staff,
+            name="Pilates",
+            class_date=date(2026, 4, 15),
+            start_time=time(11, 0),
+            end_time=time(11, 50),
+            capacity=8,
+        )
+        other_room_class = ScheduledClass.objects.create(
+            site=self.site,
+            studio=self.studio,
+            room=room_two,
+            staff_member=staff,
+            name="Pilates",
+            class_date=date(2026, 4, 15),
+            start_time=time(12, 0),
+            end_time=time(12, 50),
+            capacity=8,
+        )
+        ExpectedClassSlot.objects.create(
+            site=self.site,
+            studio=self.studio,
+            room=room_one,
+            staff_member=staff,
+            scheduled_class=class_one,
+            slot_date=date(2026, 4, 15),
+            start_time=time(10, 0),
+            end_time=time(10, 50),
+            status=ExpectedClassSlot.STATUS_MATCHED,
+        )
+        visit = AttendanceVisit.objects.create(
+            site=self.site,
+            natural_key="attendance-key",
+            current_row_hash="attendance-hash",
+            client=client,
+            staff_member=staff,
+            visit_studio=self.studio,
+            service_category=category,
+            pricing_option=pricing_option,
+            visit_date=date(2026, 4, 15),
+            visit_time_raw="10:00 AM",
+        )
+        AttendanceClassMatch.objects.create(
+            attendance_visit=visit,
+            scheduled_class=class_one,
+            match_method=AttendanceClassMatch.METHOD_EXACT_INSTRUCTOR_TIME,
+        )
+
+        response = self.client.post(
+            "/api/data/scheduled-classes/cancel-day/",
+            {
+                "site": self.site.id,
+                "studio": self.studio.id,
+                "room": room_one.id,
+                "date": "2026-04-15",
+                "reason": "Holiday",
+            },
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
+        self.assertEqual(response.data["classes_found"], 2)
+        self.assertEqual(response.data["classes_cancelled"], 2)
+        self.assertEqual(response.data["attended_count"], 1)
+        class_one.refresh_from_db()
+        class_two.refresh_from_db()
+        other_room_class.refresh_from_db()
+        self.assertEqual(class_one.status, ScheduledClass.STATUS_CANCELLED)
+        self.assertEqual(class_two.status, ScheduledClass.STATUS_CANCELLED)
+        self.assertEqual(other_room_class.status, ScheduledClass.STATUS_SCHEDULED)
+        self.assertEqual(ExpectedClassSlot.objects.get(scheduled_class=class_one).status, ExpectedClassSlot.STATUS_CANCELLED)
 
     def test_sales_by_service_preview_requires_studio_before_parsing(self):
         response = self.client.post(
