@@ -1769,6 +1769,9 @@ class AttendanceClassMatchViewSet(viewsets.ReadOnlyModelViewSet):
         queryset = AttendanceClassMatch.objects.select_related(
             "attendance_visit",
             "attendance_visit__client",
+            "attendance_visit__last_seen_import",
+            "attendance_visit__pricing_option",
+            "attendance_visit__staff_member",
             "scheduled_class",
         ).all()
         queryset = scoped_queryset_for_user(

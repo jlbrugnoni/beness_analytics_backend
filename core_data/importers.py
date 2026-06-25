@@ -524,6 +524,7 @@ def preview_attendance_report(uploaded_file, site):
                 AttendanceVisit,
                 lambda payload: attendance_natural_key(site, payload),
                 current_hash_builder=current_attendance_hash,
+                legacy_natural_key_builder=lambda payload: legacy_attendance_natural_key(site, payload),
             ),
         },
         "invalid_row_samples": invalid_rows[:10],
@@ -705,6 +706,30 @@ def attendance_natural_key(site, payload):
         payload.get("_visit_date"),
         payload.get("Tiempo"),
         payload.get("Ubicación de visita"),
+        payload.get("Visita por categoría de servicio"),
+        payload.get("Tipo de Visita"),
+        payload.get("_occurrence_index"),
+    ])
+
+
+def attendance_occurrence_base_key(payload):
+    return hash_parts([
+        payload.get("ID del cliente"),
+        payload.get("_visit_date"),
+        payload.get("Tiempo"),
+        payload.get("Ubicación de visita"),
+        payload.get("Visita por categoría de servicio"),
+        payload.get("Tipo de Visita"),
+    ])
+
+
+def legacy_attendance_natural_key(site, payload):
+    return hash_parts([
+        site.id,
+        payload.get("ID del cliente"),
+        payload.get("_visit_date"),
+        payload.get("Tiempo"),
+        payload.get("Ubicación de visita"),
         payload.get("Personal"),
         payload.get("Visita por categoría de servicio"),
         payload.get("Tipo de Visita"),
@@ -724,6 +749,7 @@ def attendance_row_hash(payload):
         "visit_time": payload.get("Tiempo"),
         "visit_type": payload.get("Tipo de Visita"),
         "type_name": payload.get("Tipo"),
+        "occurrence_index": payload.get("_occurrence_index"),
         "expiration_date": payload.get("_expiration_date"),
         "staff_paid": payload.get("_staff_paid"),
         "late_cancel": payload.get("_late_cancel") is True,
@@ -792,22 +818,35 @@ def repeated_row_samples(valid_rows, sample_fields, max_samples=50):
     return samples
 
 
-def current_record_impact(valid_rows, model, natural_key_builder, current_hash_builder=None):
+def current_record_impact(
+    valid_rows,
+    model,
+    natural_key_builder,
+    current_hash_builder=None,
+    legacy_natural_key_builder=None,
+):
     current_candidates = {}
+    legacy_to_current = {}
     for row in valid_rows:
-        current_candidates[natural_key_builder(row["payload"])] = row
+        natural_key = natural_key_builder(row["payload"])
+        current_candidates[natural_key] = row
+        if legacy_natural_key_builder:
+            legacy_to_current[legacy_natural_key_builder(row["payload"])] = natural_key
 
-    existing_queryset = model.objects.filter(natural_key__in=current_candidates.keys())
+    lookup_keys = set(current_candidates)
+    lookup_keys.update(legacy_to_current)
+    existing_queryset = model.objects.filter(natural_key__in=lookup_keys)
     if current_hash_builder:
         existing_queryset = existing_queryset.select_related("source_raw_row")
-    existing = {
-        item.natural_key: (
+    existing = {}
+    for item in existing_queryset:
+        candidate_key = legacy_to_current.get(item.natural_key, item.natural_key)
+        existing[candidate_key] = (
             current_hash_builder(item)
             if current_hash_builder
             else item.current_row_hash
         )
-        for item in existing_queryset
-    }
+
     to_create = 0
     to_update = 0
     unchanged = 0
@@ -1661,6 +1700,13 @@ def import_attendance_report(uploaded_file, site, uploaded_by=None):
         snapshot = attendance_snapshot(payload, related)
 
         visit = AttendanceVisit.objects.filter(natural_key=natural_key).first()
+        if not visit:
+            legacy_natural_key = legacy_attendance_natural_key(site, payload)
+            legacy_visit = AttendanceVisit.objects.filter(natural_key=legacy_natural_key).first()
+            if legacy_visit:
+                legacy_visit.natural_key = natural_key
+                legacy_visit.save(update_fields=["natural_key", "updated_at"])
+                visit = legacy_visit
         previous_snapshot = None
         if visit:
             previous_version = visit.versions.order_by("-created_at").first()
@@ -1818,6 +1864,10 @@ def preview_attendance_rows(uploaded_file):
             invalid_rows.append(enriched)
         else:
             valid_rows.append(enriched)
+
+    assign_occurrence_indexes(valid_rows, attendance_occurrence_base_key)
+    for row in valid_rows:
+        row["hash"] = attendance_row_hash(row["payload"])
 
     return {
         "sheet_name": sheet_name,
