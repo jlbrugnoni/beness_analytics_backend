@@ -527,6 +527,8 @@ def preview_attendance_report(uploaded_file, site):
                 legacy_natural_key_builders=[
                     lambda payload: legacy_attendance_natural_key(site, payload),
                     lambda payload: legacy_attendance_occurrence_staff_natural_key(site, payload),
+                    lambda payload: legacy_attendance_occurrence_natural_key(site, payload),
+                    lambda payload: legacy_attendance_missing_occurrence_natural_key(site, payload),
                 ],
             ),
         },
@@ -711,7 +713,6 @@ def attendance_natural_key(site, payload):
         payload.get("Ubicación de visita"),
         payload.get("Visita por categoría de servicio"),
         payload.get("Tipo de Visita"),
-        payload.get("_occurrence_index"),
     ])
 
 
@@ -753,10 +754,38 @@ def legacy_attendance_occurrence_staff_natural_key(site, payload):
     ])
 
 
+def legacy_attendance_occurrence_natural_key(site, payload):
+    return hash_parts([
+        site.id,
+        payload.get("ID del cliente"),
+        payload.get("_visit_date"),
+        payload.get("Tiempo"),
+        payload.get("Ubicación de visita"),
+        payload.get("Visita por categoría de servicio"),
+        payload.get("Tipo de Visita"),
+        payload.get("_occurrence_index"),
+    ])
+
+
+def legacy_attendance_missing_occurrence_natural_key(site, payload):
+    return hash_parts([
+        site.id,
+        payload.get("ID del cliente"),
+        payload.get("_visit_date"),
+        payload.get("Tiempo"),
+        payload.get("Ubicación de visita"),
+        payload.get("Visita por categoría de servicio"),
+        payload.get("Tipo de Visita"),
+        None,
+    ])
+
+
 def attendance_legacy_natural_keys(site, payload):
     return [
         legacy_attendance_natural_key(site, payload),
         legacy_attendance_occurrence_staff_natural_key(site, payload),
+        legacy_attendance_occurrence_natural_key(site, payload),
+        legacy_attendance_missing_occurrence_natural_key(site, payload),
     ]
 
 
@@ -773,7 +802,6 @@ def attendance_row_hash(payload):
         "visit_time": payload.get("Tiempo"),
         "visit_type": payload.get("Tipo de Visita"),
         "type_name": payload.get("Tipo"),
-        "occurrence_index": payload.get("_occurrence_index"),
         "expiration_date": payload.get("_expiration_date"),
         "staff_paid": payload.get("_staff_paid"),
         "late_cancel": payload.get("_late_cancel") is True,

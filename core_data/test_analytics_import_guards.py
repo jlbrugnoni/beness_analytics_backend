@@ -30,6 +30,7 @@ from core_data.models import (
 )
 from core_data.importers import (
     attendance_natural_key,
+    legacy_attendance_missing_occurrence_natural_key,
     legacy_attendance_occurrence_staff_natural_key,
     import_attendance_report,
     preview_attendance_report,
@@ -267,6 +268,44 @@ class AnalyticsImportGuardTests(APITestCase):
         impact = preview["data_quality"]["import_impact"]
         self.assertEqual(impact["current_records_to_create"], 0)
         self.assertEqual(impact["current_records_unchanged"], 1)
+
+        result = import_attendance_report(
+            self.attendance_upload(staff="Entrenador Uno"),
+            self.site,
+            self.user,
+        )
+        self.assertEqual(result["import"]["attendance_created"], 0)
+        self.assertEqual(result["import"]["attendance_identical"], 1)
+        visit.refresh_from_db()
+        self.assertEqual(visit.natural_key, attendance_natural_key(self.site, payload))
+
+    def test_attendance_preview_matches_historical_missing_occurrence_key(self):
+        rows = preview_attendance_rows(self.attendance_upload(staff="Entrenador Uno"))
+        row = rows["valid_rows"][0]
+        payload = row["payload"]
+        client = Client.objects.create(
+            site=self.site,
+            name="Cliente Prueba",
+            mindbody_id=payload["ID del cliente"],
+        )
+        visit = AttendanceVisit.objects.create(
+            site=self.site,
+            natural_key=legacy_attendance_missing_occurrence_natural_key(self.site, payload),
+            current_row_hash=row["hash"],
+            client=client,
+            visit_studio=self.studio,
+            visit_date=date.fromisoformat(payload["_visit_date"]),
+            visit_time_raw=payload["Tiempo"],
+        )
+
+        preview = preview_attendance_report(
+            self.attendance_upload(staff="Entrenador Uno"),
+            self.site,
+        )
+        impact = preview["data_quality"]["import_impact"]
+        self.assertEqual(impact["current_records_to_create"], 0)
+        self.assertEqual(impact["current_records_unchanged"], 1)
+        self.assertEqual(impact["legacy_records_matched"], 1)
 
         result = import_attendance_report(
             self.attendance_upload(staff="Entrenador Uno"),
