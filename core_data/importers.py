@@ -524,7 +524,10 @@ def preview_attendance_report(uploaded_file, site):
                 AttendanceVisit,
                 lambda payload: attendance_natural_key(site, payload),
                 current_hash_builder=current_attendance_hash,
-                legacy_natural_key_builder=lambda payload: legacy_attendance_natural_key(site, payload),
+                legacy_natural_key_builders=[
+                    lambda payload: legacy_attendance_natural_key(site, payload),
+                    lambda payload: legacy_attendance_occurrence_staff_natural_key(site, payload),
+                ],
             ),
         },
         "invalid_row_samples": invalid_rows[:10],
@@ -736,6 +739,27 @@ def legacy_attendance_natural_key(site, payload):
     ])
 
 
+def legacy_attendance_occurrence_staff_natural_key(site, payload):
+    return hash_parts([
+        site.id,
+        payload.get("_occurrence_index"),
+        payload.get("ID del cliente"),
+        payload.get("_visit_date"),
+        payload.get("Tiempo"),
+        payload.get("Ubicación de visita"),
+        payload.get("Personal"),
+        payload.get("Visita por categoría de servicio"),
+        payload.get("Tipo de Visita"),
+    ])
+
+
+def attendance_legacy_natural_keys(site, payload):
+    return [
+        legacy_attendance_natural_key(site, payload),
+        legacy_attendance_occurrence_staff_natural_key(site, payload),
+    ]
+
+
 def attendance_row_hash(payload):
     return row_hash({
         "client_mindbody_id": payload.get("ID del cliente"),
@@ -824,14 +848,21 @@ def current_record_impact(
     natural_key_builder,
     current_hash_builder=None,
     legacy_natural_key_builder=None,
+    legacy_natural_key_builders=None,
 ):
     current_candidates = {}
     legacy_to_current = {}
+    legacy_natural_key_builders = list(legacy_natural_key_builders or [])
+    if legacy_natural_key_builder:
+        legacy_natural_key_builders.append(legacy_natural_key_builder)
+
     for row in valid_rows:
         natural_key = natural_key_builder(row["payload"])
         current_candidates[natural_key] = row
-        if legacy_natural_key_builder:
-            legacy_to_current[legacy_natural_key_builder(row["payload"])] = natural_key
+        for builder in legacy_natural_key_builders:
+            legacy_key = builder(row["payload"])
+            if legacy_key != natural_key:
+                legacy_to_current[legacy_key] = natural_key
 
     lookup_keys = set(current_candidates)
     lookup_keys.update(legacy_to_current)
@@ -839,8 +870,11 @@ def current_record_impact(
     if current_hash_builder:
         existing_queryset = existing_queryset.select_related("source_raw_row")
     existing = {}
+    legacy_matched = 0
     for item in existing_queryset:
         candidate_key = legacy_to_current.get(item.natural_key, item.natural_key)
+        if candidate_key != item.natural_key:
+            legacy_matched += 1
         existing[candidate_key] = (
             current_hash_builder(item)
             if current_hash_builder
@@ -867,6 +901,7 @@ def current_record_impact(
         "current_records_unchanged": unchanged,
         "current_records_in_file": len(current_candidates),
         "natural_key_collisions": len(valid_rows) - len(current_candidates),
+        "legacy_records_matched": legacy_matched,
     }
 
 
@@ -1701,8 +1736,9 @@ def import_attendance_report(uploaded_file, site, uploaded_by=None):
 
         visit = AttendanceVisit.objects.filter(natural_key=natural_key).first()
         if not visit:
-            legacy_natural_key = legacy_attendance_natural_key(site, payload)
-            legacy_visit = AttendanceVisit.objects.filter(natural_key=legacy_natural_key).first()
+            legacy_visit = AttendanceVisit.objects.filter(
+                natural_key__in=attendance_legacy_natural_keys(site, payload),
+            ).first()
             if legacy_visit:
                 legacy_visit.natural_key = natural_key
                 legacy_visit.save(update_fields=["natural_key", "updated_at"])
