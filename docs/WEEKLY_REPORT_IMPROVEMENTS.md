@@ -69,13 +69,23 @@ Validation:
 
 ### Phase 3: Review And Adjustments
 
-Status: Not started
+Status: In progress
 
-Planned:
+Implemented:
 
-- Review field definitions with real data.
-- Adjust labels, chart choices, sorting, and layout.
-- Check mobile/desktop responsiveness.
+- Trial chart now shows attended trials only.
+- Occupancy chart now labels each point with its occupancy percentage.
+- Assistances and effective classes are shown as separate charts.
+- Single-metric charts now hide their legends; the conversion chart keeps its legend because it uses stacked categories.
+- Occupancy chart now appears first, and all charts use larger matching half-width panels.
+- Class-load chart now stacks effective classes and not-attended classes, with total booked classes represented by the combined bar height.
+- Occupancy point labels now show one decimal place.
+- Added an assistances-by-hour chart using matched attended visits grouped by scheduled class start hour across the six-week report window.
+- Assistances-by-hour labels now use compact 12-hour labels and show every hour tick.
+
+Pending:
+
+- User visual review and any additional layout/metric adjustments.
 
 ### Phase 4: Download Capability
 

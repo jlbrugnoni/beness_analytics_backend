@@ -4265,12 +4265,19 @@ def weekly_report_payload(request, start=None, end=None):
     ]
     for row in week_rows:
         row["effective_classes"] = effective_classes_by_week.get(row["week_start"], 0)
+        row["not_attended_classes"] = max(0, row.get("scheduled_classes", 0) - row["effective_classes"])
+        row["total_booked_classes"] = row.get("scheduled_classes", 0)
+    assistances_by_hour = [
+        {"hour": row["hour"], "assistances": row["total"]}
+        for row in scheduled_attendance_hour_rows(request, report_start, report_end, attended_only=True)
+    ]
     return {
         "mode": "weekly_report",
         "date_range": {"from": start.isoformat(), "to": end.isoformat()},
         "trend_date_range": {"from": report_start.isoformat(), "to": report_end.isoformat()},
         "weeks": week_rows,
         "staff": staff_rows,
+        "assistances_by_hour": assistances_by_hour,
         "definitions": {
             "trial_bookings": "Trial-class bookings in the week, including no-shows and late cancels.",
             "attended_trials": "Trial-class visits that were attended.",
@@ -4279,6 +4286,9 @@ def weekly_report_payload(request, start=None, end=None):
             "occupation_rate": "Matched attended visits divided by scheduled available capacity.",
             "assistances": "Matched attended visits assigned to the instructor's scheduled classes.",
             "effective_classes": "Scheduled classes with at least one matched attended visit.",
+            "not_attended_classes": "Scheduled available classes with no matched attended visits.",
+            "total_booked_classes": "Effective classes plus not-attended scheduled available classes.",
+            "assistances_by_hour": "Matched attended visits grouped by scheduled class start hour across the report trend window.",
         },
     }
 

@@ -167,6 +167,9 @@ class WeeklyReportEndpointTests(TestCase):
         current_week = next(row for row in response.data["weeks"] if row["week_start"] == "2026-07-06")
         self.assertEqual(current_week["scheduled_classes"], 2)
         self.assertEqual(current_week["effective_classes"], 1)
+        self.assertEqual(current_week["not_attended_classes"], 1)
+        self.assertEqual(current_week["total_booked_classes"], 2)
+        self.assertEqual(response.data["assistances_by_hour"], [{"hour": "08:00", "assistances": 2}])
         self.assertEqual(len(response.data["staff"]), 2)
         first_staff_row = response.data["staff"][0]
         self.assertEqual(first_staff_row["week_start"], "2026-06-29")
