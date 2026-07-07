@@ -1,4 +1,4 @@
-from datetime import date
+from datetime import date, time
 from decimal import Decimal
 
 from django.test import TestCase
@@ -12,16 +12,163 @@ from analytics.views import (
     serialize_membership_status_rows,
 )
 from core_data.models import (
+    AttendanceClassMatch,
+    AttendanceVisit,
     Client,
     CustomUser,
-    AttendanceVisit,
     PricingOption,
     ReportImport,
     ServiceCategory,
     ServicePurchase,
+    ScheduledClass,
     Site,
+    StaffMember,
     Studio,
 )
+
+
+class WeeklyReportEndpointTests(TestCase):
+    def setUp(self):
+        self.site = Site.objects.create(
+            name="Weekly Report Site",
+            country_code=Site.COUNTRY_DOMINICAN_REPUBLIC,
+        )
+        self.studio = Studio.objects.create(site=self.site, name="Piantini")
+        self.other_studio = Studio.objects.create(site=self.site, name="Naco")
+        self.instructor = StaffMember.objects.create(site=self.site, name="Ana Instructor")
+        self.other_instructor = StaffMember.objects.create(site=self.site, name="Other Instructor")
+        self.client = Client.objects.create(site=self.site, name="Trial Client", mindbody_id="trial-client")
+        self.member_client = Client.objects.create(site=self.site, name="Member Client", mindbody_id="member-client")
+        category = ServiceCategory.objects.create(site=self.site, name="Classes")
+        self.trial_option = PricingOption.objects.create(
+            site=self.site,
+            name="Trial Class",
+            service_category=category,
+            is_trial_class=True,
+        )
+        self.membership_option = PricingOption.objects.create(
+            site=self.site,
+            name="Monthly Membership",
+            service_category=category,
+            track_retention=True,
+        )
+        self.user = CustomUser.objects.create_superuser(
+            email="weekly-report@example.com",
+            password="testpass123",
+        )
+        self.api = APIClient()
+        self.api.force_authenticate(self.user)
+
+    def create_visit(self, *, visit_date, client, studio=None, instructor=None, pricing_option=None, no_show=False):
+        return AttendanceVisit.objects.create(
+            site=self.site,
+            natural_key=f"visit-{client.id}-{visit_date}-{studio.id if studio else 'none'}-{no_show}",
+            current_row_hash=f"hash-{client.id}-{visit_date}-{studio.id if studio else 'none'}-{no_show}",
+            client=client,
+            visit_studio=studio or self.studio,
+            staff_member=instructor or self.instructor,
+            pricing_option=pricing_option,
+            visit_date=visit_date,
+            visit_time_raw="8:00 AM",
+            no_show=no_show,
+        )
+
+    def create_class(self, *, class_date, studio=None, instructor=None, capacity=10):
+        return ScheduledClass.objects.create(
+            site=self.site,
+            studio=studio or self.studio,
+            staff_member=instructor or self.instructor,
+            name="Pilates",
+            class_date=class_date,
+            start_time=time(8, 0),
+            end_time=time(9, 0),
+            capacity=capacity,
+            status=ScheduledClass.STATUS_SCHEDULED,
+        )
+
+    def test_weekly_report_returns_six_week_trends_and_staff_totals(self):
+        trial_visit = self.create_visit(
+            visit_date=date(2026, 6, 30),
+            client=self.client,
+            pricing_option=self.trial_option,
+        )
+        ServicePurchase.objects.create(
+            site=self.site,
+            studio=self.studio,
+            natural_key="converted-membership",
+            current_row_hash="converted-membership-hash",
+            client=self.client,
+            pricing_option=self.membership_option,
+            sale_date=date(2026, 7, 1),
+            total_amount=Decimal("100.00"),
+        )
+        scheduled_class = self.create_class(class_date=date(2026, 6, 30), capacity=8)
+        AttendanceClassMatch.objects.create(
+            attendance_visit=trial_visit,
+            scheduled_class=scheduled_class,
+            match_method=AttendanceClassMatch.METHOD_MANUAL,
+            confidence=100,
+        )
+        member_visit = self.create_visit(
+            visit_date=date(2026, 7, 7),
+            client=self.member_client,
+            pricing_option=self.membership_option,
+        )
+        second_class = self.create_class(class_date=date(2026, 7, 7), capacity=10)
+        AttendanceClassMatch.objects.create(
+            attendance_visit=member_visit,
+            scheduled_class=second_class,
+            match_method=AttendanceClassMatch.METHOD_MANUAL,
+            confidence=100,
+        )
+        other_studio_visit = self.create_visit(
+            visit_date=date(2026, 7, 7),
+            client=self.member_client,
+            studio=self.other_studio,
+            instructor=self.other_instructor,
+            pricing_option=self.membership_option,
+        )
+        other_class = self.create_class(
+            class_date=date(2026, 7, 7),
+            studio=self.other_studio,
+            instructor=self.other_instructor,
+        )
+        AttendanceClassMatch.objects.create(
+            attendance_visit=other_studio_visit,
+            scheduled_class=other_class,
+            match_method=AttendanceClassMatch.METHOD_MANUAL,
+            confidence=100,
+        )
+
+        response = self.api.get(
+            reverse("analytics-weekly-report"),
+            {
+                "site": self.site.id,
+                "studio": self.studio.id,
+                "date_from": "2026-07-06",
+                "date_to": "2026-07-12",
+            },
+        )
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.data["mode"], "weekly_report")
+        self.assertEqual(len(response.data["weeks"]), 6)
+        self.assertEqual(
+            response.data["trend_date_range"],
+            {"from": "2026-06-01", "to": "2026-07-12"},
+        )
+        conversion_week = next(row for row in response.data["weeks"] if row["week_start"] == "2026-06-29")
+        self.assertEqual(conversion_week["attended_trials"], 1)
+        self.assertEqual(conversion_week["converted_clients"], 1)
+        self.assertEqual(conversion_week["converted_members"], 1)
+        self.assertEqual(conversion_week["client_conversion_rate"], 100.0)
+        self.assertEqual(conversion_week["member_conversion_rate"], 100.0)
+        self.assertEqual(len(response.data["staff"]), 1)
+        staff_row = response.data["staff"][0]
+        self.assertEqual(staff_row["staff_member_id"], self.instructor.id)
+        self.assertEqual(staff_row["scheduled_classes"], 2)
+        self.assertEqual(staff_row["assistances"], 2)
+        self.assertEqual(staff_row["capacity"], 18)
 
 
 class ReactivatedMembershipHistoryTests(TestCase):

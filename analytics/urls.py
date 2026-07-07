@@ -20,6 +20,7 @@ urlpatterns = [
     path("dashboard/weekly/", views.dashboard_weekly_view, name="analytics-dashboard-weekly"),
     path("dashboard/weekly/trends/", views.dashboard_weekly_trends_view, name="analytics-dashboard-weekly-trends"),
     path("dashboard/weekly/occupancy-hour-matrix/", views.dashboard_weekly_occupancy_hour_matrix_view, name="analytics-dashboard-weekly-occupancy-hour-matrix"),
+    path("reports/weekly/", views.weekly_report_view, name="analytics-weekly-report"),
     path("retention-followup/", views.retention_followup_view, name="analytics-retention-followup"),
     path(
         "retention-followup/<int:snapshot_id>/activity/",

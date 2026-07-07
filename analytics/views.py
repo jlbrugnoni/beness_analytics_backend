@@ -4128,9 +4128,11 @@ def weekly_trend_row(request, start, end):
         "trial_bookings": conversion["trial_bookings"],
         "attended_trials": conversion["attended_trials"],
         "unique_trial_clients": conversion["unique_trial_clients"],
+        "converted_clients": conversion["converted_clients"],
         "converted_members": conversion["converted_members"],
         "converted_non_members": conversion["converted_non_members"],
         "not_converted_clients": conversion["not_converted_clients"],
+        "client_conversion_rate": conversion["client_conversion_rate"],
         "member_conversion_rate": conversion["member_conversion_rate"],
         "non_member_conversion_rate": conversion["non_member_conversion_rate"],
     }
@@ -4161,6 +4163,115 @@ def weekly_weekday_rows(request, start, end):
             "occupation_rate": occupancy.get("occupation_rate", 0),
         })
     return rows
+
+
+def weekly_report_staff_rows(request, start, end):
+    scheduled_classes = filtered_schedule(
+        ScheduledClass.objects.select_related("site", "studio", "room", "staff_member").filter(
+            class_date__range=(start, end),
+        ),
+        request,
+    )
+    closures = list(
+        filtered_closures(
+            StudioClosure.objects.select_related("site", "studio", "room").filter(
+                active=True,
+                closure_date__range=(start, end),
+            ),
+            request,
+        )
+    )
+
+    def is_closed(scheduled_class):
+        for closure in closures:
+            if closure.closure_date != scheduled_class.class_date:
+                continue
+            if closure.studio_id and closure.studio_id != scheduled_class.studio_id:
+                continue
+            if closure.room_id and closure.room_id != scheduled_class.room_id:
+                continue
+            if closure.all_day:
+                return True
+            if time_overlaps(closure.start_time, closure.end_time, scheduled_class.start_time, scheduled_class.end_time):
+                return True
+        return False
+
+    available_classes = [
+        scheduled_class
+        for scheduled_class in scheduled_classes
+        if scheduled_class.status == ScheduledClass.STATUS_SCHEDULED and not is_closed(scheduled_class)
+    ]
+    class_ids = [scheduled_class.id for scheduled_class in available_classes]
+
+    attended_by_class = {}
+    if class_ids:
+        match_rows = (
+            AttendanceClassMatch.objects.filter(
+                scheduled_class_id__in=class_ids,
+                attendance_visit__no_show=False,
+                attendance_visit__late_cancel=False,
+            )
+            .values("scheduled_class_id")
+            .annotate(total=Count("id"))
+        )
+        attended_by_class = {
+            row["scheduled_class_id"]: row["total"]
+            for row in match_rows
+        }
+
+    staff_rows = {}
+    for scheduled_class in available_classes:
+        staff_key = scheduled_class.staff_member_id or "unassigned"
+        row = staff_rows.setdefault(staff_key, {
+            "staff_member_id": scheduled_class.staff_member_id,
+            "name": scheduled_class.staff_member.name if scheduled_class.staff_member else "N/A",
+            "scheduled_classes": 0,
+            "assistances": 0,
+            "capacity": 0,
+        })
+        row["scheduled_classes"] += 1
+        row["assistances"] += attended_by_class.get(scheduled_class.id, 0)
+        row["capacity"] += scheduled_class.capacity
+
+    for row in staff_rows.values():
+        row["occupation_rate"] = percentage(row["assistances"], row["capacity"])
+
+    return sorted(
+        staff_rows.values(),
+        key=lambda row: (-row["assistances"], -row["scheduled_classes"], row["name"]),
+    )
+
+
+def weekly_report_payload(request, start=None, end=None):
+    start, end = date_bounds(request, start=start, end=end)
+    week_ranges = week_trend_ranges(start, end)
+    report_start = week_ranges[0][0] if week_ranges else start
+    report_end = week_ranges[-1][1] if week_ranges else end
+    week_rows = [
+        weekly_trend_row(request, week_start, week_end)
+        for week_start, week_end in week_ranges
+    ]
+    return {
+        "mode": "weekly_report",
+        "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+        "trend_date_range": {"from": report_start.isoformat(), "to": report_end.isoformat()},
+        "weeks": week_rows,
+        "staff": weekly_report_staff_rows(request, report_start, report_end),
+        "definitions": {
+            "trial_bookings": "Trial-class bookings in the week, including no-shows and late cancels.",
+            "attended_trials": "Trial-class visits that were attended.",
+            "converted_clients": "Attended trial clients who purchased any non-trial paid service within the conversion window.",
+            "converted_members": "Attended trial clients who purchased a retention-tracked service within the conversion window.",
+            "occupation_rate": "Matched attended visits divided by scheduled available capacity.",
+            "assistances": "Matched attended visits assigned to the instructor's scheduled classes.",
+        },
+    }
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def weekly_report_view(request):
+    return Response(weekly_report_payload(request))
 
 
 @api_view(["GET"])
