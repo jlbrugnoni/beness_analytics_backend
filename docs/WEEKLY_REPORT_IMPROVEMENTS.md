@@ -28,10 +28,11 @@ Implemented:
   - scheduled classes
 - Added a staff table for the full six-week report period with:
   - instructor
-  - scheduled classes
+  - effective classes by week
   - assistances
   - capacity
   - occupancy rate
+- Effective classes are scheduled classes with at least one matched attended visit; zero-attendance classes are excluded from the instructor load table.
 - Added definitions for report fields so the frontend can present consistent labels/help text.
 - Added regression coverage for the endpoint, six-week window, studio filtering, conversions, and staff totals.
 
@@ -42,18 +43,29 @@ Validation:
 
 ### Phase 2: Weekly Report Screen
 
-Status: Not started
+Status: Ready for user review
 
-Planned:
+Implemented:
 
-- Add a dashboard page for Weekly Report.
-- Use the same filter and dashboard UI patterns as the existing weekly dashboard pages.
-- Show:
+- Added a dashboard page for Weekly Report at `/dashboard/weekly-report`.
+- Added the Weekly Report card to the dashboard hub.
+- Reused the same site, studio, week navigation, and advanced period filter patterns as the existing weekly dashboard pages.
+- Added English and Spanish labels for the page, charts, metrics, and instructor table.
+- Shows:
   - trial-class bar chart
   - conversion bar and conversion-rate line chart
   - occupancy percentage line chart
-  - assistances bar chart
-  - instructor table
+  - assistances and effective-classes bar chart
+  - instructor table with one row per instructor and one column per week, where each weekly cell shows classes / assistances / occupancy
+
+Pending:
+
+- User visual review and requested adjustments.
+
+Validation:
+
+- `npm run lint` passes with existing dashboard-style hook dependency warnings.
+- `npm run build` passes and includes `/dashboard/weekly-report`.
 
 ### Phase 3: Review And Adjustments
 

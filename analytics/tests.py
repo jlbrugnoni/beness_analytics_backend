@@ -121,6 +121,7 @@ class WeeklyReportEndpointTests(TestCase):
             match_method=AttendanceClassMatch.METHOD_MANUAL,
             confidence=100,
         )
+        self.create_class(class_date=date(2026, 7, 8), capacity=10)
         other_studio_visit = self.create_visit(
             visit_date=date(2026, 7, 7),
             client=self.member_client,
@@ -163,12 +164,21 @@ class WeeklyReportEndpointTests(TestCase):
         self.assertEqual(conversion_week["converted_members"], 1)
         self.assertEqual(conversion_week["client_conversion_rate"], 100.0)
         self.assertEqual(conversion_week["member_conversion_rate"], 100.0)
-        self.assertEqual(len(response.data["staff"]), 1)
-        staff_row = response.data["staff"][0]
-        self.assertEqual(staff_row["staff_member_id"], self.instructor.id)
-        self.assertEqual(staff_row["scheduled_classes"], 2)
-        self.assertEqual(staff_row["assistances"], 2)
-        self.assertEqual(staff_row["capacity"], 18)
+        current_week = next(row for row in response.data["weeks"] if row["week_start"] == "2026-07-06")
+        self.assertEqual(current_week["scheduled_classes"], 2)
+        self.assertEqual(current_week["effective_classes"], 1)
+        self.assertEqual(len(response.data["staff"]), 2)
+        first_staff_row = response.data["staff"][0]
+        self.assertEqual(first_staff_row["week_start"], "2026-06-29")
+        self.assertEqual(first_staff_row["staff_member_id"], self.instructor.id)
+        self.assertEqual(first_staff_row["effective_classes"], 1)
+        self.assertEqual(first_staff_row["assistances"], 1)
+        self.assertEqual(first_staff_row["capacity"], 8)
+        second_staff_row = response.data["staff"][1]
+        self.assertEqual(second_staff_row["week_start"], "2026-07-06")
+        self.assertEqual(second_staff_row["effective_classes"], 1)
+        self.assertEqual(second_staff_row["assistances"], 1)
+        self.assertEqual(second_staff_row["capacity"], 10)
 
 
 class ReactivatedMembershipHistoryTests(TestCase):

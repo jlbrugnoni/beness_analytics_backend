@@ -4221,16 +4221,22 @@ def weekly_report_staff_rows(request, start, end):
 
     staff_rows = {}
     for scheduled_class in available_classes:
-        staff_key = scheduled_class.staff_member_id or "unassigned"
+        attended_count = attended_by_class.get(scheduled_class.id, 0)
+        if attended_count <= 0:
+            continue
+        class_week_start = week_start(scheduled_class.class_date)
+        staff_key = (class_week_start, scheduled_class.staff_member_id or "unassigned")
         row = staff_rows.setdefault(staff_key, {
+            "week_start": class_week_start.isoformat(),
+            "week_end": (class_week_start + timedelta(days=6)).isoformat(),
             "staff_member_id": scheduled_class.staff_member_id,
             "name": scheduled_class.staff_member.name if scheduled_class.staff_member else "N/A",
-            "scheduled_classes": 0,
+            "effective_classes": 0,
             "assistances": 0,
             "capacity": 0,
         })
-        row["scheduled_classes"] += 1
-        row["assistances"] += attended_by_class.get(scheduled_class.id, 0)
+        row["effective_classes"] += 1
+        row["assistances"] += attended_count
         row["capacity"] += scheduled_class.capacity
 
     for row in staff_rows.values():
@@ -4238,7 +4244,7 @@ def weekly_report_staff_rows(request, start, end):
 
     return sorted(
         staff_rows.values(),
-        key=lambda row: (-row["assistances"], -row["scheduled_classes"], row["name"]),
+        key=lambda row: (row["week_start"], row["name"]),
     )
 
 
@@ -4247,16 +4253,24 @@ def weekly_report_payload(request, start=None, end=None):
     week_ranges = week_trend_ranges(start, end)
     report_start = week_ranges[0][0] if week_ranges else start
     report_end = week_ranges[-1][1] if week_ranges else end
+    staff_rows = weekly_report_staff_rows(request, report_start, report_end)
+    effective_classes_by_week = {}
+    for row in staff_rows:
+        effective_classes_by_week[row["week_start"]] = (
+            effective_classes_by_week.get(row["week_start"], 0) + row["effective_classes"]
+        )
     week_rows = [
         weekly_trend_row(request, week_start, week_end)
         for week_start, week_end in week_ranges
     ]
+    for row in week_rows:
+        row["effective_classes"] = effective_classes_by_week.get(row["week_start"], 0)
     return {
         "mode": "weekly_report",
         "date_range": {"from": start.isoformat(), "to": end.isoformat()},
         "trend_date_range": {"from": report_start.isoformat(), "to": report_end.isoformat()},
         "weeks": week_rows,
-        "staff": weekly_report_staff_rows(request, report_start, report_end),
+        "staff": staff_rows,
         "definitions": {
             "trial_bookings": "Trial-class bookings in the week, including no-shows and late cancels.",
             "attended_trials": "Trial-class visits that were attended.",
@@ -4264,6 +4278,7 @@ def weekly_report_payload(request, start=None, end=None):
             "converted_members": "Attended trial clients who purchased a retention-tracked service within the conversion window.",
             "occupation_rate": "Matched attended visits divided by scheduled available capacity.",
             "assistances": "Matched attended visits assigned to the instructor's scheduled classes.",
+            "effective_classes": "Scheduled classes with at least one matched attended visit.",
         },
     }
 
