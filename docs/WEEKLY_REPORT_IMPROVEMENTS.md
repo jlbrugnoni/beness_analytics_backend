@@ -89,8 +89,20 @@ Pending:
 
 ### Phase 4: Download Capability
 
-Status: Not started
+Status: In progress
 
-Planned:
+Implemented:
 
-- Add report image download after the screen and information design are approved.
+- Added frontend PNG export using the rendered Weekly Report content.
+- Export includes report title, scope, KPI cards, charts, and instructor table while excluding the export button itself.
+- Weekly report chart animations are disabled and export waits for the report paint cycle before capture to avoid partial line-chart snapshots.
+- Export temporarily rasterizes Recharts SVG charts into PNG images before capture, then restores the live charts, to prevent incomplete or misaligned chart rendering in the downloaded PNG.
+- Occupancy dot markers remain visible during normal page viewing and are hidden only while preparing exported images.
+- Downloaded report header now centers the Beness logo, selected studio/site name, report title, and selected week range without changing the normal page header layout.
+- Chart animations remain enabled during normal page viewing and are disabled only while preparing the PNG export.
+- Instructor weekly table cells now show only classes and assistances, without occupancy.
+
+Pending:
+
+- User validation of the generated image size and layout.
+- Consider a dedicated download-only layout after validating the first PNG export behavior.
