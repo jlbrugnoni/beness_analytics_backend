@@ -36,6 +36,7 @@ from core_data.importers import (
     preview_attendance_report,
     preview_attendance_rows,
 )
+from core_data.views import automate_schedule_after_import
 
 
 def excel_serial(value):
@@ -176,6 +177,57 @@ class AnalyticsImportGuardTests(APITestCase):
         ]
         return xlsx_upload("attendance.xlsx", headers, [row])
 
+    def attendance_upload_for_clients(self, client_ids):
+        headers = [
+            "Fecha",
+            "Día de la semana",
+            "Tiempo",
+            "ID del cliente",
+            "Cliente",
+            "Visita por categoría de servicio",
+            "Tipo de Visita",
+            "Tipo",
+            "Opción de precio",
+            "Fecha de Exp.",
+            "Visitas Rest.",
+            "Personal",
+            "Ubicación de visita",
+            "Ubicación de venta",
+            "Personal pagado",
+            "Cancelación tardíá",
+            "No presentado",
+            "Metodo de programación",
+            "Método de pago",
+            "Ingresos por visita",
+            "Pago de categoría de servicio",
+        ]
+        rows = []
+        for client_id in client_ids:
+            rows.append([
+                excel_serial(date(2026, 4, 15)),
+                "Miércoles",
+                "10:00 AM",
+                client_id,
+                f"Cliente {client_id}",
+                "Clases Grupales",
+                "Clase",
+                "Visita",
+                "Bono 5 clases",
+                excel_serial(date(2026, 4, 30)),
+                "4",
+                "Entrenador Uno",
+                "Pi Tao",
+                "Pi Tao",
+                "Sí",
+                "No",
+                "No",
+                "Web",
+                "Tarjeta",
+                "25",
+                "Clases Grupales",
+            ])
+        return xlsx_upload("attendance.xlsx", headers, rows)
+
     def test_repeated_attendance_file_is_identical_in_preview_and_import(self):
         first_result = import_attendance_report(self.attendance_upload(), self.site, self.user)
         self.assertEqual(first_result["import"]["attendance_created"], 1)
@@ -212,6 +264,271 @@ class AnalyticsImportGuardTests(APITestCase):
             report_import_id=corrected_result["import"]["report_import_id"],
         )
         self.assertEqual(corrected_version.changed_fields, ["revenue"])
+
+    def test_exact_duplicate_attendance_file_is_skipped_before_raw_rows_are_created(self):
+        first_result = import_attendance_report(self.attendance_upload(), self.site, self.user)
+        self.assertFalse(first_result["import"]["duplicate_skipped"])
+        self.assertEqual(first_result["import"]["raw_rows_created"], 1)
+        self.assertEqual(AttendanceVisit.objects.count(), 1)
+
+        second_result = import_attendance_report(self.attendance_upload(), self.site, self.user)
+
+        self.assertTrue(second_result["import"]["duplicate_skipped"])
+        self.assertEqual(
+            second_result["import"]["duplicate_of_report_import_id"],
+            first_result["import"]["report_import_id"],
+        )
+        self.assertEqual(second_result["import"]["raw_rows_created"], 0)
+        self.assertEqual(ReportImport.objects.count(), 1)
+        self.assertEqual(AttendanceVisit.objects.count(), 1)
+
+    def test_later_attendance_import_removes_missing_visits_in_report_window(self):
+        first_result = import_attendance_report(
+            self.attendance_upload_for_clients(["100001", "100002"]),
+            self.site,
+            self.user,
+        )
+        self.assertEqual(first_result["import"]["attendance_created"], 2)
+        self.assertEqual(first_result["import"]["attendance_removed"], 0)
+
+        second_result = import_attendance_report(
+            self.attendance_upload_for_clients(["100001"]),
+            self.site,
+            self.user,
+        )
+
+        self.assertEqual(second_result["import"]["attendance_created"], 0)
+        self.assertEqual(second_result["import"]["attendance_identical"], 1)
+        self.assertEqual(second_result["import"]["attendance_removed"], 1)
+        self.assertEqual(AttendanceVisit.objects.filter(is_active=True).count(), 1)
+        removed_visit = AttendanceVisit.objects.get(client__mindbody_id="100002")
+        self.assertFalse(removed_visit.is_active)
+        self.assertEqual(removed_visit.removed_reason, "missing_from_latest_import")
+        self.assertEqual(removed_visit.removed_seen_import_id, second_result["import"]["report_import_id"])
+
+        report_import = ReportImport.objects.get(id=second_result["import"]["report_import_id"])
+        self.assertEqual(report_import.period_start, date(2026, 4, 15))
+        self.assertEqual(report_import.period_end, date(2026, 4, 15))
+
+    def test_later_attendance_import_reactivates_previously_removed_visit(self):
+        import_attendance_report(
+            self.attendance_upload_for_clients(["100001", "100002"]),
+            self.site,
+            self.user,
+        )
+        import_attendance_report(
+            self.attendance_upload_for_clients(["100001"]),
+            self.site,
+            self.user,
+        )
+
+        restored_result = import_attendance_report(
+            self.attendance_upload_for_clients(["100001", "100002"]),
+            self.site,
+            self.user,
+        )
+
+        self.assertEqual(restored_result["import"]["attendance_reactivated"], 1)
+        self.assertEqual(restored_result["import"]["attendance_removed"], 0)
+        self.assertEqual(AttendanceVisit.objects.filter(is_active=True).count(), 2)
+        restored_visit = AttendanceVisit.objects.get(client__mindbody_id="100002")
+        self.assertTrue(restored_visit.is_active)
+        self.assertIsNone(restored_visit.removed_seen_import)
+        self.assertIsNone(restored_visit.removed_at)
+        self.assertIsNone(restored_visit.removed_reason)
+
+    @override_settings(ENABLE_ATTENDANCE_RECONSTRUCTION=True)
+    def test_attendance_reconstruction_preview_and_apply_endpoint(self):
+        import_attendance_report(
+            self.attendance_upload_for_clients(["100001", "100002"]),
+            self.site,
+            self.user,
+        )
+        import_attendance_report(
+            self.attendance_upload_for_clients(["100001"]),
+            self.site,
+            self.user,
+        )
+        AttendanceVisit.objects.update(
+            is_active=True,
+            removed_seen_import=None,
+            removed_at=None,
+            removed_reason=None,
+        )
+
+        preview = self.client.post(
+            "/api/data/report-imports/reconstruct-attendance-history/",
+            {"site": self.site.id},
+            format="json",
+        )
+
+        self.assertEqual(preview.status_code, status.HTTP_200_OK)
+        self.assertTrue(preview.data["dry_run"])
+        self.assertEqual(preview.data["totals"]["visits_removed"], 1)
+        self.assertEqual(AttendanceVisit.objects.filter(is_active=True).count(), 2)
+
+        apply_response = self.client.post(
+            "/api/data/report-imports/reconstruct-attendance-history/",
+            {
+                "site": self.site.id,
+                "apply": True,
+                "confirmation": "RECONSTRUCT ATTENDANCE",
+            },
+            format="json",
+        )
+
+        self.assertEqual(apply_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(apply_response.data["dry_run"])
+        self.assertEqual(apply_response.data["totals"]["visits_removed"], 1)
+        self.assertEqual(AttendanceVisit.objects.filter(is_active=True).count(), 1)
+        removed_visit = AttendanceVisit.objects.get(client__mindbody_id="100002")
+        self.assertFalse(removed_visit.is_active)
+        self.assertEqual(removed_visit.removed_reason, "missing_from_historical_reconstruction")
+        self.assertTrue(apply_response.data["rebuilt"])
+
+    @override_settings(ENABLE_ATTENDANCE_RECONSTRUCTION=True)
+    def test_restore_reconstructed_attendance_preview_and_apply_endpoint(self):
+        import_attendance_report(
+            self.attendance_upload_for_clients(["100001", "100002"]),
+            self.site,
+            self.user,
+        )
+        import_attendance_report(
+            self.attendance_upload_for_clients(["100001"]),
+            self.site,
+            self.user,
+        )
+
+        preview = self.client.post(
+            "/api/data/report-imports/restore-reconstructed-attendance/",
+            {"site": self.site.id, "date_to": "2026-04-15"},
+            format="json",
+        )
+
+        self.assertEqual(preview.status_code, status.HTTP_200_OK)
+        self.assertTrue(preview.data["dry_run"])
+        self.assertEqual(preview.data["visits_to_restore"], 1)
+        self.assertEqual(AttendanceVisit.objects.filter(is_active=True).count(), 1)
+
+        apply_response = self.client.post(
+            "/api/data/report-imports/restore-reconstructed-attendance/",
+            {
+                "site": self.site.id,
+                "date_to": "2026-04-15",
+                "apply": True,
+                "confirmation": "RESTORE ATTENDANCE",
+            },
+            format="json",
+        )
+
+        self.assertEqual(apply_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(apply_response.data["dry_run"])
+        self.assertEqual(apply_response.data["visits_restored"], 1)
+        self.assertEqual(AttendanceVisit.objects.filter(is_active=True).count(), 2)
+        restored_visit = AttendanceVisit.objects.get(client__mindbody_id="100002")
+        self.assertTrue(restored_visit.is_active)
+        self.assertIsNone(restored_visit.removed_reason)
+        self.assertTrue(apply_response.data["rebuilt"])
+
+    @override_settings(ENABLE_ATTENDANCE_RECONSTRUCTION=True)
+    def test_cleanup_auto_scheduled_classes_endpoint_removes_only_auto_import_classes(self):
+        room = Room.objects.create(site=self.site, studio=self.studio, name="Sala 1", group_capacity=8)
+        staff = StaffMember.objects.create(site=self.site, name="Entrenador Uno")
+        auto_class = ScheduledClass.objects.create(
+            site=self.site,
+            studio=self.studio,
+            room=room,
+            staff_member=staff,
+            name="Pilates",
+            class_date=date(2026, 4, 15),
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            capacity=8,
+            status=ScheduledClass.STATUS_SCHEDULED,
+            source=ScheduledClass.SOURCE_MANUAL,
+            reason="Automatically created from expected schedule after report import.",
+        )
+        manual_class = ScheduledClass.objects.create(
+            site=self.site,
+            studio=self.studio,
+            room=room,
+            staff_member=staff,
+            name="Pilates",
+            class_date=date(2026, 4, 15),
+            start_time=time(12, 0),
+            end_time=time(13, 0),
+            capacity=8,
+            status=ScheduledClass.STATUS_SCHEDULED,
+            source=ScheduledClass.SOURCE_MANUAL,
+            reason="Created by user",
+        )
+        expected_slot = ExpectedClassSlot.objects.create(
+            site=self.site,
+            studio=self.studio,
+            room=room,
+            staff_member=staff,
+            scheduled_class=auto_class,
+            slot_date=date(2026, 4, 15),
+            start_time=time(10, 0),
+            end_time=time(11, 0),
+            capacity=8,
+            status=ExpectedClassSlot.STATUS_MANUALLY_CREATED,
+        )
+
+        preview = self.client.post(
+            "/api/data/report-imports/cleanup-auto-scheduled-classes/",
+            {
+                "site": self.site.id,
+                "date_from": "2026-04-15",
+                "date_to": "2026-04-15",
+            },
+            format="json",
+        )
+
+        self.assertEqual(preview.status_code, status.HTTP_200_OK)
+        self.assertTrue(preview.data["dry_run"])
+        self.assertEqual(preview.data["auto_classes"], 1)
+        self.assertEqual(preview.data["capacity_to_remove"], 8)
+        self.assertTrue(ScheduledClass.objects.filter(id=auto_class.id).exists())
+
+        apply_response = self.client.post(
+            "/api/data/report-imports/cleanup-auto-scheduled-classes/",
+            {
+                "site": self.site.id,
+                "date_from": "2026-04-15",
+                "date_to": "2026-04-15",
+                "apply": True,
+                "confirmation": "CLEANUP AUTO CLASSES",
+            },
+            format="json",
+        )
+
+        self.assertEqual(apply_response.status_code, status.HTTP_200_OK)
+        self.assertFalse(ScheduledClass.objects.filter(id=auto_class.id).exists())
+        self.assertTrue(ScheduledClass.objects.filter(id=manual_class.id).exists())
+        expected_slot.refresh_from_db()
+        self.assertIsNone(expected_slot.scheduled_class)
+        self.assertEqual(expected_slot.status, ExpectedClassSlot.STATUS_MISSING)
+
+    def test_attendance_schedule_automation_does_not_create_expected_classes(self):
+        result = automate_schedule_after_import(
+            self.site,
+            {"preview": {"date_range": {"from": "2026-04-15", "to": "2026-04-15"}}},
+            "attendance_with_revenue",
+        )
+
+        self.assertTrue(result["manual_classes"]["skipped"])
+        self.assertEqual(ScheduledClass.objects.count(), 0)
+
+    @override_settings(ENABLE_ATTENDANCE_RECONSTRUCTION=True)
+    def test_attendance_reconstruction_apply_requires_confirmation(self):
+        response = self.client.post(
+            "/api/data/report-imports/reconstruct-attendance-history/",
+            {"site": self.site.id, "apply": True},
+            format="json",
+        )
+
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
     def test_attendance_staff_change_updates_existing_visit(self):
         first_result = import_attendance_report(

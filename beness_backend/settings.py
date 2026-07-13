@@ -29,6 +29,10 @@ ENABLE_ANALYTICS_RESET = str(config("ENABLE_ANALYTICS_RESET", default=str(DEBUG)
 ENABLE_PURCHASE_REPAIR = str(
     config("ENABLE_PURCHASE_REPAIR", default=str(ENABLE_ANALYTICS_RESET))
 ).lower() in ("1", "true", "yes", "on")
+# Parked for controlled maintenance only. Keep disabled unless explicitly needed.
+ENABLE_ATTENDANCE_RECONSTRUCTION = str(
+    config("ENABLE_ATTENDANCE_RECONSTRUCTION", default="False")
+).lower() in ("1", "true", "yes", "on")
 
 ALLOWED_HOSTS = ["benessbackend-production.up.railway.app", "*"]
 

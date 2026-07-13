@@ -935,7 +935,7 @@ def client_directory_view(request):
     if site_id:
         weekly_base_scope = weekly_base_scope.filter(site_id=site_id)
     attendance_anchor_scope = scoped_queryset_for_user(
-        AttendanceVisit.objects.all(),
+        AttendanceVisit.objects.filter(is_active=True),
         request.user,
         site_field="site_id",
         studio_field="visit_studio_id",
@@ -1300,7 +1300,7 @@ def client_profile_view(request, client_id):
         selected_rows = lifetime_rows
 
     profile_attendance_anchor_scope = scoped_queryset_for_user(
-        AttendanceVisit.objects.filter(site_id=client.site_id),
+        AttendanceVisit.objects.filter(site_id=client.site_id, is_active=True),
         request.user,
         site_field="site_id",
         studio_field="visit_studio_id",
@@ -1475,7 +1475,7 @@ def client_history_view(request, client_id):
             "visit_studio",
             "staff_member",
             "pricing_option",
-        ).filter(client_id=client.id, site_id=client.site_id),
+        ).filter(client_id=client.id, site_id=client.site_id, is_active=True),
         request.user,
         site_field="site_id",
         studio_field="visit_studio_id",
@@ -1576,6 +1576,7 @@ def filtered_by_site(queryset, request):
 
 
 def filtered_attendance(queryset, request):
+    queryset = queryset.filter(is_active=True)
     queryset = scoped_queryset_for_user(queryset, request.user, site_field="site_id", studio_field="visit_studio_id")
     site_id = request.query_params.get("site")
     if site_id:
@@ -1845,7 +1846,11 @@ def scheduled_attendance_hour_rows(request, start, end, attended_only=False):
     class_ids = list(scheduled_classes.values_list("id", flat=True))
     matches = AttendanceClassMatch.objects.filter(scheduled_class_id__in=class_ids)
     if attended_only:
-        matches = matches.filter(attendance_visit__no_show=False, attendance_visit__late_cancel=False)
+        matches = matches.filter(
+            attendance_visit__is_active=True,
+            attendance_visit__no_show=False,
+            attendance_visit__late_cancel=False,
+        )
     matches = matches.values("scheduled_class__start_time__hour").annotate(total=Count("id"))
     for row in matches:
         hour = row["scheduled_class__start_time__hour"]
@@ -2047,6 +2052,7 @@ def infer_membership_studio(site_id, client_id, target_month):
             site_id=site_id,
             client_id=client_id,
             visit_date__range=(start, end),
+            is_active=True,
             no_show=False,
             late_cancel=False,
         )
@@ -2063,6 +2069,7 @@ def infer_membership_studio(site_id, client_id, target_month):
             site_id=site_id,
             client_id=client_id,
             visit_date__lt=start,
+            is_active=True,
             no_show=False,
             late_cancel=False,
         )
@@ -2351,6 +2358,7 @@ def not_renewed_activity_for_statuses(status_rows):
             site_id__in=site_ids,
             client_id__in=client_ids,
             visit_date__range=(min_date, max_date),
+            is_active=True,
             no_show=False,
             late_cancel=False,
         )
@@ -3228,7 +3236,7 @@ def retention_followup_activity_view(request, snapshot_id):
     later_end = timezone.localdate()
     visits = (
         scoped_queryset_for_user(
-            AttendanceVisit.objects.all(),
+            AttendanceVisit.objects.filter(is_active=True),
             request.user,
             site_field="site_id",
             studio_field="visit_studio_id",
@@ -3572,7 +3580,7 @@ def match_visit_to_class(visit, scheduled_by_slot):
 
 
 def rebuild_attendance_class_matches(site_id=None, studio_id=None, start=None, end=None):
-    visits = AttendanceVisit.objects.select_related("staff_member").filter(visit_date__range=(start, end))
+    visits = AttendanceVisit.objects.select_related("staff_member").filter(is_active=True, visit_date__range=(start, end))
     scheduled_classes = ScheduledClass.objects.select_related("staff_member").filter(
         class_date__range=(start, end),
     ).exclude(status__in=[ScheduledClass.STATUS_CANCELLED, ScheduledClass.STATUS_UNAVAILABLE])
@@ -3786,6 +3794,7 @@ def unresolved_attendance_matches_view(request):
         "attendance_visit__pricing_option",
     ).filter(
         attendance_visit__visit_date__range=(start, end),
+        attendance_visit__is_active=True,
         attendance_visit__no_show=False,
         attendance_visit__late_cancel=False,
         match_method__in=[
@@ -3865,13 +3874,18 @@ def occupation_payload(request, start=None, end=None):
         AttendanceClassMatch.objects.filter(scheduled_class_id__in=available_class_ids)
         .values(
             "scheduled_class_id",
+            "attendance_visit__is_active",
             "attendance_visit__no_show",
             "attendance_visit__late_cancel",
         )
     )
     attended_by_class = {}
     for row in class_match_rows:
-        if row["attendance_visit__no_show"] or row["attendance_visit__late_cancel"]:
+        if (
+            not row["attendance_visit__is_active"]
+            or row["attendance_visit__no_show"]
+            or row["attendance_visit__late_cancel"]
+        ):
             continue
         scheduled_class_id = row["scheduled_class_id"]
         attended_by_class[scheduled_class_id] = attended_by_class.get(scheduled_class_id, 0) + 1
@@ -3947,6 +3961,7 @@ def occupation_payload(request, start=None, end=None):
 
     unresolved_attended = AttendanceClassMatch.objects.filter(
         attendance_visit__visit_date__range=(start, end),
+        attendance_visit__is_active=True,
         attendance_visit__no_show=False,
         attendance_visit__late_cancel=False,
         match_method__in=[
@@ -4054,6 +4069,7 @@ def occupancy_hour_matrix_for_dates(request, target_dates):
         class_match_rows = (
             AttendanceClassMatch.objects.filter(
                 scheduled_class_id__in=scheduled_by_class,
+                attendance_visit__is_active=True,
                 attendance_visit__no_show=False,
                 attendance_visit__late_cancel=False,
             )
@@ -4208,6 +4224,7 @@ def weekly_report_staff_rows(request, start, end):
         match_rows = (
             AttendanceClassMatch.objects.filter(
                 scheduled_class_id__in=class_ids,
+                attendance_visit__is_active=True,
                 attendance_visit__no_show=False,
                 attendance_visit__late_cancel=False,
             )

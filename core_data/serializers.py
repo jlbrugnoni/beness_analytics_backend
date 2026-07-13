@@ -305,12 +305,13 @@ class ExpectedClassSlotSerializer(serializers.ModelSerializer):
     def get_scheduled_class_attendance_count(self, obj):
         if not obj.scheduled_class_id:
             return 0
-        return obj.scheduled_class.attendance_matches.count()
+        return obj.scheduled_class.attendance_matches.filter(attendance_visit__is_active=True).count()
 
     def get_scheduled_class_attended_count(self, obj):
         if not obj.scheduled_class_id:
             return 0
         return obj.scheduled_class.attendance_matches.filter(
+            attendance_visit__is_active=True,
             attendance_visit__no_show=False,
             attendance_visit__late_cancel=False,
         ).count()
@@ -318,12 +319,18 @@ class ExpectedClassSlotSerializer(serializers.ModelSerializer):
     def get_scheduled_class_no_show_count(self, obj):
         if not obj.scheduled_class_id:
             return 0
-        return obj.scheduled_class.attendance_matches.filter(attendance_visit__no_show=True).count()
+        return obj.scheduled_class.attendance_matches.filter(
+            attendance_visit__is_active=True,
+            attendance_visit__no_show=True,
+        ).count()
 
     def get_scheduled_class_late_cancel_count(self, obj):
         if not obj.scheduled_class_id:
             return 0
-        return obj.scheduled_class.attendance_matches.filter(attendance_visit__late_cancel=True).count()
+        return obj.scheduled_class.attendance_matches.filter(
+            attendance_visit__is_active=True,
+            attendance_visit__late_cancel=True,
+        ).count()
 
 
 class AttendanceVisitSerializer(MoneyProtectedSerializerMixin, serializers.ModelSerializer):

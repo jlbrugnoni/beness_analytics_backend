@@ -513,6 +513,7 @@ class ReportImport(models.Model):
     report_type = models.CharField(max_length=100)
     source_system = models.CharField(max_length=100, blank=True, null=True)
     file_name = models.CharField(max_length=255)
+    file_hash = models.CharField(max_length=64, blank=True, null=True, db_index=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default=STATUS_PENDING)
     total_rows = models.PositiveIntegerField(default=0)
     valid_rows = models.PositiveIntegerField(default=0)
@@ -534,6 +535,8 @@ class ReportImport(models.Model):
     )
     uploaded_at = models.DateTimeField(auto_now_add=True)
     processed_at = models.DateTimeField(blank=True, null=True)
+    period_start = models.DateField(blank=True, null=True)
+    period_end = models.DateField(blank=True, null=True)
 
     class Meta:
         ordering = ["-uploaded_at"]
@@ -652,6 +655,16 @@ class AttendanceVisit(models.Model):
         blank=True,
         related_name="last_seen_attendance_visits",
     )
+    is_active = models.BooleanField(default=True, db_index=True)
+    removed_seen_import = models.ForeignKey(
+        ReportImport,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="removed_attendance_visits",
+    )
+    removed_at = models.DateTimeField(blank=True, null=True)
+    removed_reason = models.CharField(max_length=100, blank=True, null=True)
     source_raw_row = models.ForeignKey(
         AttendanceRawRow,
         on_delete=models.SET_NULL,

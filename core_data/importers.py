@@ -319,6 +319,13 @@ def hash_parts(parts):
     return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
 
 
+def uploaded_file_hash(uploaded_file):
+    uploaded_file.seek(0)
+    digest = hashlib.sha256(uploaded_file.read()).hexdigest()
+    uploaded_file.seek(0)
+    return digest
+
+
 def assign_occurrence_indexes(rows, base_key_builder):
     occurrence_counts = Counter()
     for row in rows:
@@ -1627,27 +1634,73 @@ def import_trainer_availability_report(uploaded_file, site, uploaded_by=None, ro
 
 @transaction.atomic
 def import_attendance_report(uploaded_file, site, uploaded_by=None):
+    file_hash = uploaded_file_hash(uploaded_file)
     preview = preview_attendance_report(uploaded_file, site)
     if not preview["is_valid_schema"]:
         raise ValueError(f"Missing required headers: {', '.join(preview['missing_headers'])}")
+
+    date_range = preview.get("date_range") or {}
+    period_start = datetime.date.fromisoformat(date_range["from"]) if date_range.get("from") else None
+    period_end = datetime.date.fromisoformat(date_range["to"]) if date_range.get("to") else None
+    latest_site_import = (
+        ReportImport.objects.filter(
+            report_type=ATTENDANCE_REPORT_TYPE,
+            source_system="mindbody",
+            status=ReportImport.STATUS_COMPLETED,
+            attendance_raw_rows__site=site,
+        )
+        .order_by("-uploaded_at")
+        .first()
+    )
+    if latest_site_import and latest_site_import.file_hash == file_hash:
+        return {
+            "preview": preview,
+            "import": {
+                "report_import_id": latest_site_import.id,
+                "duplicate_skipped": True,
+                "duplicate_of_report_import_id": latest_site_import.id,
+                "raw_rows_created": 0,
+                "attendance_created": 0,
+                "attendance_changed": 0,
+                "attendance_identical": 0,
+                "attendance_reactivated": 0,
+                "attendance_removed": 0,
+                "natural_key_collisions": 0,
+                "versions_created": 0,
+                "new_lookups": {
+                    "clients": 0,
+                    "studios": 0,
+                    "staff_members": 0,
+                    "service_categories": 0,
+                    "pricing_options": 0,
+                    "payment_methods": 0,
+                },
+            },
+        }
 
     report_import = ReportImport.objects.create(
         report_type=ATTENDANCE_REPORT_TYPE,
         source_system="mindbody",
         file_name=getattr(uploaded_file, "name", "uploaded.xlsx"),
+        file_hash=file_hash,
         status=ReportImport.STATUS_PROCESSING,
         total_rows=preview["row_counts"]["data_rows"],
         valid_rows=preview["row_counts"]["valid_rows"],
         error_rows=preview["row_counts"]["invalid_rows"],
         uploaded_by=uploaded_by,
+        period_start=period_start,
+        period_end=period_end,
     )
 
     stats = {
         "report_import_id": report_import.id,
+        "duplicate_skipped": False,
         "raw_rows_created": 0,
         "attendance_created": 0,
         "attendance_changed": 0,
         "attendance_identical": 0,
+        "attendance_reactivated": 0,
+        "attendance_removed": 0,
         "natural_key_collisions": 0,
         "versions_created": 0,
         "new_lookups": {
@@ -1663,6 +1716,7 @@ def import_attendance_report(uploaded_file, site, uploaded_by=None):
     rows_to_import = preview_attendance_rows(uploaded_file)
     current_visit_candidates = {}
     lookup_cache = {}
+    imported_studio_ids = set()
 
     for row in rows_to_import["valid_rows"]:
         payload = row["payload"]
@@ -1683,6 +1737,7 @@ def import_attendance_report(uploaded_file, site, uploaded_by=None):
             payload.get("Ubicación de visita"),
         )
         stats["new_lookups"]["studios"] += int(created)
+        imported_studio_ids.add(visit_studio.id)
 
         sale_studio, created = get_or_create_scoped_cached(
             lookup_cache,
@@ -1804,23 +1859,36 @@ def import_attendance_report(uploaded_file, site, uploaded_by=None):
                 revenue=Decimal(str(payload.get("_revenue") or 0)).quantize(Decimal("0.01")),
                 first_seen_import=report_import,
                 last_seen_import=report_import,
+                is_active=True,
                 source_raw_row=raw_row,
             )
             stats["attendance_created"] += 1
             changes = list(snapshot.keys())
         elif current_attendance_hash(visit) == row["hash"]:
             changes = []
+            was_inactive = not visit.is_active
             visit.current_row_hash = row["hash"]
             visit.last_seen_import = report_import
+            visit.is_active = True
+            visit.removed_seen_import = None
+            visit.removed_at = None
+            visit.removed_reason = None
             visit.source_raw_row = raw_row
             visit.save(update_fields=[
                 "current_row_hash",
                 "last_seen_import",
+                "is_active",
+                "removed_seen_import",
+                "removed_at",
+                "removed_reason",
                 "source_raw_row",
                 "updated_at",
             ])
+            if was_inactive:
+                stats["attendance_reactivated"] += 1
             stats["attendance_identical"] += 1
         else:
+            was_inactive = not visit.is_active
             visit.current_row_hash = row["hash"]
             visit.client = related["client"]
             visit.staff_member = related["staff_member"]
@@ -1842,8 +1910,14 @@ def import_attendance_report(uploaded_file, site, uploaded_by=None):
             visit.scheduling_method = payload.get("Metodo de programación")
             visit.revenue = Decimal(str(payload.get("_revenue") or 0)).quantize(Decimal("0.01"))
             visit.last_seen_import = report_import
+            visit.is_active = True
+            visit.removed_seen_import = None
+            visit.removed_at = None
+            visit.removed_reason = None
             visit.source_raw_row = raw_row
             visit.save()
+            if was_inactive:
+                stats["attendance_reactivated"] += 1
             stats["attendance_changed"] += 1
 
         if changes or not previous_snapshot:
@@ -1858,6 +1932,23 @@ def import_attendance_report(uploaded_file, site, uploaded_by=None):
             stats["versions_created"] += 1
 
     stats["natural_key_collisions"] = len(rows_to_import["valid_rows"]) - len(current_visit_candidates)
+
+    if period_start and period_end and imported_studio_ids:
+        removed_queryset = (
+            AttendanceVisit.objects.filter(
+                site=site,
+                is_active=True,
+                visit_date__range=(period_start, period_end),
+                visit_studio_id__in=imported_studio_ids,
+            )
+            .exclude(natural_key__in=current_visit_candidates.keys())
+        )
+        stats["attendance_removed"] = removed_queryset.update(
+            is_active=False,
+            removed_seen_import=report_import,
+            removed_at=timezone.now(),
+            removed_reason="missing_from_latest_import",
+        )
 
     for row in rows_to_import["invalid_rows"]:
         AttendanceRawRow.objects.create(

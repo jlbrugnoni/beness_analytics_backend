@@ -106,3 +106,30 @@ Pending:
 
 - User validation of the generated image size and layout.
 - Consider a dedicated download-only layout after validating the first PNG export behavior.
+
+### Attendance Import Alignment
+
+Status: In progress
+
+Implemented:
+
+- Created branch `feature/report-attendance-alignment` for attendance/report alignment changes.
+- Confirmed that Weekly Report assistances use matched scheduled-class attendance while Attendance Report completed visits use raw attended visits.
+- Compared Piantini and Bella Vista unmatched attendance in the local data. Bella Vista showed a larger group-class matching gap in late May and early June 2026.
+- Added soft-removal tracking for attendance visits so a newer Mindbody attendance report can correct older overlapping report windows.
+- Added file-hash tracking on imports so exact duplicate attendance files are skipped before creating another raw-row audit copy.
+- Attendance imports now store their covered date range on `ReportImport`.
+- When a newer attendance import covers a date/studio window, previously active visits missing from that file are marked inactive with `removed_reason = missing_from_latest_import`.
+- If a later import contains a previously removed visit again, the visit is reactivated and its removal metadata is cleared.
+- Updated dashboard/report/class-match queries to exclude inactive attendance visits from active analytics.
+- Parked the attendance reconstruction, restore, and auto-class cleanup utilities behind `ENABLE_ATTENDANCE_RECONSTRUCTION=False`.
+- Removed reconstruction, restore, and cleanup controls from the active Uploads page to avoid production data changes in this version.
+- Attendance import schedule automation now rebuilds class matches only; it no longer creates expected scheduled classes from templates.
+- Kept the protected maintenance utilities in code for a possible future controlled repair, but they are disabled by default and not exposed in the UI.
+
+Validation:
+
+- `manage.py test core_data.test_analytics_import_guards analytics.tests.WeeklyReportEndpointTests analytics.test_client_metrics`
+- `manage.py test analytics.tests.WeeklyReportEndpointTests`
+- `manage.py makemigrations --check --dry-run`
+- `npm run build`

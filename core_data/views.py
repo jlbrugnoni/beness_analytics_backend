@@ -559,6 +559,51 @@ def create_scheduled_classes_from_missing_expected_slots(site_id=None, studio_id
     return stats
 
 
+AUTO_CREATED_EXPECTED_CLASS_REASON = "Automatically created from expected schedule after report import."
+
+
+def cleanup_auto_created_expected_classes(site_id=None, studio_id=None, date_from=None, date_to=None, apply_changes=False):
+    queryset = ScheduledClass.objects.filter(
+        source=ScheduledClass.SOURCE_MANUAL,
+        reason=AUTO_CREATED_EXPECTED_CLASS_REASON,
+        class_date__range=(date_from, date_to),
+    )
+    if site_id:
+        queryset = queryset.filter(site_id=site_id)
+    if studio_id:
+        queryset = queryset.filter(studio_id=studio_id)
+
+    class_ids = list(queryset.values_list("id", flat=True))
+    expected_slots = ExpectedClassSlot.objects.filter(scheduled_class_id__in=class_ids)
+    attendance_matches = AttendanceClassMatch.objects.filter(scheduled_class_id__in=class_ids)
+    result = {
+        "dry_run": not apply_changes,
+        "confirmation_required": "CLEANUP AUTO CLASSES",
+        "date_range": {"from": date_from.isoformat(), "to": date_to.isoformat()},
+        "auto_classes": queryset.count(),
+        "capacity_to_remove": sum(queryset.values_list("capacity", flat=True)),
+        "expected_slots_to_unlink": expected_slots.count(),
+        "attendance_matches_to_rematch": attendance_matches.count(),
+        "samples": list(
+            queryset.select_related("studio", "room", "staff_member")
+            .order_by("class_date", "start_time")
+            .values("id", "class_date", "start_time", "studio__name", "room__name", "staff_member__name", "capacity")[:20]
+        ),
+    }
+    if not apply_changes:
+        return result
+
+    with transaction.atomic():
+        expected_slots.update(
+            scheduled_class=None,
+            status=ExpectedClassSlot.STATUS_MISSING,
+            resolution_notes="Auto-created class removed during capacity cleanup.",
+        )
+        deleted_classes, _ = queryset.delete()
+    result["auto_classes_deleted"] = deleted_classes
+    return result
+
+
 def automate_schedule_after_import(site, import_result, report_type):
     if report_type not in {ATTENDANCE_REPORT_TYPE, TRAINER_AVAILABILITY_REPORT_TYPE}:
         return None
@@ -570,6 +615,20 @@ def automate_schedule_after_import(site, import_result, report_type):
         return {
             "skipped": True,
             "reason": "Report did not provide a valid date range.",
+        }
+
+    if report_type == ATTENDANCE_REPORT_TYPE:
+        from analytics.views import rebuild_attendance_class_matches
+
+        match_stats = rebuild_attendance_class_matches(site_id=site.id, start=start, end=end)
+        return {
+            "skipped": False,
+            "date_range": {"from": start.isoformat(), "to": end.isoformat()},
+            "expected_slots": {"skipped": True, "reason": "Attendance imports do not create scheduled classes."},
+            "expected_slot_rematch": {"skipped": True, "reason": "Attendance imports do not reconcile expected schedules."},
+            "manual_classes": {"skipped": True, "reason": "Attendance imports do not create scheduled classes."},
+            "scheduled_class_reconciliation": {"skipped": True, "reason": "Attendance imports do not reconcile expected schedules."},
+            "attendance_matches": match_stats,
         }
 
     with transaction.atomic():
@@ -971,6 +1030,9 @@ class ReportImportViewSet(viewsets.ModelViewSet):
         "rollback": "can_reset_data",
         "reset_analytics_data": "can_reset_data",
         "repair_sales_by_service_purchases": "can_reset_data",
+        "reconstruct_attendance_history": "can_reset_data",
+        "restore_reconstructed_attendance": "can_reset_data",
+        "cleanup_auto_scheduled_classes": "can_reset_data",
         "destroy": "can_reset_data",
     }
 
@@ -1371,6 +1433,197 @@ class ReportImportViewSet(viewsets.ModelViewSet):
         result["rebuilt_client_metrics"] = rebuilt_client_metrics
         return Response(result)
 
+    @action(detail=False, methods=["post"], url_path="reconstruct-attendance-history")
+    def reconstruct_attendance_history(self, request):
+        if not settings.ENABLE_ATTENDANCE_RECONSTRUCTION:
+            return Response(
+                {"error": "Attendance reconstruction is disabled for this environment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        apply_changes = request.data.get("apply") in (True, "true", "True", "1", 1)
+        if apply_changes and request.data.get("confirmation") != "RECONSTRUCT ATTENDANCE":
+            return Response(
+                {"error": "Invalid confirmation phrase."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        site_id = request.data.get("site") or request.query_params.get("site")
+        if not site_id:
+            return Response(
+                {"error": "Site is required for attendance reconstruction."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        scoped_sites = scoped_queryset_for_user(Site.objects.all(), request.user, site_field="id")
+        if not scoped_sites.filter(id=site_id).exists():
+            return Response({"error": "Site not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        from analytics.client_metrics import rebuild_client_metrics_for_range
+        from analytics.views import rebuild_attendance_class_matches
+        from core_data.attendance_reconstruction import reconstruct_attendance_history
+
+        result = reconstruct_attendance_history(site_id=site_id, apply=apply_changes)
+
+        rebuilt = []
+        if apply_changes:
+            for affected_range in result.get("affected_ranges", []):
+                range_start = parse_iso_date(affected_range["from"])
+                range_end = parse_iso_date(affected_range["to"])
+                if not range_start or not range_end:
+                    continue
+                affected_site_id = affected_range["site_id"]
+                rebuilt.append({
+                    "site_id": affected_site_id,
+                    "from": affected_range["from"],
+                    "to": affected_range["to"],
+                    "attendance_matches": rebuild_attendance_class_matches(
+                        site_id=affected_site_id,
+                        start=range_start,
+                        end=range_end,
+                    ),
+                    "client_metrics": rebuild_client_metrics_for_range(
+                        affected_site_id,
+                        range_start,
+                        range_end,
+                    ),
+                })
+        result["rebuilt"] = rebuilt
+        return Response(result)
+
+    @action(detail=False, methods=["post"], url_path="restore-reconstructed-attendance")
+    def restore_reconstructed_attendance(self, request):
+        if not settings.ENABLE_ATTENDANCE_RECONSTRUCTION:
+            return Response(
+                {"error": "Attendance reconstruction is disabled for this environment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        apply_changes = request.data.get("apply") in (True, "true", "True", "1", 1)
+        if apply_changes and request.data.get("confirmation") != "RESTORE ATTENDANCE":
+            return Response(
+                {"error": "Invalid confirmation phrase."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        site_id = request.data.get("site") or request.query_params.get("site")
+        if not site_id:
+            return Response(
+                {"error": "Site is required for attendance restoration."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        scoped_sites = scoped_queryset_for_user(Site.objects.all(), request.user, site_field="id")
+        if not scoped_sites.filter(id=site_id).exists():
+            return Response({"error": "Site not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        date_from = parse_iso_date(request.data.get("date_from") or request.query_params.get("date_from"))
+        date_to = parse_iso_date(request.data.get("date_to") or request.query_params.get("date_to"))
+        if not date_to:
+            return Response(
+                {"error": "date_to is required for attendance restoration."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        if date_from and date_from > date_to:
+            return Response(
+                {"error": "date_from cannot be after date_to."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        from analytics.client_metrics import rebuild_client_metrics_for_range
+        from analytics.views import rebuild_attendance_class_matches
+        from core_data.attendance_reconstruction import restore_reconstructed_attendance
+
+        result = restore_reconstructed_attendance(
+            site_id=site_id,
+            date_from=date_from,
+            date_to=date_to,
+            apply=apply_changes,
+        )
+
+        rebuilt = []
+        if apply_changes:
+            for affected_range in result.get("affected_ranges", []):
+                range_start = parse_iso_date(affected_range["from"])
+                range_end = parse_iso_date(affected_range["to"])
+                if not range_start or not range_end:
+                    continue
+                affected_site_id = affected_range["site_id"]
+                rebuilt.append({
+                    "site_id": affected_site_id,
+                    "from": affected_range["from"],
+                    "to": affected_range["to"],
+                    "attendance_matches": rebuild_attendance_class_matches(
+                        site_id=affected_site_id,
+                        start=range_start,
+                        end=range_end,
+                    ),
+                    "client_metrics": rebuild_client_metrics_for_range(
+                        affected_site_id,
+                        range_start,
+                        range_end,
+                    ),
+                })
+        result["rebuilt"] = rebuilt
+        return Response(result)
+
+    @action(detail=False, methods=["post"], url_path="cleanup-auto-scheduled-classes")
+    def cleanup_auto_scheduled_classes(self, request):
+        if not settings.ENABLE_ATTENDANCE_RECONSTRUCTION:
+            return Response(
+                {"error": "Schedule cleanup is disabled for this environment."},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        apply_changes = request.data.get("apply") in (True, "true", "True", "1", 1)
+        if apply_changes and request.data.get("confirmation") != "CLEANUP AUTO CLASSES":
+            return Response(
+                {"error": "Invalid confirmation phrase."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        site_id = request.data.get("site") or request.query_params.get("site")
+        studio_id = request.data.get("studio") or request.query_params.get("studio")
+        date_from = parse_iso_date(request.data.get("date_from") or request.query_params.get("date_from"))
+        date_to = parse_iso_date(request.data.get("date_to") or request.query_params.get("date_to"))
+        if not site_id:
+            return Response({"error": "site is required."}, status=status.HTTP_400_BAD_REQUEST)
+        if not date_from or not date_to:
+            return Response({"error": "date_from and date_to are required."}, status=status.HTTP_400_BAD_REQUEST)
+        if date_from > date_to:
+            return Response({"error": "date_from cannot be after date_to."}, status=status.HTTP_400_BAD_REQUEST)
+
+        scoped_sites = scoped_queryset_for_user(Site.objects.all(), request.user, site_field="id")
+        if not scoped_sites.filter(id=site_id).exists():
+            return Response({"error": "Site not found."}, status=status.HTTP_404_NOT_FOUND)
+        if studio_id:
+            scoped_studios = scoped_queryset_for_user(Studio.objects.filter(site_id=site_id), request.user, studio_field="id")
+            if not scoped_studios.filter(id=studio_id).exists():
+                return Response({"error": "Studio not found."}, status=status.HTTP_404_NOT_FOUND)
+
+        result = cleanup_auto_created_expected_classes(
+            site_id=site_id,
+            studio_id=studio_id,
+            date_from=date_from,
+            date_to=date_to,
+            apply_changes=apply_changes,
+        )
+
+        rebuilt = None
+        if apply_changes:
+            from analytics.client_metrics import rebuild_client_metrics_for_range
+            from analytics.views import rebuild_attendance_class_matches
+
+            rebuilt = {
+                "attendance_matches": rebuild_attendance_class_matches(
+                    site_id=site_id,
+                    studio_id=studio_id,
+                    start=date_from,
+                    end=date_to,
+                ),
+                "client_metrics": rebuild_client_metrics_for_range(site_id, date_from, date_to),
+            }
+        result["rebuilt"] = rebuilt
+        return Response(result)
+
     @action(detail=False, methods=["post"], url_path="preview")
     def preview(self, request):
         uploaded_file = request.FILES.get("file")
@@ -1586,7 +1839,7 @@ class AttendanceVisitViewSet(ImportedDataFilterMixin, viewsets.ReadOnlyModelView
                 "service_category",
                 "pricing_option",
                 "payment_method",
-            ).all()
+            ).filter(is_active=True)
         )
 
 
@@ -1614,21 +1867,31 @@ class ScheduledClassViewSet(ImportedDataFilterMixin, viewsets.ModelViewSet):
                 "source_row",
             )
             .annotate(
-                attendance_count=Count("attendance_matches"),
+                attendance_count=Count(
+                    "attendance_matches",
+                    filter=Q(attendance_matches__attendance_visit__is_active=True),
+                ),
                 attended_count=Count(
                     "attendance_matches",
                     filter=Q(
+                        attendance_matches__attendance_visit__is_active=True,
                         attendance_matches__attendance_visit__no_show=False,
                         attendance_matches__attendance_visit__late_cancel=False,
                     ),
                 ),
                 no_show_count=Count(
                     "attendance_matches",
-                    filter=Q(attendance_matches__attendance_visit__no_show=True),
+                    filter=Q(
+                        attendance_matches__attendance_visit__is_active=True,
+                        attendance_matches__attendance_visit__no_show=True,
+                    ),
                 ),
                 late_cancel_count=Count(
                     "attendance_matches",
-                    filter=Q(attendance_matches__attendance_visit__late_cancel=True),
+                    filter=Q(
+                        attendance_matches__attendance_visit__is_active=True,
+                        attendance_matches__attendance_visit__late_cancel=True,
+                    ),
                 ),
             )
         )
@@ -1704,11 +1967,15 @@ class ScheduledClassViewSet(ImportedDataFilterMixin, viewsets.ModelViewSet):
                 attended_total=Count(
                     "attendance_matches",
                     filter=Q(
+                        attendance_matches__attendance_visit__is_active=True,
                         attendance_matches__attendance_visit__no_show=False,
                         attendance_matches__attendance_visit__late_cancel=False,
                     ),
                 ),
-                match_total=Count("attendance_matches"),
+                match_total=Count(
+                    "attendance_matches",
+                    filter=Q(attendance_matches__attendance_visit__is_active=True),
+                ),
             )
         )
         classes_to_cancel = [
@@ -1840,7 +2107,7 @@ class AttendanceClassMatchViewSet(viewsets.ReadOnlyModelViewSet):
             "attendance_visit__pricing_option",
             "attendance_visit__staff_member",
             "scheduled_class",
-        ).all()
+        ).filter(attendance_visit__is_active=True)
         queryset = scoped_queryset_for_user(
             queryset,
             self.request.user,

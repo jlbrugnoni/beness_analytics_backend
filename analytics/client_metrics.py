@@ -127,6 +127,7 @@ def rebuild_client_studio_monthly_metrics(site_id, target_month):
     attendance = AttendanceVisit.objects.filter(
         site_id=site_id,
         visit_date__range=(target_month, end),
+        is_active=True,
     ).iterator()
     for visit in attendance:
         metric = metrics[(visit.client_id, visit.visit_studio_id)]
@@ -338,6 +339,7 @@ def rebuild_client_studio_weekly_metrics(site_id, target_week):
     attendance = AttendanceVisit.objects.filter(
         site_id=site_id,
         visit_date__range=(start, end),
+        is_active=True,
     ).iterator()
     for visit in attendance:
         metric = metrics[(visit.client_id, visit.visit_studio_id)]
@@ -438,6 +440,7 @@ def client_metric_periods_for_import(report_import):
     if report_import.report_type == "attendance_with_revenue":
         dates = AttendanceVisit.objects.filter(
             last_seen_import=report_import,
+            is_active=True,
         ).values_list("visit_date", flat=True)
         for value in dates:
             months.add(month_start(value))
