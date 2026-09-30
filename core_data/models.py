@@ -501,12 +501,14 @@ class ReportImport(models.Model):
     STATUS_PENDING = "pending"
     STATUS_PROCESSING = "processing"
     STATUS_COMPLETED = "completed"
+    STATUS_NEEDS_REVIEW = "needs_review"
     STATUS_FAILED = "failed"
 
     STATUS_CHOICES = [
         (STATUS_PENDING, "Pending"),
         (STATUS_PROCESSING, "Processing"),
         (STATUS_COMPLETED, "Completed"),
+        (STATUS_NEEDS_REVIEW, "Imported with pending purchase matches"),
         (STATUS_FAILED, "Failed"),
     ]
 
@@ -920,6 +922,32 @@ class ServicePurchase(models.Model):
 
     def __str__(self):
         return f"{self.client.name} - {self.pricing_option.name}"
+
+
+class ServicePurchaseMatchReview(models.Model):
+    """An unresolved input, or a remembered decision for identical future inputs."""
+
+    fingerprint = models.CharField(max_length=64, unique=True)
+    decision_history = models.JSONField(default=list, blank=True)
+    site = models.ForeignKey(Site, on_delete=models.CASCADE)
+    studio = models.ForeignKey(Studio, on_delete=models.CASCADE)
+    client = models.ForeignKey(Client, on_delete=models.CASCADE)
+    latest_raw_row = models.ForeignKey(ServicePurchaseRawRow, on_delete=models.CASCADE)
+    source_rows = models.ManyToManyField(ServicePurchaseRawRow, related_name="match_reviews")
+    reason = models.CharField(max_length=40)
+    status = models.CharField(max_length=12, default="pending", db_index=True, choices=[
+        ("pending", "Pending"), ("update", "Updated existing purchase"),
+        ("create", "Created separate purchase"), ("ignore", "Ignored incoming row"),
+    ])
+    purchase = models.ForeignKey(ServicePurchase, null=True, blank=True, on_delete=models.SET_NULL)
+    resolved_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at", "-id"]
 
 
 class ServicePurchaseVersion(models.Model):

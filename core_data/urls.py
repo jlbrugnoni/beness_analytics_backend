@@ -2,9 +2,11 @@ from django.urls import include, path
 from rest_framework.routers import DefaultRouter
 
 from . import views
+from .purchase_review_api import ServicePurchaseMatchReviewViewSet
 
 
 router = DefaultRouter()
+router.register(r"purchase-match-reviews", ServicePurchaseMatchReviewViewSet, basename="purchase-match-review")
 router.register(r"users", views.UserViewSet, basename="user")
 router.register(r"group-access-profiles", views.GroupAccessProfileViewSet, basename="group-access-profile")
 router.register(r"user-access-profiles", views.UserAccessProfileViewSet, basename="user-access-profile")

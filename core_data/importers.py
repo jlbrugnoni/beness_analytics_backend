@@ -9,7 +9,7 @@ from collections import Counter
 from decimal import Decimal
 from html.parser import HTMLParser
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from .models import (
@@ -28,6 +28,7 @@ from .models import (
     ServiceCategory,
     ServicePurchase,
     ServicePurchaseRawRow,
+    ServicePurchaseMatchReview,
     ServicePurchaseVersion,
     StaffMember,
     Studio,
@@ -2705,6 +2706,8 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None, studio
         raise ValueError("Studio is required for Sales by Service imports.")
     if studio.site_id != site.id:
         raise ValueError("Selected studio does not belong to the selected site.")
+    # Serialize imports and manual decisions for the same studio.
+    Studio.objects.select_for_update().get(pk=studio.pk)
     preview = preview_sales_by_service_report(uploaded_file, site, studio=studio)
     if not preview["is_valid_schema"]:
         raise ValueError(f"Missing required headers: {', '.join(preview['missing_headers'])}")
@@ -2728,6 +2731,8 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None, studio
         "service_purchases_identical": 0,
         "service_purchase_ambiguous_rows": 0,
         "natural_key_collisions": 0,
+        "service_purchase_pending_rows": 0,
+        "service_purchase_ignored_rows": 0,
         "versions_created": 0,
         "new_lookups": {"clients": 0, "service_categories": 0, "pricing_options": 0},
     }
@@ -2793,8 +2798,45 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None, studio
             "related": related,
         })
 
-    grouped_candidates = {}
+    from .purchase_matching import attach_review_fingerprints, queue_purchase_review, apply_purchase_candidate
+
+    attach_review_fingerprints(current_candidates)
+    remembered = {
+        review.fingerprint: review
+        for review in ServicePurchaseMatchReview.objects.filter(
+            fingerprint__in=[candidate["review_fingerprint"] for candidate in current_candidates]
+        ).select_related("purchase")
+    }
+    remembered_matches = []
+    automatic_candidates = []
+    reserved_purchase_ids = set()
     for candidate in current_candidates:
+        review = remembered.get(candidate["review_fingerprint"])
+        if not review:
+            automatic_candidates.append(candidate)
+            continue
+        review.source_rows.add(candidate["raw_row"])
+        review.latest_raw_row = candidate["raw_row"]
+        review.save(update_fields=["latest_raw_row", "updated_at"])
+        if review.status == "ignore":
+            stats["service_purchase_ignored_rows"] += 1
+        elif review.status == "pending":
+            stats["service_purchase_pending_rows"] += 1
+        elif (
+            review.purchase_id and review.purchase_id not in reserved_purchase_ids
+            and review.purchase.site_id == site.id
+            and review.purchase.studio_id == studio.id
+            and review.purchase.client_id == candidate["related"]["client"].id
+        ):
+            candidate["service_purchase"] = review.purchase
+            remembered_matches.append(candidate)
+            reserved_purchase_ids.add(review.purchase_id)
+        else:
+            queue_purchase_review(candidate, "previous_match_unavailable")
+            stats["service_purchase_pending_rows"] += 1
+
+    grouped_candidates = {}
+    for candidate in automatic_candidates:
         payload = candidate["payload"]
         related = candidate["related"]
         group_key = (
@@ -2808,7 +2850,7 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None, studio
         )
         grouped_candidates.setdefault(group_key, []).append(candidate)
 
-    matched_candidates = []
+    matched_candidates = remembered_matches[:]
     ambiguous_candidates = []
     for group_key, candidates in grouped_candidates.items():
         site_key, studio_key, client_key, option_key, sale_date, total_amount, quantity = group_key
@@ -2821,7 +2863,7 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None, studio
                 sale_date=sale_date,
                 total_amount=money(total_amount),
                 quantity=money(quantity),
-            ).order_by("id")
+            ).exclude(id__in=reserved_purchase_ids).order_by("id")
         )
         remaining_existing = existing[:]
         remaining_candidates = []
@@ -2860,72 +2902,25 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None, studio
             ambiguous_candidates.extend(remaining_candidates)
 
     stats["service_purchase_ambiguous_rows"] = len(ambiguous_candidates)
+    for candidate in ambiguous_candidates:
+        queue_purchase_review(candidate, "ambiguous_match")
+        stats["service_purchase_pending_rows"] += 1
 
     for candidate in matched_candidates:
-        natural_key = candidate["natural_key"]
-        row = candidate["row"]
-        payload = candidate["payload"]
-        raw_row = candidate["raw_row"]
-        related = candidate["related"]
-        snapshot = service_purchase_snapshot(payload, related)
-        service_purchase = candidate.get("service_purchase")
-        previous_snapshot = None
-        if service_purchase:
-            previous_version = service_purchase.versions.order_by("-created_at").first()
-            previous_snapshot = previous_version.snapshot if previous_version else None
-
-        changes = changed_fields(previous_snapshot, snapshot)
-        values = {
-            "site": site,
-            "studio": related["studio"],
-            "natural_key": natural_key,
-            "current_row_hash": row["hash"],
-            "client": related["client"],
-            "service_category": related["service_category"],
-            "pricing_option": related["pricing_option"],
-            "sale_date": payload["_sale_date"],
-            "activation_date": payload.get("_activation_date"),
-            "expiration_date": payload.get("_expiration_date"),
-            "activation_offset_days": payload.get("_activation_offset_days"),
-            "total_amount": money(payload.get("_total_amount")),
-            "cash_equivalent": money(payload.get("_cash_equivalent")),
-            "non_cash_equivalent": money(payload.get("_non_cash_equivalent")),
-            "quantity": money(payload.get("_quantity")),
-            "last_seen_import": report_import,
-            "source_raw_row": raw_row,
-        }
-        if not service_purchase:
-            create_values = {key: value for key, value in values.items() if key != "natural_key"}
-            service_purchase = ServicePurchase.objects.create(
-                natural_key=natural_key,
-                first_seen_import=report_import,
-                **create_values,
-            )
-            stats["service_purchases_created"] += 1
-            changes = list(snapshot.keys())
-        elif service_purchase.current_row_hash == row["hash"]:
-            service_purchase.last_seen_import = report_import
-            service_purchase.source_raw_row = raw_row
-            service_purchase.save(update_fields=["last_seen_import", "source_raw_row", "updated_at"])
-            stats["service_purchases_identical"] += 1
-        else:
-            for field, value in values.items():
-                setattr(service_purchase, field, value)
-            service_purchase.save()
-            stats["service_purchases_changed"] += 1
-
-        if changes or not previous_snapshot:
-            ServicePurchaseVersion.objects.create(
-                service_purchase=service_purchase,
-                report_import=report_import,
-                raw_row=raw_row,
-                row_hash=row["hash"],
-                changed_fields=changes,
-                snapshot=snapshot,
-            )
-            stats["versions_created"] += 1
-
-    stats["natural_key_collisions"] = len(rows_to_import["valid_rows"]) - len(current_candidates)
+        try:
+            # A savepoint keeps an expected uniqueness conflict from aborting
+            # the rest of this upload. Other database errors still abort it.
+            with transaction.atomic():
+                outcome, versions = apply_purchase_candidate(candidate, report_import)
+            stats[f"service_purchases_{outcome}"] += 1
+            stats["versions_created"] += versions
+        except IntegrityError as exc:
+            constraint = getattr(getattr(exc.__cause__, "diag", None), "constraint_name", "")
+            if constraint != "core_data_servicepurchase_natural_key_key" and "core_data_servicepurchase.natural_key" not in str(exc):
+                raise
+            queue_purchase_review(candidate, "identifier_conflict")
+            stats["natural_key_collisions"] += 1
+            stats["service_purchase_pending_rows"] += 1
 
     for row in rows_to_import["invalid_rows"]:
         ServicePurchaseRawRow.objects.create(
@@ -2941,7 +2936,11 @@ def import_sales_by_service_report(uploaded_file, site, uploaded_by=None, studio
         )
         stats["raw_rows_created"] += 1
 
-    report_import.status = ReportImport.STATUS_COMPLETED
+    report_import.status = (
+        ReportImport.STATUS_NEEDS_REVIEW if stats["service_purchase_pending_rows"]
+        else ReportImport.STATUS_COMPLETED
+    )
+    stats["status"] = report_import.status
     report_import.processed_at = timezone.now()
     report_import.save(update_fields=["status", "processed_at"])
     return {"preview": preview, "import": stats}
