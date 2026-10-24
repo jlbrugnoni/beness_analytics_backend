@@ -140,3 +140,5 @@ See PHASE_2_1_DELIVERY.md. 133 PostgreSQL tests passed (52 finance/access/config
 and 81 existing regressions). Frontend lint/build and Django checks passed.
 Only temporary QA/test databases changed. Expected balances and fee rules are
 not implemented. No raw reports imported and no production deployment performed.
+
+Phase 2.1 implementation checkpoints: backend `4969ab0`, frontend `eed0e6e`.

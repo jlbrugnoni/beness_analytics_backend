@@ -81,3 +81,5 @@ No raw financial reports or credentials are committed. The unrelated exports/
 folder remains untouched. No external review agent was used.
 
 Next subphase: 2.2 editable categories/subcategories and inherited sensitivity.
+
+Phase 2.1 implementation checkpoints: backend `4969ab0`, frontend `eed0e6e`.
