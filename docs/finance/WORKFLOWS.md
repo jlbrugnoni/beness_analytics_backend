@@ -2,7 +2,8 @@
 
 Status: Phase 0 accepted, 2026-10-24. These describe the target screen flows.
 Phase 1 implements finance landing, group capabilities and user grants/effective
-access. Import, transaction, configuration and result flows remain future work.
+access. Phases 2.1–2.2 implement company/account/terminal/category configuration.
+Imports, transactions, remaining rule configuration and results remain future work.
 
 ## Entry and setup
 
@@ -106,3 +107,16 @@ Renaming categories keeps existing references. Changing rates/mappings/tax defau
 does not silently restate historical records. Show affected periods before an
 explicit recalculation and retain earlier values. Used configuration is archived
 rather than deleted. Action audit is required throughout.
+
+## Implemented category setup
+
+In Financial configuration -> Categories, choose a company. For an empty catalog,
+Use starting catalog creates the common approved baseline once. Alternatively,
+start manually; an existing manual catalog cannot be overwritten by initialization.
+Add category and Add subcategory support two levels. Rename/deactivate records
+while retaining identity; company/parent reassignment and hard deletion are blocked.
+
+Display own versus inherited privacy/defaults and effective inactive state. A
+category settings manager without sensitive-detail access can edit ordinary
+categories; protected-category and sensitivity controls remain unavailable.
+Changing defaults is not historical reclassification. See PHASE_2_2_DELIVERY.md.

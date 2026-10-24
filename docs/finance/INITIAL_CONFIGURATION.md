@@ -61,3 +61,19 @@ remain for review rather than being assigned one of these rates or zero.
 These rates are documented inputs for Phase 2.4, not executable rules in Phase
 2.1. Fee calculation and comparison with net deposits arrive in later processing
 phases. Preserve P-002's single deduction and actual-adjustment treatment.
+
+## Category catalog (D-032–035)
+
+The common starting catalog contains 10 categories and 45 subcategories. The
+explicit workbook table is preserved in PHASE_2_2_DISCOVERY.md, plus accepted
+Otros / Extraordinarios. Initialize separately per company; common catalog codes
+remain stable across initial copies. Existing live edits are never overwritten.
+
+Personal is sensitive, as are the two Administracion payroll/social-security
+children. Ordinary costs default operating; revenue-related Impuestos and
+Extraordinarios default extraordinary; Equipamiento, Intereses and Devoluciones
+require review. Administracion defaults shared administration; explicit historical
+studio assignments must still be preserved during later migration.
+
+These are editable classification defaults, not automatically applied financial
+entries. The invalid historical 1 / 1 pair is not a catalog entry.

@@ -1,14 +1,17 @@
+from django.db import transaction
+from rest_framework import serializers
+from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from core_data.access import get_or_create_user_access_profile, resolve_access_payload, user_has_global_access
 from core_data.models import Studio
-from .access import can_view_full_account, configuration_sites, scoped_companies
-from .configuration import ConfigurationViewSet
-from .models import Account, Company, Terminal
+from .access import can_manage_category, can_view_full_account, can_view_sensitive_detail, configuration_sites, scoped_companies
+from .configuration import ConfigurationConflict, ConfigurationViewSet
+from .models import Account, Category, Company, ConfigurationChange, Terminal
 from .permissions import FinancePermission
-from .serializers import AccountSerializer, CompanySerializer, TerminalSerializer
+from .serializers import AccountSerializer, CategorySerializer, CompanySerializer, TerminalSerializer
 
 
 def visible_accounts(user):
@@ -64,6 +67,32 @@ class CompanyViewSet(ConfigurationViewSet):
         if not configuration_sites(self.request.user).filter(pk=site.pk).exists():
             raise PermissionDenied("Company configuration requires site-wide access.")
 
+    @action(detail=True, methods=["post"], url_path="initialize-categories")
+    def initialize_categories(self, request, pk=None):
+        from .catalog import CATALOG_VERSION, create_starting_catalog
+        self.check_write_access()
+        with transaction.atomic():
+            company = self.get_write_instance()
+            if not configuration_sites(request.user).filter(pk=company.site_id).exists() or not can_view_sensitive_detail(request.user):
+                raise PermissionDenied("Starting catalog setup requires company-wide settings and sensitive-detail access.")
+            if company.category_catalog_version:
+                return Response({"company": self.get_serializer(company).data, "created": 0})
+            if request.data.get("expected_revision") != company.revision:
+                raise ConfigurationConflict()
+            if company.categories.exists():
+                raise ConfigurationConflict("The starting catalog can only be added to a company with no categories. Existing categories were preserved.")
+            if not company.active:
+                raise serializers.ValidationError({"company": "Activate the company before initializing categories."})
+            before = dict(self.get_serializer(company).data)
+            created = create_starting_catalog(company, request.user)
+            company.category_catalog_version = CATALOG_VERSION
+            company.revision += 1
+            company.save(update_fields=["category_catalog_version", "revision", "updated_at"])
+            after = dict(self.get_serializer(company).data)
+            ConfigurationChange.objects.create(actor=request.user, target_type="company", target_id=company.pk,
+                target_label=company.name, before=before, after=after)
+            return Response({"company": after, "created": created})
+
 
 class AccountViewSet(ConfigurationViewSet):
     required_finance_capability = "can_view_finance_bank_accounts"
@@ -109,3 +138,43 @@ class TerminalViewSet(ConfigurationViewSet):
         account = serializer.validated_data.get("account", getattr(serializer.instance, "account", None))
         if not account.active or not account.company.active:
             raise PermissionDenied("Activate the company and account before editing terminal mappings.")
+
+
+class CategoryViewSet(ConfigurationViewSet):
+    serializer_class = CategorySerializer
+
+    def get_queryset(self):
+        companies = scoped_companies(Company.objects.all(), self.request.user)
+        queryset = Category.objects.filter(company__in=companies).select_related("company", "parent")
+        company_id = self.request.query_params.get("company")
+        if company_id:
+            if not company_id.isdecimal():
+                raise serializers.ValidationError({"company": "Use a company ID."})
+            queryset = queryset.filter(company_id=company_id)
+        return queryset
+
+    def get_write_instance(self):
+        obj = self.get_object()
+        # Consistent company -> category locking also serializes parent/child writes.
+        Company.objects.select_for_update().get(pk=obj.company_id)
+        return Category.objects.select_for_update().get(pk=obj.pk)
+
+    def get_serializer(self, *args, **kwargs):
+        serializer = super().get_serializer(*args, **kwargs)
+        if self.request.method in {"POST", "PUT", "PATCH"}:
+            serializer.fields["company"].queryset = scoped_companies(Company.objects.all(), self.request.user)
+            serializer.fields["parent"].queryset = self.get_queryset().filter(parent__isnull=True)
+        return serializer
+
+    def authorize_values(self, serializer):
+        values, previous = serializer.validated_data, serializer.instance
+        company = values.get("company", previous.company if previous else None)
+        if not configuration_sites(self.request.user).filter(pk=company.site_id).exists():
+            raise PermissionDenied("Category configuration requires site-wide access.")
+        parent = values.get("parent", previous.parent if previous else None)
+        sensitive_change = values.get("sensitive", False) != (previous.sensitive if previous else False)
+        protected = (previous and not can_manage_category(self.request.user, previous)) or (parent and parent.effective_sensitive)
+        if (sensitive_change or protected) and not can_view_sensitive_detail(self.request.user):
+            raise PermissionDenied("Sensitive-detail access is required to edit this category or its sensitivity.")
+        if not previous and not company.active:
+            raise serializers.ValidationError({"company": "Activate the company before adding categories."})

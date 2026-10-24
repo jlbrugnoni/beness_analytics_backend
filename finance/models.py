@@ -1,3 +1,5 @@
+import unicodedata
+import uuid
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
@@ -7,12 +9,17 @@ from django.db import models
 currency_validator = RegexValidator(r"^[A-Z]{3}$", "Use a three-letter uppercase currency code.")
 
 
+def custom_catalog_code():
+    return f"custom-{uuid.uuid4().hex}"
+
+
 class Company(models.Model):
     name = models.CharField(max_length=180)
     site = models.ForeignKey("core_data.Site", on_delete=models.PROTECT, related_name="finance_companies")
     default_currency = models.CharField(max_length=3, validators=[currency_validator])
     active = models.BooleanField(default=True)
     revision = models.PositiveIntegerField(default=1)
+    category_catalog_version = models.CharField(max_length=40, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -25,11 +32,11 @@ class Company(models.Model):
 
     def clean(self):
         super().clean()
-        if self.pk and self.accounts.exists():
+        if self.pk:
             previous = type(self).objects.get(pk=self.pk)
-            if previous.site_id != self.site_id:
-                raise ValidationError({"site": "A company with accounts cannot be moved to another site."})
-            if previous.default_currency != self.default_currency:
+            if previous.site_id != self.site_id and (self.accounts.exists() or self.categories.exists()):
+                raise ValidationError({"site": "A company with accounts or categories cannot be moved to another site."})
+            if previous.default_currency != self.default_currency and self.accounts.exists():
                 raise ValidationError({"default_currency": "A company with accounts cannot change its default currency."})
 
 
@@ -99,6 +106,75 @@ class Terminal(models.Model):
                 raise ValidationError({"studio": "Studio must participate in the terminal's account."})
         if self.pk and type(self).objects.get(pk=self.pk).account_id != self.account_id:
             raise ValidationError({"account": "A terminal cannot be moved to another account; deactivate it and create a new mapping."})
+
+
+class Category(models.Model):
+    TREATMENTS = [("operating", "Operating"), ("extraordinary", "Extraordinary"), ("review", "Review required")]
+    ALLOCATIONS = [("direct", "Direct"), ("administration", "Shared administration")]
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="categories")
+    parent = models.ForeignKey("self", null=True, blank=True, on_delete=models.PROTECT, related_name="children")
+    name = models.CharField(max_length=180)
+    normalized_name = models.CharField(max_length=240, editable=False, blank=True)
+    catalog_code = models.CharField(max_length=64, default=custom_catalog_code, editable=False)
+    default_treatment = models.CharField(max_length=20, choices=TREATMENTS, blank=True, default="review")
+    default_allocation = models.CharField(max_length=20, choices=ALLOCATIONS, blank=True, default="direct")
+    sensitive = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
+    revision = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name", "pk"]
+        constraints = [
+            models.UniqueConstraint(fields=["company", "normalized_name"], condition=models.Q(parent__isnull=True), name="finance_category_root_name"),
+            models.UniqueConstraint(fields=["company", "parent", "normalized_name"], condition=models.Q(parent__isnull=False), name="finance_category_child_name"),
+            models.UniqueConstraint(fields=["company", "catalog_code"], name="finance_category_company_code"),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def effective_sensitive(self):
+        return self.sensitive or bool(self.parent_id and self.parent.sensitive)
+
+    @property
+    def effective_active(self):
+        return self.active and (not self.parent_id or self.parent.active)
+
+    @property
+    def effective_treatment(self):
+        return self.default_treatment or self.parent.default_treatment
+
+    @property
+    def effective_allocation(self):
+        return self.default_allocation or self.parent.default_allocation
+
+    def clean(self):
+        super().clean()
+        self.name = self.name.strip()
+        self.normalized_name = " ".join(unicodedata.normalize("NFKC", self.name).split()).casefold()
+        if not self.normalized_name:
+            raise ValidationError({"name": "Enter a category name."})
+        if len(self.normalized_name) > 240:
+            raise ValidationError({"name": "Use a shorter category name."})
+        if not self.parent_id and (not self.default_treatment or not self.default_allocation):
+            raise ValidationError("Root categories require explicit treatment and allocation defaults.")
+        if self.parent_id:
+            if self.parent_id == self.pk or self.parent.parent_id:
+                raise ValidationError({"parent": "Use a root category; only two levels are supported."})
+            if self.company_id != self.parent.company_id:
+                raise ValidationError({"parent": "Parent and subcategory must belong to the same company."})
+        if self.pk:
+            previous = type(self).objects.get(pk=self.pk)
+            if previous.company_id != self.company_id or previous.parent_id != self.parent_id:
+                raise ValidationError("Company and parent cannot be reassigned; deactivate and create a new category instead.")
+
+    def save(self, *args, **kwargs):
+        self.name = self.name.strip()
+        self.normalized_name = " ".join(unicodedata.normalize("NFKC", self.name).split()).casefold()
+        super().save(*args, **kwargs)
 
 
 class ConfigurationChange(models.Model):

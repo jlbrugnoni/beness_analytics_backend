@@ -56,3 +56,11 @@ def configuration_sites(user):
     if profile.allowed_studios.exists():
         return sites.none()
     return sites.filter(pk__in=profile.allowed_sites.values_list("pk", flat=True))
+
+
+def can_manage_category(user, category):
+    if not configuration_sites(user).filter(pk=category.company.site_id).exists():
+        return False
+    sensitive_tree = category.effective_sensitive or (
+        not category.parent_id and category.children.filter(sensitive=True).exists())
+    return not sensitive_tree or can_view_sensitive_detail(user)

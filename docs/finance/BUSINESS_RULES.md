@@ -265,6 +265,31 @@ and changes to closed periods still need their phase-specific definitions.
   without counting twice. Source verification and missing balances remain visible.
   No expected-balance calculation exists in Phase 2.1.
 
+## Category configuration
+
+- **BR-042:** Maintain separate category records per company, initialized from a
+  common approved starting catalog for comparable analysis (D-032–035). Starting
+  copies preserve stable catalog codes across companies even if labels change.
+  Category/subcategory names, defaults and active flags remain editable. Live
+  company records, not the seed definition in code, are authoritative. Do not
+  silently synchronize edits or overwrite a customized catalog. Only initialize
+  an empty company catalog; repeated completed initialization is a no-op.
+- **BR-043:** Support root categories and one subcategory level. Names must be
+  unique within a company/parent after Unicode, case and whitespace normalization.
+  Root categories require explicit treatment/allocation defaults; children can
+  inherit or override them. Company and parent are immutable after creation.
+  Deactivating a parent makes its children effectively inactive without deleting
+  them or erasing their own settings. Configuration changes do not automatically
+  reclassify history or calculate results/allocations.
+- **BR-044:** Personal is initially sensitive. Administracion is not wholly
+  sensitive, but its Sueldos administración and Seguridad social administración
+  children are. Parent sensitivity cannot be removed through an unchecked child
+  flag. Category writes require site-wide financial settings scope; sensitive
+  writes and changes to a parent containing sensitive children additionally
+  require sensitive-detail access. Category labels/settings can be read within
+  scope; this does not imply payment-detail access. Transaction privacy remains
+  an explicit later-phase obligation under BR-037/A-28.
+
 ## Reference reports
 
 These are source fixtures, not committed datasets. Keep originals outside Git and

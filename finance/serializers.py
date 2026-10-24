@@ -1,6 +1,6 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
-from .models import Account, Company, Terminal, validate_account_studios
+from .models import Account, Category, Company, Terminal, validate_account_studios
 
 
 class ConfigurationSerializer(serializers.ModelSerializer):
@@ -14,9 +14,11 @@ class ConfigurationSerializer(serializers.ModelSerializer):
             for field in self.Meta.model._meta.concrete_fields:
                 setattr(candidate, field.attname, getattr(self.instance, field.attname))
         for key, value in attrs.items():
-            if key not in {"expected_revision", "studios"}:
+            if key not in {"expected_revision", "expected_parent_revision", "studios"}:
                 setattr(candidate, key, value)
         if isinstance(candidate, Account) and candidate.company_id:
+            candidate.company = Company.objects.select_for_update().get(pk=candidate.company_id)
+        if isinstance(candidate, Category) and candidate.company_id:
             candidate.company = Company.objects.select_for_update().get(pk=candidate.company_id)
         # Serialize terminal changes with participating-studio/account edits.
         if isinstance(candidate, Terminal) and candidate.account_id:
@@ -36,8 +38,8 @@ class CompanySerializer(ConfigurationSerializer):
 
     class Meta:
         model = Company
-        fields = ["id", "name", "site", "country_code", "default_currency", "active", "revision", "expected_revision"]
-        read_only_fields = ["revision"]
+        fields = ["id", "name", "site", "country_code", "default_currency", "active", "revision", "expected_revision", "category_catalog_version"]
+        read_only_fields = ["revision", "category_catalog_version"]
 
 
 class AccountSerializer(ConfigurationSerializer):
@@ -63,3 +65,51 @@ class TerminalSerializer(ConfigurationSerializer):
         fields = ["id", "account", "account_name", "identifier", "studio", "studio_name", "channel", "active",
                   "revision", "expected_revision"]
         read_only_fields = ["revision"]
+
+
+class CategorySerializer(ConfigurationSerializer):
+    effective_sensitive = serializers.BooleanField(read_only=True)
+    effective_active = serializers.BooleanField(read_only=True)
+    effective_treatment = serializers.CharField(read_only=True)
+    effective_allocation = serializers.CharField(read_only=True)
+    parent_revision = serializers.IntegerField(source="parent.revision", read_only=True, allow_null=True)
+    expected_parent_revision = serializers.IntegerField(write_only=True, required=False, min_value=1)
+    can_edit = serializers.SerializerMethodField()
+    can_add_child = serializers.SerializerMethodField()
+
+    class Meta:
+        model = Category
+        fields = ["id", "company", "parent", "name", "catalog_code", "default_treatment", "default_allocation",
+                  "sensitive", "active", "effective_sensitive", "effective_active", "effective_treatment",
+                  "effective_allocation", "revision", "expected_revision", "parent_revision",
+                  "expected_parent_revision", "can_edit", "can_add_child"]
+        read_only_fields = ["revision", "catalog_code"]
+
+    def get_can_edit(self, obj):
+        from .access import can_manage_category
+        request = self.context.get("request")
+        return bool(request and can_manage_category(request.user, obj))
+
+    def get_can_add_child(self, obj):
+        from .access import can_use_finance, configuration_sites
+        request = self.context.get("request")
+        return bool(request and not obj.parent_id and obj.effective_active and obj.company.active
+                    and configuration_sites(request.user).filter(pk=obj.company.site_id).exists()
+                    and (not obj.effective_sensitive or can_use_finance(request.user, "can_view_sensitive_finance")))
+
+    def validate(self, attrs):
+        from .configuration import ConfigurationConflict
+        company = attrs.get("company", getattr(self.instance, "company", None))
+        if company:
+            attrs["company"] = Company.objects.select_for_update().get(pk=company.pk)
+        parent = attrs.get("parent", self.instance.parent if self.instance else None)
+        if parent:
+            parent = Category.objects.select_for_update().get(pk=parent.pk)
+            if attrs.get("expected_parent_revision") != parent.revision:
+                raise ConfigurationConflict("The parent category changed. Reload before saving.")
+            if "parent" in attrs:
+                attrs["parent"] = parent
+            if not self.instance and not parent.effective_active:
+                raise serializers.ValidationError({"parent": "Activate the parent before adding subcategories."})
+        attrs.pop("expected_parent_revision", None)
+        return super().validate(attrs)

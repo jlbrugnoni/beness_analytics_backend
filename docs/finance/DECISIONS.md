@@ -41,6 +41,11 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-031 | 2026-10-24 | Accepted | Client replied "perfect, we can continue" after Phase 2.1 accounts/terminals handoff. Phase 2.1 accepted; proceed to Phase 2.2 discovery and implementation under the phased working agreement. No production push/merge/deployment authorized. |
 
+| D-032 | 2026-10-24 | Accepted | Independent catalogs per company, while aiming to use the same categories for comparable analysis. Start each company from the same baseline; preserve stable shared catalog codes across those initial copies. Company edits do not propagate automatically. Custom cross-company mapping/copying can be added later. |
+| D-033 | 2026-10-24 | Accepted | Initial sensitivity: entire Personal category, plus Administracion / Sueldos administración and Seguridad social administración. No additional categories requested. Inherited protection and the existing extra capability policy remain in force. |
+| D-034 | 2026-10-24 | Accepted | Ordinary expenses default operating; revenue-related Administracion / Impuestos extraordinary; Operacion / Equipamiento, Bancos / Intereses and Bancos / Devoluciones require individual review. Defaults guide classification; they do not establish a refund, loan or actual allocation from a label. |
+| D-035 | 2026-10-24 | Accepted | Start from the workbook's 10-category/44-pair explicit catalog plus Otros / Extraordinarios (45 subcategories total). Invalid source category/subcategory 1 / 1 remains a migration review issue. Preserve source names; initial Extraordinarios default is extraordinary. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

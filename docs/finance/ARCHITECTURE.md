@@ -1,10 +1,10 @@
 # Finance architecture
 
-Status: accepted target design; Phase 1 accepted, Phase 2.1 implemented.
+Status: accepted target design; Phase 1 accepted, Phases 2.1–2.2 implemented.
 Updated: 2026-10-24. Implemented models are finance.Company, finance.Account,
-finance.AccessChange, finance.Terminal, finance.ConfigurationChange and capability fields on existing access profiles. Financial
-transactions, configuration beyond accounts/terminal mappings, and results below remain future work.
-See PHASE_1_DELIVERY.md and PHASE_2_1_DELIVERY.md for exact endpoints and limitations.
+finance.AccessChange, finance.Terminal, finance.Category, finance.ConfigurationChange and capability fields on existing access profiles. Financial
+transactions, configuration beyond accounts/terminals/categories, and results below remain future work.
+See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md for exact endpoints and limitations.
 
 ## Existing integration points
 
@@ -17,8 +17,9 @@ See PHASE_1_DELIVERY.md and PHASE_2_1_DELIVERY.md for exact endpoints and limita
   finance actions. Keep existing operational access behavior intact.
 - `GroupAccessProfile` and `UserAccessProfile` already store the same six
   operational capability flags. Group profile CRUD is exposed through
-  `GroupAccessProfileViewSet` under `can_manage_users`. The inspected frontend
-  supports group assignment and user flags but has no group capability editor.
+  `GroupAccessProfileViewSet` under `can_manage_users`. At initial inspection the frontend
+  supported group assignment/user flags without a group capability editor;
+  Phase 1 subsequently implemented that editor.
 - `core_data.permissions.CapabilityPermission` and frontend `useAccess`/
   `routePermissions` provide existing integration patterns, not sufficient
   financial authorization by themselves.
@@ -266,3 +267,18 @@ history, but defer enforced closing/reopening and close UI for initial v1 use.
 
 Keep currencies separate in v1. Automated exchange-rate consolidation, bank APIs,
 tax filing, and forecasting are outside the initial scope.
+
+## Implemented category configuration (Phase 2.2)
+
+Company-owned root categories and one child level are live. The empty-catalog
+initializer uses a common approved baseline with explicit stable codes, while
+names, flags and defaults stay independent per company. Custom later categories
+receive independent identifiers; later cross-company alignment/copying is separate
+from this baseline. Details and limitations are in PHASE_2_2_DELIVERY.md.
+
+Own sensitivity combines with parent sensitivity by OR. Active state combines
+with the parent's by AND. Child defaults can inherit parent treatment/allocation.
+Company-wide settings scope controls writes; sensitive-detail capability also
+protects sensitive categories, changing sensitivity and editing a parent with
+sensitive children. No sensitive transaction endpoint exists yet. No result or
+allocation calculation is performed by editing category defaults.

@@ -1,7 +1,7 @@
 # Phase 2.2 category configuration discovery
 
-Date: 2026-10-24. Phase 2.1 accepted; Phase 2.2 business questions pending.
-No category models, API or UI have been implemented at this checkpoint.
+Date: 2026-10-24. Phase 2.1 accepted; Phase 2.2 questions answered; implementation delivered for client review.
+Discovery originally preceded code. See PHASE_2_2_DELIVERY.md for the subsequent implementation and validation.
 
 ## Workbook evidence
 
@@ -48,9 +48,15 @@ not raw source financial rows or personal payroll information.
 4. Initial catalog: recommend explicit 10/44 paired list plus Otros /
    Extraordinarios. Preserve invalid 1 / 1 for migration review.
 
-All four are proposals, not accepted defaults. Do not seed these recommended
-settings or classify historical payments until answers arrive. Missing answers
-must not be interpreted as approval.
+All four were proposals when sent. Client answers received 2026-10-24:
+1. Yes, with the intent to use the same categories across companies for similar
+   analysis. Independent records start with common codes; edits remain local.
+2. Agreed; no additional sensitive categories.
+3. Agreed to the proposed result defaults.
+4. Agreed to the catalog addition and invalid-pair review.
+
+Decisions D-032–035 record these answers. Historical movements remain unclassified
+because processing/migration is not implemented, not because answers are missing.
 
 ## Already accepted boundaries
 
@@ -70,7 +76,7 @@ must not be interpreted as approval.
   Decide implementation details without requesting client technical approval.
 - Imports, movement categorization, allocations and results remain later phases.
 
-## Next implementation after answers
+## Implementation scope agreed after answers
 
 Implement editable taxonomy, inherited sensitive/active state, default treatment
 and allocation guidance, scoped writes, duplicate/parent integrity checks, audit

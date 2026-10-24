@@ -277,7 +277,10 @@ PHASE_2_2_DISCOVERY.md records source ranges, all 44 catalog pairs, helper-list
 variations and pending questions on company ownership, sensitivity, treatment and
 catalog initialization. No original source workbook was modified.
 
-Status: client answers pending; no proposed default is approved by silence.
+Answers received 2026-10-24: independent catalogs accepted, with the intent to
+use consistent categories across all companies for comparable analysis; proposed
+sensitive flags, result defaults, and catalog cleanup accepted. See D-032–035.
+No additional Phase 2.2 question remains pending.
 
 ## Recording an answer
 

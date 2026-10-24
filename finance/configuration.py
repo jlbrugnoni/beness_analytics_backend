@@ -25,11 +25,14 @@ class ConfigurationViewSet(viewsets.ModelViewSet):
     def authorize_values(self, serializer):
         pass
 
+    def get_write_instance(self):
+        return self.get_queryset().select_for_update().get(pk=self.get_object().pk)
+
     def write(self, request, partial=False, creating=False):
         self.check_write_access()
         try:
             with transaction.atomic():
-                instance = None if creating else self.get_queryset().select_for_update().get(pk=self.get_object().pk)
+                instance = None if creating else self.get_write_instance()
                 before = {} if creating else dict(self.get_serializer(instance).data)
                 serializer = self.get_serializer(instance, data=request.data, partial=partial)
                 serializer.is_valid(raise_exception=True)

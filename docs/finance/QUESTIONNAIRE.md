@@ -136,7 +136,7 @@ See Q-007, D-028–030 and BR-041. No further account/terminal questions are pen
 
 ## Phase 2.2 category questions — Q-008, 2026-10-24
 
-Status: sent; answers pending. See PHASE_2_2_DISCOVERY.md for the extracted
+Status: answered 2026-10-24. See PHASE_2_2_DISCOVERY.md for the extracted
 10-category/44-subcategory catalog and the basis for each recommendation.
 
 1. Independent catalogs per company, with explicit copying later?
@@ -147,4 +147,6 @@ Status: sent; answers pending. See PHASE_2_2_DISCOVERY.md for the extracted
 4. Use explicit paired catalog plus Otros / Extraordinarios; invalid 1 / 1
    remains a migration review item?
 
-These recommendations are pending client answers, not accepted defaults.
+Answers: (1) yes, with the aim of matching categories across all companies for
+comparable analysis; (2) agreed, no additions; (3) agreed; (4) agreed.
+See D-032–035. Phase 2.2 has no remaining discovery question.

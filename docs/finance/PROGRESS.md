@@ -4,7 +4,7 @@ Updated: 2026-10-24.
 
 ## Current checkpoint
 
-- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 category discovery in progress (Q-008).
+- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 categories implemented; client acceptance pending.
 - Phase 0: accepted on 2026-10-24 with "perfect, we can continue" (D-026).
 - Subphase 0.2: main business discovery batch resolved; all 12 consolidated
   answers and three focused clarifications recorded. DR-first editable account
@@ -29,7 +29,7 @@ Updated: 2026-10-24.
   exists; transaction/category redaction awaits their later models.
 - Phase 1.4: group editor, user form switches and protected finance landing
   implemented in English/Spanish. Validation described in PHASE_1_DELIVERY.md.
-- Phase 1 acceptance: client confirmed "great, it works properly" (D-027). Phase 2 discovery answered (Q-007/D-028–030); Phase 2.1 accepted. Phase 2.2 discovery prepared; 2.2–2.4 and 3–7 code not implemented.
+- Phase 1 acceptance: client confirmed "great, it works properly" (D-027). Phase 2 discovery answered (Q-007/D-028–030); Phase 2.1 accepted. Phase 2.2 Q-008 answered and implemented; 2.3–2.4 and 3–7 code not implemented.
 
 ## Branches and working tree
 
@@ -88,7 +88,7 @@ The frontend working tree was clean before the documentation pointer was added.
 - Added FIELD_DICTIONARY.md and WORKFLOWS.md; reconciled architecture/roadmap with
   the latest source and scope decisions. These documents describe future behavior.
 
-## Validation
+## Phase 1 validation
 
 - PostgreSQL 16 isolated database: 120 tests passed (39 finance/access plus 81
   existing analytics/purchase/import regressions).
@@ -104,13 +104,12 @@ The frontend working tree was clean before the documentation pointer was added.
 
 ## What the client should review
 
-Phase 2.1 accepted. Answer Q-008 in QUESTIONNAIRE.md or PHASE_2_2_DISCOVERY.md.
-No new application changes accompany this discovery checkpoint.
+Phase 2.2 is ready for client validation. Follow PHASE_2_2_DELIVERY.md.
+Local QA has two company catalogs and a restricted category-settings test user.
 
 ## Next work
 
-Resolve Phase 2.2 category questions, then implement editable categories/
-subcategories and inherited sensitivity. Later steps add source mappings and historical-baseline/
+Client acceptance of Phase 2.2, then Phase 2.3 source/payment/studio mappings. Later steps add source mappings and historical-baseline/
 dated fee/tax rules. Imported movements, expected balances and sensitive payment
 redaction remain future processing work.
 
@@ -149,3 +148,13 @@ Phase 2.1 implementation checkpoints: backend `4969ab0`, frontend `eed0e6e`.
 Extracted the existing 10-category/44-pair catalog read-only and compared used
 category pairs. Recorded the additional Otros / Extraordinarios and invalid 1 / 1.
 Sent Q-008 as one numbered batch; no category code or proposed defaults applied.
+
+## Phase 2.2 implementation checkpoint
+
+2026-10-24: all Q-008 answers received (D-032–035). Implemented editable two-level
+company catalogs, shared baseline codes, one-time initialization, inherited
+privacy/active/defaults, scoped/audited/revision-aware writes and EN/ES category UI.
+153 PostgreSQL tests passed, plus 20 focused category tests on SQLite. Frontend
+lint/build and Django/migration checks passed. Browser QA and exact boundaries
+are recorded in PHASE_2_2_DELIVERY.md. Client acceptance pending; no production
+changes. Phases 2.3–2.4 and financial processing remain unimplemented.
