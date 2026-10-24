@@ -4,7 +4,7 @@ Updated: 2026-10-24.
 
 ## Current checkpoint
 
-- Phase: 1, foundation/access implemented; client validation pending.
+- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accounts/terminals implemented; client review pending.
 - Phase 0: accepted on 2026-10-24 with "perfect, we can continue" (D-026).
 - Subphase 0.2: main business discovery batch resolved; all 12 consolidated
   answers and three focused clarifications recorded. DR-first editable account
@@ -29,11 +29,11 @@ Updated: 2026-10-24.
   exists; transaction/category redaction awaits their later models.
 - Phase 1.4: group editor, user form switches and protected finance landing
   implemented in English/Spanish. Validation described in PHASE_1_DELIVERY.md.
-- Phase 1 acceptance: pending; Phases 2–7 not started.
+- Phase 1 acceptance: client confirmed "great, it works properly" (D-027). Phase 2 discovery answered (Q-007/D-028–030); Phase 2.1 implemented and validated. Phases 2.2–2.4 and 3–7 not implemented.
 
 ## Branches and working tree
 
-Current backend/frontend branch: `feature/finance-phase-1`.
+Current backend/frontend branch: `feature/finance-phase-2`.
 Phase 0 branch was `feature/finance-phase-0`. See Git log for local checkpoints.
 Implementation checkpoints: backend `4c0bf21`, frontend `630739e`. Subsequent
 documentation-only checkpoint records this handoff; implementation hashes remain
@@ -104,18 +104,15 @@ The frontend working tree was clean before the documentation pointer was added.
 
 ## What the client should review
 
-1. Follow What you should test in PHASE_1_DELIVERY.md: group/user grants,
-   inheritance, revocation, scope, stale saves, and language labels.
-2. Use staging/local test users. Imports, categories and results are not available
-   yet; the finance landing is the access/ownership foundation.
-3. Source data and settled business decisions need not be supplied again.
+Phase 1 accepted. Follow PHASE_2_1_DELIVERY.md for accounts/terminals client review.
+The isolated local preview contains the confirmed DR mappings and savings baseline.
 
 ## Next work
 
-Client acceptance of Phase 1 is the next gate. Then begin Phase 2 editable
-company/accounts, terminals, category sensitivity, mappings and dated fee/tax
-configuration. Source/detail redaction and processing follow their own phases;
-do not infer that storing a capability already implements salary-row protection.
+Client review of Phase 2.1, then Phase 2.2 editable categories/subcategories and
+inherited sensitivity. Later steps add source mappings and historical-baseline/
+dated fee/tax rules. Imported movements, expected balances and sensitive payment
+redaction remain future processing work.
 
 ## Delivery history
 
@@ -132,3 +129,14 @@ do not infer that storing a capability already implements salary-row protection.
 | 2026-10-24 | All consolidated answers and clarifications recorded; field dictionary, workflows and 30 acceptance cases prepared | Documentation/reference checks only | Phase 0 draft ready for client review |
 | 2026-10-24 | Client accepted Phase 0 and authorized continuation | D-026 recorded | Phase 0 accepted |
 | 2026-10-24 | Phase 1 foundation, group/user permissions, protected finance APIs/UI and atomic audited access saves | 120 PostgreSQL tests; lint/build; Django checks; synthetic browser QA | Client acceptance pending |
+
+| 2026-10-24 | Client confirmed "great, it works properly" after the Phase 1 test checklist; Phase 2 discovery prepared | Client feedback; documentation update only | Phase 1 accepted (D-027) |
+
+| 2026-10-24 | Client supplied DR accounts/8 terminals/3.5% and 5% fees, zero savings baseline; Phase 2.1 accounts/terminal UI/API implemented | 133 PostgreSQL tests; lint/build; Django checks; synthetic browser QA | Phase 2.1 client review pending |
+
+## Phase 2.1 validation
+
+See PHASE_2_1_DELIVERY.md. 133 PostgreSQL tests passed (52 finance/access/config
+and 81 existing regressions). Frontend lint/build and Django checks passed.
+Only temporary QA/test databases changed. Expected balances and fee rules are
+not implemented. No raw reports imported and no production deployment performed.

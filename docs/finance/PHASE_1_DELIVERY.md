@@ -1,6 +1,6 @@
 # Phase 1 foundation and access delivery
 
-Date: 2026-10-24. Status: implemented and validated; client acceptance pending.
+Date: 2026-10-24. Status: implemented, validated, and accepted by the client on 2026-10-24 (D-027).
 Branch in both repositories: `feature/finance-phase-1`.
 Tested implementation commits: backend `4c0bf21`, frontend `630739e`.
 
@@ -31,6 +31,8 @@ Tested implementation commits: backend `4c0bf21`, frontend `630739e`.
   superuser and protected superuser profiles from ordinary user managers.
 - Added shared-account studio validation, including reverse membership changes,
   and admin/model validation against moving an account/company across ownership.
+
+Phase 2.1 later adds audited configuration writes and read-only technical configuration admin. See PHASE_2_1_DELIVERY.md; this document preserves the Phase 1 handoff.
 
 ## Implemented surface
 

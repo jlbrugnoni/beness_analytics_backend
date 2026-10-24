@@ -33,6 +33,12 @@ client-approved. Detailed behavior belongs in Business rules.
 | D-025 | 2026-10-24 | Developer-selected default | Client delegated tolerance: configurable 0.01 DOP/EUR rounding-review threshold, with explicit confirmation and no automatic write-off or hidden amount changes. BR-040. |
 | D-026 | 2026-10-24 | Accepted | Client replied "perfect, we can continue" to Phase 0 review handoff. Phase 0 accepted and Phase 1 foundation/access authorized. No production deployment authorized. |
 
+| D-027 | 2026-10-24 | Accepted | Client confirmed "great, it works properly" after reviewing Phase 1 in the isolated local preview. Phase 1 accepted; proceed to Phase 2 configuration discovery under the existing phased working agreement. No production deployment authorized. |
+
+| D-028 | 2026-10-24 | Accepted | Client accepted the proposed Dominican operating/savings account labels, wants expected savings balance despite no statements, and confirmed zero at the start of the year (2026 historical context). Record 0.00 DOP at start of 2026-01-01; later migration supplies internal transfers. Expected and bank-verified balance must remain distinct. See BR-041/INITIAL_CONFIGURATION.md. |
+| D-029 | 2026-10-24 | Accepted | Client supplied eight Dominican terminal/studio/type mappings. Preserve the exact table in INITIAL_CONFIGURATION.md; it supersedes illustrative examples. No Arroyo Hondo recurring terminal was supplied. |
+| D-030 | 2026-10-24 | Accepted | Cierre (credit/debit) and Recurrentes have 3.5% withholding; Link 5%. Client says these have applied "since forever": historical baseline throughout available coverage, no invented contract start date. Fee-rule configuration/processing remains later work. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

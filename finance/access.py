@@ -42,3 +42,17 @@ def can_view_full_account(user, account):
 def can_view_sensitive_detail(user):
     # Callers must also check their record/company/studio scope.
     return can_use_finance(user, "can_view_sensitive_finance")
+
+
+def configuration_sites(user):
+    """Company-wide settings need site-wide authority, not a partial studio grant."""
+    from core_data.models import Site
+    sites = Site.objects.all()
+    if not can_use_finance(user, "can_manage_finance_settings"):
+        return sites.none()
+    if user_has_global_access(user):
+        return sites
+    profile = get_or_create_user_access_profile(user)
+    if profile.allowed_studios.exists():
+        return sites.none()
+    return sites.filter(pk__in=profile.allowed_sites.values_list("pk", flat=True))

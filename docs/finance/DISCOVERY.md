@@ -251,6 +251,24 @@ validation and an explicit cutover.
 - Answer 12: developer-recommended 0.01 DOP/EUR rounding-review threshold; no
   automatic write-offs or confirmation of nonzero differences (BR-040).
 
+## Q-007: Phase 2 accounts, terminals and fees
+
+Asked 2026-10-24 as a consolidated numbered list following Phase 1 acceptance.
+
+1. Client accepted operating/savings labels, explained savings statements are
+   unavailable and requested its expected balance. Follow-up: "we initialized
+   the year with 0 balance"; migration contains internal transfers. Record the
+   reference at start of 2026-01-01 based on confirmed 2026 DR history (D-028).
+2. Supplied eight DR terminal mappings, preserved exactly in
+   INITIAL_CONFIGURATION.md (D-029). Terminal data is configuration, not source
+   financial transactions. No unprovided mapping should be inferred.
+3. Confirmed 3.5% Cierre and Recurrentes, 5% Link. Follow-up: rates have applied
+   "since forever"; use historical baseline rather than inventing a start date
+   (D-030). Fixed charges were not supplied.
+
+No further answer is needed for accounts/terminals development. Savings expected
+balance engine and fee calculation are explicitly later work.
+
 ## Recording an answer
 
 Keep the question, append the client's answer with its date, state the accepted

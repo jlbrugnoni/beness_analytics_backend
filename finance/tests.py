@@ -192,9 +192,9 @@ class FinanceAccessTests(APITestCase):
             self.assertTrue(all(not getattr(gp, name) for name in FINANCE_CAPABILITIES))
         self.assertTrue(GroupAccessProfile.objects.get(group__name="Manager").can_view_money)
 
-    def test_finance_foundation_apis_are_read_only(self):
-        self.grant(can_manage_finance_settings=True)
-        self.assertEqual(self.client.post("/api/finance/companies/", {"name": "Not yet"}).status_code, 405)
+    def test_finance_configuration_requires_settings_permission(self):
+        self.grant()
+        self.assertEqual(self.client.post("/api/finance/companies/", {"name": "Denied"}).status_code, 403)
 
 
 class AccessManagementTests(APITestCase):

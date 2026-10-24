@@ -10,6 +10,6 @@ def validate_membership(sender, instance, action, reverse, pk_set, **kwargs):
         return
     if reverse:
         for account in Account.objects.filter(pk__in=pk_set).select_related("company"):
-            validate_account_studios(account, [instance])
+            validate_account_studios(account, [*account.studios.all(), instance])
     else:
-        validate_account_studios(instance, Studio.objects.filter(pk__in=pk_set))
+        validate_account_studios(instance, Studio.objects.filter(pk__in=set(pk_set) | set(instance.studios.values_list("pk", flat=True))))

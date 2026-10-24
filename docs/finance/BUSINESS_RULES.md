@@ -255,6 +255,16 @@ Items explicitly marked pending require a business answer or source validation.
 The client explicitly accepted both policies on 2026-10-24. Fee allocation timing
 and changes to closed periods still need their phase-specific definitions.
 
+## Accounts without bank statements
+
+- **BR-041:** Savings can be configured without routine statements. Retain a
+  nullable reference opening balance and date; zero must be explicit. Confirmed
+  DR savings baseline: 0.00 DOP at start of 2026-01-01. Later internal-transfer
+  processing should derive an expected destination balance from known movements,
+  without fabricating a bank-confirmed receipt. Link eventual counterpart evidence
+  without counting twice. Source verification and missing balances remain visible.
+  No expected-balance calculation exists in Phase 2.1.
+
 ## Reference reports
 
 These are source fixtures, not committed datasets. Keep originals outside Git and

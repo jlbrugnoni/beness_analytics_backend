@@ -1,6 +1,6 @@
 # Finance module handover
 
-Status: Phase 0 accepted; Phase 1 implemented, client validation pending. Updated: 2026-10-24.
+Status: Phase 0 accepted; Phase 1 accepted; Phase 2.1 accounts/terminals implemented; client review pending. Updated: 2026-10-24.
 
 The finance module will support bank imports, sales reconciliation, expense
 classification, historical migration, and monthly management results for the
@@ -22,6 +22,8 @@ implemented behavior, checks, setup, and acceptance steps.
 | [Discovery](DISCOVERY.md) | Questions, answers, and the decisions they affect |
 | [Consolidated questionnaire](QUESTIONNAIRE.md) | Current numbered list for the client to answer together |
 | [Progress](PROGRESS.md) | Actual delivery status, validation, branches, and next work |
+| [Initial configuration](INITIAL_CONFIGURATION.md) | Confirmed accounts, terminals, historical fee defaults and savings baseline |
+| [Phase 2.1 delivery](PHASE_2_1_DELIVERY.md) | Account/terminal configuration, validation and client test steps |
 | [Phase 1 delivery](PHASE_1_DELIVERY.md) | Implemented access foundation, validation evidence, setup and client test steps |
 
 These files are the canonical finance specification in the backend repository.
@@ -66,7 +68,7 @@ this delivery plan.
 
 ## Development and release
 
-Current branch in both repositories: `feature/finance-phase-1`.
+Current branch in both repositories: `feature/finance-phase-2`.
 Use a corresponding branch per subsequent phase, with smaller branches/PRs where
 needed. Record actual branch names and commits in Progress; proposed names are
 not evidence that a branch or commit exists.

@@ -2,15 +2,15 @@
 
 Status: Phase 0 accepted, 2026-10-24. Names describe the target domain;
 exact Django field/API names are finalized during implementation. Phase 1 delivery
-lists the implemented company/account/access subset; other records remain planned.
+and Phase 2.1 delivery list the implemented company/account/terminal/access subset; other records remain planned.
 
 ## Ownership and configuration
 
 | Record | Fields and meaning |
 | --- | --- |
 | Company | Name, country, default currency, linked operational site context. DR Beness Pilates Studio S.R.L.; Spain Bewellness Group SL. A site is not automatically a company. |
-| Account | Editable label, company, bank/cash type, currency, provider, participating studios, active status. DR-first proposed label Banco Popular - Cuenta operativa (DOP). External account identifier optional; credentials are not collected. |
-| Terminal | Identifier as text, provider, account/company, existing studio, payment channel, effective dates. Estepona identifier 369092994. |
+| Account | Editable label, company, bank/cash type, currency, provider, participating studios, active status. DR-first proposed label Banco Popular - Cuenta operativa (DOP). Optional reference opening balance/date (start of day) and statement-import expectation; unknown balance differs from zero. No expected-balance calculation yet. External account identifier optional; credentials are not collected. |
+| Terminal | Identifier as text, provider, account/company, existing studio, payment channel, active state and revision. Effective dates remain future configuration work. Estepona identifier 369092994. |
 | Category/subcategory | Editable names, parent, operating/extraordinary treatment, shared/direct default, sensitive flag, active status. Used categories are archived, not destructively deleted. Parent sensitivity applies to children. |
 | Mapping/rule | Source label/pattern, target method/studio/terminal, fee rate or amount, effective dates, operation-date rule, reviewed priority. Manual assignments take priority. |
 | Tax profile | Company default sales treatment/rate, prices-inclusive flag, effective dates. V1 uses inclusive results; expense tax is not guessed. |

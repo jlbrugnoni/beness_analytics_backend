@@ -105,3 +105,31 @@ same settled questions again.
 
 Account names, provider dates, and other initial configuration can remain editable;
 do not use missing setup values to block independent foundation work.
+
+## Phase 2 configuration questions — 2026-10-24
+
+Status: answered by client on 2026-10-24. Phase 1 accepted (D-027).
+Previously accepted business policies remain unchanged.
+
+1. Which Dominican accounts should initially be configured? Suggested editable
+   labels: Banco Popular - Cuenta operativa (DOP), Banco Popular - Cuenta de
+   ahorro (DOP), and studio cash accounts where needed. Account numbers are not
+   required; missing values need not block configuration development.
+2. Which Dominican terminals should map to which studios? Terminal identifiers
+   and studio names are sufficient. Spain's 369092994 -> Estepona is already
+   confirmed and is not being asked again.
+3. Which processing fee rates apply to Dominican payment methods, and from what
+   dates if known? Include fixed charges if applicable. Unknown rates remain
+   unconfigured and flagged for review; never assume a zero fee.
+
+No new code or production configuration is created by this questionnaire.
+
+### Phase 2 answers received
+
+1. Operating/savings names accepted. Savings has no routine reports but needs an
+   expected balance; initial 2026 balance was zero and migration has transfers.
+2. Eight DR terminals supplied; exact table in INITIAL_CONFIGURATION.md.
+3. Cierre/Recurrentes 3.5%, Link 5%; rates apply throughout available history per
+   client ("since forever"). No fixed fee supplied.
+
+See Q-007, D-028–030 and BR-041. No further account/terminal questions are pending.

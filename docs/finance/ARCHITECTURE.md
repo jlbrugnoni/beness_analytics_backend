@@ -1,10 +1,10 @@
 # Finance architecture
 
-Status: accepted target design; Phase 1 foundation implemented.
+Status: accepted target design; Phase 1 accepted, Phase 2.1 implemented.
 Updated: 2026-10-24. Implemented models are finance.Company, finance.Account,
-finance.AccessChange and capability fields on existing access profiles. Financial
-transactions, configuration beyond accounts, and results below remain future work.
-See PHASE_1_DELIVERY.md for exact endpoints and limitations.
+finance.AccessChange, finance.Terminal, finance.ConfigurationChange and capability fields on existing access profiles. Financial
+transactions, configuration beyond accounts/terminal mappings, and results below remain future work.
+See PHASE_1_DELIVERY.md and PHASE_2_1_DELIVERY.md for exact endpoints and limitations.
 
 ## Existing integration points
 
@@ -65,7 +65,7 @@ enforced period closing is deferred.
 Company baseline: Beness Pilates Studio S.R.L. for the Dominican reports and
 Bewellness Group SL for the Spain Caixa account. Keep an operating account, a
 savings account, and studio cash as separate configurable accounts when present;
-the exact initial account list is pending Q-001.
+initial DR setup and terminal mappings are recorded in INITIAL_CONFIGURATION.md.
 
 Use decimal amounts and explicit currencies. Validate that allocation sums and
 reconciliation amounts do not exceed available values. Preserve partial/unassigned
