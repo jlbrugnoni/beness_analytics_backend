@@ -2,6 +2,7 @@
 
 Date: 2026-10-24. Status: implemented and validated; client acceptance pending.
 Branch in both repositories: `feature/finance-phase-1`.
+Tested implementation commits: backend `4c0bf21`, frontend `630739e`.
 
 ## What I did
 

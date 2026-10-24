@@ -35,6 +35,9 @@ Updated: 2026-10-24.
 
 Current backend/frontend branch: `feature/finance-phase-1`.
 Phase 0 branch was `feature/finance-phase-0`. See Git log for local checkpoints.
+Implementation checkpoints: backend `4c0bf21`, frontend `630739e`. Subsequent
+documentation-only checkpoint records this handoff; implementation hashes remain
+the references for the tested code.
 No finance changes pushed, merged, or deployed.
 Backend already had an unrelated untracked `exports/` directory; leave it intact.
 The frontend working tree was clean before the documentation pointer was added.
