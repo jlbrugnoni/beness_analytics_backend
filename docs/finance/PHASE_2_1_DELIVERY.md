@@ -1,6 +1,6 @@
 # Phase 2.1 accounts and terminals delivery
 
-Date: 2026-10-24. Implemented and validated; client acceptance pending.
+Date: 2026-10-24. Implemented, validated and accepted by the client on 2026-10-24 (D-031).
 Both repositories: feature/finance-phase-2. Phase 2 as a whole is not complete.
 
 ## What I did

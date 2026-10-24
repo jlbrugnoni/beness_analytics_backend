@@ -269,6 +269,16 @@ Asked 2026-10-24 as a consolidated numbered list following Phase 1 acceptance.
 No further answer is needed for accounts/terminals development. Savings expected
 balance engine and fee calculation are explicitly later work.
 
+## Q-008: Phase 2.2 category setup
+
+Sent 2026-10-24 after Phase 2.1 acceptance (D-031). Extracted only category
+labels and counted debit category pairs from the existing workbook, read-only.
+PHASE_2_2_DISCOVERY.md records source ranges, all 44 catalog pairs, helper-list
+variations and pending questions on company ownership, sensitivity, treatment and
+catalog initialization. No original source workbook was modified.
+
+Status: client answers pending; no proposed default is approved by silence.
+
 ## Recording an answer
 
 Keep the question, append the client's answer with its date, state the accepted

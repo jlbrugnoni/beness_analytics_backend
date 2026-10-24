@@ -39,6 +39,8 @@ client-approved. Detailed behavior belongs in Business rules.
 | D-029 | 2026-10-24 | Accepted | Client supplied eight Dominican terminal/studio/type mappings. Preserve the exact table in INITIAL_CONFIGURATION.md; it supersedes illustrative examples. No Arroyo Hondo recurring terminal was supplied. |
 | D-030 | 2026-10-24 | Accepted | Cierre (credit/debit) and Recurrentes have 3.5% withholding; Link 5%. Client says these have applied "since forever": historical baseline throughout available coverage, no invented contract start date. Fee-rule configuration/processing remains later work. |
 
+| D-031 | 2026-10-24 | Accepted | Client replied "perfect, we can continue" after Phase 2.1 accounts/terminals handoff. Phase 2.1 accepted; proceed to Phase 2.2 discovery and implementation under the phased working agreement. No production push/merge/deployment authorized. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

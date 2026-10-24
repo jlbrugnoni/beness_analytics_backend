@@ -4,7 +4,7 @@ Updated: 2026-10-24.
 
 ## Current checkpoint
 
-- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accounts/terminals implemented; client review pending.
+- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 category discovery in progress (Q-008).
 - Phase 0: accepted on 2026-10-24 with "perfect, we can continue" (D-026).
 - Subphase 0.2: main business discovery batch resolved; all 12 consolidated
   answers and three focused clarifications recorded. DR-first editable account
@@ -29,7 +29,7 @@ Updated: 2026-10-24.
   exists; transaction/category redaction awaits their later models.
 - Phase 1.4: group editor, user form switches and protected finance landing
   implemented in English/Spanish. Validation described in PHASE_1_DELIVERY.md.
-- Phase 1 acceptance: client confirmed "great, it works properly" (D-027). Phase 2 discovery answered (Q-007/D-028–030); Phase 2.1 implemented and validated. Phases 2.2–2.4 and 3–7 not implemented.
+- Phase 1 acceptance: client confirmed "great, it works properly" (D-027). Phase 2 discovery answered (Q-007/D-028–030); Phase 2.1 accepted. Phase 2.2 discovery prepared; 2.2–2.4 and 3–7 code not implemented.
 
 ## Branches and working tree
 
@@ -104,13 +104,13 @@ The frontend working tree was clean before the documentation pointer was added.
 
 ## What the client should review
 
-Phase 1 accepted. Follow PHASE_2_1_DELIVERY.md for accounts/terminals client review.
-The isolated local preview contains the confirmed DR mappings and savings baseline.
+Phase 2.1 accepted. Answer Q-008 in QUESTIONNAIRE.md or PHASE_2_2_DISCOVERY.md.
+No new application changes accompany this discovery checkpoint.
 
 ## Next work
 
-Client review of Phase 2.1, then Phase 2.2 editable categories/subcategories and
-inherited sensitivity. Later steps add source mappings and historical-baseline/
+Resolve Phase 2.2 category questions, then implement editable categories/
+subcategories and inherited sensitivity. Later steps add source mappings and historical-baseline/
 dated fee/tax rules. Imported movements, expected balances and sensitive payment
 redaction remain future processing work.
 
@@ -142,3 +142,10 @@ Only temporary QA/test databases changed. Expected balances and fee rules are
 not implemented. No raw reports imported and no production deployment performed.
 
 Phase 2.1 implementation checkpoints: backend `4969ab0`, frontend `eed0e6e`.
+
+## Phase 2.2 discovery checkpoint
+
+2026-10-24: client accepted Phase 2.1 with "perfect, we can continue" (D-031).
+Extracted the existing 10-category/44-pair catalog read-only and compared used
+category pairs. Recorded the additional Otros / Extraordinarios and invalid 1 / 1.
+Sent Q-008 as one numbered batch; no category code or proposed defaults applied.

@@ -133,3 +133,18 @@ No new code or production configuration is created by this questionnaire.
    client ("since forever"). No fixed fee supplied.
 
 See Q-007, D-028–030 and BR-041. No further account/terminal questions are pending.
+
+## Phase 2.2 category questions — Q-008, 2026-10-24
+
+Status: sent; answers pending. See PHASE_2_2_DISCOVERY.md for the extracted
+10-category/44-subcategory catalog and the basis for each recommendation.
+
+1. Independent catalogs per company, with explicit copying later?
+2. Start sensitive with entire Personal plus Administracion / Sueldos
+   administración and Seguridad social administración? Any additional restrictions?
+3. Ordinary expenses operating, revenue-related Impuestos extraordinary,
+   Equipamiento/Intereses/Devoluciones requiring review until movement classified?
+4. Use explicit paired catalog plus Otros / Extraordinarios; invalid 1 / 1
+   remains a migration review item?
+
+These recommendations are pending client answers, not accepted defaults.
