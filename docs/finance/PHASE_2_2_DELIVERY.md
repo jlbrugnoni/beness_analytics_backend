@@ -126,3 +126,5 @@ deployment or permission assignment was performed. No raw reports or credentials
 are committed. Unrelated exports/ remains untouched. No external review agent.
 
 Next: client acceptance of Phase 2.2, then Phase 2.3 source/payment/studio mappings.
+
+Phase 2.2 implementation checkpoints: backend `3670958`, frontend `0b36d89`.

@@ -158,3 +158,5 @@ privacy/active/defaults, scoped/audited/revision-aware writes and EN/ES category
 lint/build and Django/migration checks passed. Browser QA and exact boundaries
 are recorded in PHASE_2_2_DELIVERY.md. Client acceptance pending; no production
 changes. Phases 2.3–2.4 and financial processing remain unimplemented.
+
+Phase 2.2 implementation checkpoints: backend `3670958`, frontend `0b36d89`.
