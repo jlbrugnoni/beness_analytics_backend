@@ -282,6 +282,16 @@ use consistent categories across all companies for comparable analysis; proposed
 sensitive flags, result defaults, and catalog cleanup accepted. See D-032–035.
 No additional Phase 2.2 question remains pending.
 
+## Q-009: Phase 2.3 payment/studio mapping setup
+
+Sent 2026-10-24 after Phase 2.2 acceptance (D-036). Inspected only mapping labels
+from the original Alegra export and existing PaymentMethod/SaleLine integration.
+PHASE_2_3_DISCOVERY.md records the source-field distinction and accepted studio
+rules. Asked whether generic Alegra card labels also cover Link/Recurrentes,
+whether cash/transfer labels can be trusted directly, and for Spain Mindbody
+method names if available. Spain aliases can remain unconfigured while generic
+configuration/DR work proceeds. Client answers pending; no guessed aliases seeded.
+
 ## Recording an answer
 
 Keep the question, append the client's answer with its date, state the accepted

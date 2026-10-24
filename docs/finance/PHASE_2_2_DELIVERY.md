@@ -1,6 +1,6 @@
 # Phase 2.2 editable categories delivery
 
-Date: 2026-10-24. Implemented and validated; client acceptance pending.
+Date: 2026-10-24. Implemented, validated and accepted by the client on 2026-10-24 (D-036).
 Both repositories: feature/finance-phase-2. Phase 2.3–2.4 remain future work.
 
 ## What I did

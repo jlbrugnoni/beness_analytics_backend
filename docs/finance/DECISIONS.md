@@ -46,6 +46,8 @@ client-approved. Detailed behavior belongs in Business rules.
 | D-034 | 2026-10-24 | Accepted | Ordinary expenses default operating; revenue-related Administracion / Impuestos extraordinary; Operacion / Equipamiento, Bancos / Intereses and Bancos / Devoluciones require individual review. Defaults guide classification; they do not establish a refund, loan or actual allocation from a label. |
 | D-035 | 2026-10-24 | Accepted | Start from the workbook's 10-category/44-pair explicit catalog plus Otros / Extraordinarios (45 subcategories total). Invalid source category/subcategory 1 / 1 remains a migration review issue. Preserve source names; initial Extraordinarios default is extraordinary. |
 
+| D-036 | 2026-10-24 | Accepted | Client confirmed "perfect, it worked good. we can continue" after Phase 2.2 category handoff. Phase 2.2 accepted; proceed to Phase 2.3 discovery under the phased working agreement. No production deployment authorized. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

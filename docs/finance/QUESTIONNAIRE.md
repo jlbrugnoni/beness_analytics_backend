@@ -150,3 +150,17 @@ Status: answered 2026-10-24. See PHASE_2_2_DISCOVERY.md for the extracted
 Answers: (1) yes, with the aim of matching categories across all companies for
 comparable analysis; (2) agreed, no additions; (3) agreed; (4) agreed.
 See D-032–035. Phase 2.2 has no remaining discovery question.
+
+## Phase 2.3 mapping questions — Q-009, 2026-10-24
+
+Status: sent; answers pending. See PHASE_2_3_DISCOVERY.md.
+
+1. Do generic Alegra Tarjeta crédito/Tarjeta débito labels also include Link or
+   Recurrentes? If so, recommend pending channel review rather than assuming Cierre.
+2. Are Efectivo/Transferencia reliable for direct mapping, or also review-only?
+3. Which exact Spain Mindbody method names map to terminal/recurring/link/transfer/
+   cash? If not available now, leave Spain aliases editable and unconfigured.
+
+Existing cost-center precedence, General neutrality, terminals and fee rates
+are already decided and are not being asked again. No proposed trust default
+is considered approved without a response.
