@@ -1,0 +1,48 @@
+# Finance decision log
+
+Use stable decision IDs. Record changes as a new dated entry referencing the
+superseded decision; never rewrite history to suggest an earlier assumption was
+client-approved. Detailed behavior belongs in Business rules.
+
+| ID | Date | Status | Decision and basis |
+| --- | --- | --- | --- |
+| D-001 | 2026-10-24 | Accepted | Client agreed to the phased finance plan: separate Django app, shared existing studios/users, explicit finance access, configuration, review, reconciliation, results, and pilot. See BR-001–003, BR-029–031. |
+| D-002 | 2026-10-24 | Accepted | Client normally invoices in Alegra when paid; invoice date defaults payment date. Use cost center for studio and flag contradictory studio price lists; General is neutral. See BR-004–007. |
+| D-003 | 2026-10-24 | Accepted | Item-level Alegra report is the routine sales source; group by invoice while retaining items. No routine second Alegra report is required for the agreed manual-channel workflow. See BR-005–007. |
+| D-004 | 2026-10-24 | Accepted | Caixa terminal 369092994 belongs to Estepona; final DDMM in ON descriptions is operation day/month. Confirmed directly by client. See BR-012. |
+| D-005 | 2026-10-24 | Accepted | Historical enriched tables need a migration importer with existing assignments; retries and overlapping raw uploads must preserve records and manual work. See BR-022–028. |
+| D-006 | 2026-10-24 | Accepted | Developer works as a delivery partner: asks phase business questions, maintains project documentation, reports What I did / What you should test, and records progress for future agents. No external review agent requested. |
+| D-007 | 2026-10-24 | Accepted | Client identified Bewellness Group SL as Spain's company/Caixa owner. Initial account register remains pending. See Q-001/BR-003. |
+| D-008 | 2026-10-24 | Accepted | Client requested explicit internal movements for deposited cash and Dominican operating-to-savings transfers. Cash should already be recorded as sales. Precise final-result presentation and cash controls remain pending. See Q-002/BR-014. |
+| D-009 | 2026-10-24 | Accepted | Client confirmed AZUL deposits arrive net of processing fees; reconciliation subtracts the configured channel fee from gross Alegra sales before comparing. Separate transfer fees also exist. Monthly fee basis and nature of separate AZUL debits remain pending. See Q-003/BR-019. |
+| D-010 | 2026-10-24 | Accepted | Client accepted separate display of own-company internal movements and exclusion of principal from profit; associated bank fees remain expenses. Resolves the presentation left open in D-008. See P-001/Q-002/BR-014. |
+| D-011 | 2026-10-24 | Accepted | Client accepted estimated processing fees with later actual adjustments plus distinct charged fees. Resolves the monthly basis left open in D-009; individual AZUL debit classification remains open. See P-002/Q-003/BR-019. |
+| D-012 | 2026-10-24 | Client direction accepted; technical design selected | Client prefers the existing internal-partner permission workflow (groups, allowed sites, money flag, individual permissions) and delegated group-versus-user design choice. Use editable group capability sets plus additive user grants and existing location limits. Supersedes separate per-studio finance-role assignments in the earlier architecture/BR-031; different action levels by studio are deferred. Exact technical-superuser/account-detail policy remains open. See Q-004/BR-029–031. |
+| D-013 | 2026-10-24 | Accepted | Client classifies company-wide expenses as administration and later allocates them to studios by weighted income. Preserve company source expense and allocations without double counting. See Q-005/BR-018/BR-032. |
+| D-014 | 2026-10-24 | Accepted | Client selected gross sales before processing fees, using the expense's assigned month. If there is no income, leave allocation pending with a manual split available. Completes D-013's main formula inputs. See Q-005/BR-032. |
+| D-015 | 2026-10-24 | Accepted | Client requested configurable sales tax and supplied initial settings: Spain sales include 21% IVA; Dominican activity has no sales tax. Use company defaults/effective dates while retaining source tax and exceptions. This is client-provided setup; monthly tax presentation and expense tax remain open. See Q-006/BR-033. |
+| D-016 | 2026-10-24 | Accepted | Client selected a basic tax-inclusive result for v1; expense tax and net-to-net comparison are deferred. Gross sales including IVA before fees are also the v1 administration base. Tax configuration/source metadata remain in scope. Resolves D-015's result presentation; the earlier excluding-IVA recommendation was not adopted. See Q-006/BR-034. |
+| D-017 | 2026-10-24 | Accepted direction; label recommended | Configure DR first. Proposed editable name Banco Popular - Cuenta operativa (DOP). History starts January 2026 in DR; Spain expenses mid-2025, income February 2026. Exact coverage comes from files; no accounts created yet. BR-003/BR-036. |
+| D-018 | 2026-10-24 | Accepted | Manual creation and report uploads both required, with manual/import origin and report name. Seed workbook categories and allow in-app category/subcategory maintenance. BR-002/BR-035. |
+| D-019 | 2026-10-24 | Accepted | Unknown AZUL debits stay for review. Caixa first-year terminal fees are charged and separately reimbursed; retain debit and credit, linking reviewed fee offsets. BR-039. |
+| D-020 | 2026-10-24 | Accepted | V1 uses Mindbody Sales for Spain and Alegra for DR. Alegra remains the future Spain target; no cutover date. Future Spain consumer invoice support must permit missing customer names. BR-008. |
+| D-021 | 2026-10-24 | Accepted | Refund reduces original sale month's result; preserve actual refund date and linkage without duplicate cancellation effects. BR-038. |
+| D-022 | 2026-10-24 | Accepted | Final management result = operating + extraordinary inflows - extraordinary outflows. Loan receipts increase final only. Revenue-related taxes are non-operating; employment taxes/contributions are operating. Map exact tax categories during setup. BR-020. |
+| D-023 | 2026-10-24 | Client direction accepted; technical design selected | Sensitive category flag with extra group/user capability. Without it show authorized aggregates, not individual sensitive payments; protect API/export/download paths. Keep Django superuser technical administration; ordinary Admin group needs explicit finance grants. BR-031/BR-037. |
+| D-024 | 2026-10-24 | Deferred for initial use | Prepare period/history structure; enforced closing/reopening is for later adoption. No hard month locks or mandatory closing UI in initial v1. BR-021. |
+| D-025 | 2026-10-24 | Developer-selected default | Client delegated tolerance: configurable 0.01 DOP/EUR rounding-review threshold, with explicit confirmation and no automatic write-off or hidden amount changes. BR-040. |
+| D-026 | 2026-10-24 | Accepted | Client replied "perfect, we can continue" to Phase 0 review handoff. Phase 0 accepted and Phase 1 foundation/access authorized. No production deployment authorized. |
+
+## Open policy decisions
+
+| Topic | Discovery reference | Dependency |
+| --- | --- | --- |
+| Editable additional accounts/provider dates/tax-category mapping | Q-001/Q-003/Q-005 | Phase 2 setup |
+| Verified cash balances/opening balances | Q-002 | Optional later balance requirement; manual entries are in v1 |
+| Refund/non-positive income, source correction, rounding | Q-005 | Detailed Phase 4/5 validation |
+| Actual-fee adjustment period for late evidence | Q-003 | Phase 5/6 case definition |
+| Mindbody paid/refund/split-method source verification | Q-006 | Spain adapter acceptance; initial source is decided |
+| Enforced closing and net-of-tax results | D-024/D-016 | Deferred; not initial-v1 blockers |
+
+The main discovery batch is resolved. Detailed implementation questions must
+reference a specific remaining case rather than reopen settled policy.

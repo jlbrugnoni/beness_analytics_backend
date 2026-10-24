@@ -2,7 +2,9 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from rest_framework import serializers
 
-from .access import user_has_capability
+from .access import group_capabilities, resolve_access_payload, user_has_capability
+from .capabilities import FINANCE_CAPABILITIES
+from rest_framework.exceptions import PermissionDenied
 from .models import (
     AttendanceRawRow,
     AttendanceClassMatch,
@@ -97,6 +99,12 @@ class UserSerializer(serializers.ModelSerializer):
         first_group = obj.groups.first()
         return first_group.name if first_group else None
 
+    def validate(self, attrs):
+        request = self.context.get("request")
+        if request and not request.user.is_superuser and attrs.get("is_superuser"):
+            raise PermissionDenied("Only a superuser can grant superuser status.")
+        return attrs
+
     def get_group_names(self, obj):
         return list(obj.groups.order_by("name").values_list("name", flat=True))
 
@@ -112,13 +120,26 @@ class ChangePasswordSerializer(serializers.Serializer):
 
 
 class GroupSerializer(serializers.ModelSerializer):
+    capabilities = serializers.SerializerMethodField()
+    access_profile_id = serializers.SerializerMethodField()
+
     class Meta:
         model = Group
-        fields = ["id", "name"]
+        fields = ["id", "name", "capabilities", "access_profile_id"]
+
+    def get_capabilities(self, obj):
+        return group_capabilities(obj)
+
+    def get_access_profile_id(self, obj):
+        try:
+            return obj.access_profile.pk
+        except GroupAccessProfile.DoesNotExist:
+            return None
 
 
 class GroupAccessProfileSerializer(serializers.ModelSerializer):
     group_name = serializers.CharField(source="group.name", read_only=True)
+    expected_revision = serializers.IntegerField(write_only=True, required=False, min_value=1)
 
     class Meta:
         model = GroupAccessProfile
@@ -132,12 +153,21 @@ class GroupAccessProfileSerializer(serializers.ModelSerializer):
             "can_reset_data",
             "can_manage_users",
             "can_view_admin_logs",
-        ]
+            "revision", "expected_revision",
+        ] + list(FINANCE_CAPABILITIES)
+        read_only_fields = ["revision"]
+
+    def validate(self, attrs):
+        if self.instance and attrs.get("group", self.instance.group) != self.instance.group:
+            raise serializers.ValidationError({"group": "An access profile cannot be moved to another group."})
+        return attrs
 
 
 class UserAccessProfileSerializer(serializers.ModelSerializer):
     allowed_site_names = serializers.SerializerMethodField()
     allowed_studio_names = serializers.SerializerMethodField()
+    effective_access = serializers.SerializerMethodField()
+    expected_revision = serializers.IntegerField(write_only=True, required=False, min_value=1)
 
     class Meta:
         model = UserAccessProfile
@@ -155,7 +185,22 @@ class UserAccessProfileSerializer(serializers.ModelSerializer):
             "can_reset_data",
             "can_manage_users",
             "can_view_admin_logs",
-        ]
+            "revision", "expected_revision", "effective_access",
+        ] + list(FINANCE_CAPABILITIES)
+        read_only_fields = ["revision"]
+
+    def validate(self, attrs):
+        user = attrs.get("user", self.instance.user if self.instance else None)
+        request = self.context.get("request")
+        if self.instance and user != self.instance.user:
+            raise serializers.ValidationError({"user": "An access profile cannot be moved to another user."})
+        if user and user.is_superuser and request and not request.user.is_superuser:
+            raise PermissionDenied("Only a superuser can edit a superuser's access profile.")
+        return attrs
+
+    def get_effective_access(self, obj):
+        payload = resolve_access_payload(obj.user)
+        return {key: payload[key] for key in ("capabilities", "capability_sources", "finance")}
 
     def get_allowed_site_names(self, obj):
         return [site.name for site in obj.allowed_sites.all()]

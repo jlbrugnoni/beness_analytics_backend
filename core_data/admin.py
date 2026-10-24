@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.contrib.auth.admin import UserAdmin
+from .capabilities import FINANCE_CAPABILITIES
 
 from .models import (
     AttendanceRawRow,
@@ -55,7 +56,7 @@ class UserAccessProfileInline(admin.StackedInline):
                 )
             },
         ),
-    )
+    ) + (("Finance grants", {"fields": FINANCE_CAPABILITIES}),)
 
 
 @admin.register(CustomUser)
@@ -93,9 +94,41 @@ class CustomUserAdmin(UserAdmin):
     ordering = ("email",)
     readonly_fields = ("last_login", "date_joined")
 
+    def save_formset(self, request, form, formset, change):
+        if formset.model is not UserAccessProfile:
+            return super().save_formset(request, form, formset, change)
+        from finance.audit import access_snapshot, log_access_change
+        profiles = formset.save(commit=False)
+        changes = []
+        for profile in profiles:
+            previous = UserAccessProfile.objects.select_for_update().filter(pk=profile.pk).first()
+            before = access_snapshot(previous) if previous else {}
+            profile.revision = previous.revision + 1 if previous else 1
+            profile.save()
+            changes.append((profile, before))
+        formset.save_m2m()
+        for profile, before in changes:
+            log_access_change(request.user, profile, "update" if before else "create", before, access_snapshot(profile))
+
+
+class AccessProfileAdminAuditMixin:
+    def save_model(self, request, obj, form, change):
+        from finance.audit import access_snapshot
+        previous = type(obj).objects.select_for_update().filter(pk=obj.pk).first() if change else None
+        obj._access_before = access_snapshot(previous) if previous else {}
+        obj.revision = previous.revision + 1 if previous else 1
+        super().save_model(request, obj, form, change)
+
+    def save_related(self, request, form, formsets, change):
+        from finance.audit import access_snapshot, log_access_change
+        super().save_related(request, form, formsets, change)
+        obj = form.instance
+        log_access_change(request.user, obj, "update" if change else "create", obj._access_before, access_snapshot(obj))
+
 
 @admin.register(GroupAccessProfile)
-class GroupAccessProfileAdmin(admin.ModelAdmin):
+class GroupAccessProfileAdmin(AccessProfileAdminAuditMixin, admin.ModelAdmin):
+    readonly_fields = ("revision",)
     list_display = (
         "group",
         "can_view_money",
@@ -117,7 +150,8 @@ class GroupAccessProfileAdmin(admin.ModelAdmin):
 
 
 @admin.register(UserAccessProfile)
-class UserAccessProfileAdmin(admin.ModelAdmin):
+class UserAccessProfileAdmin(AccessProfileAdminAuditMixin, admin.ModelAdmin):
+    readonly_fields = ("revision",)
     filter_horizontal = ("allowed_sites", "allowed_studios")
     list_display = (
         "user",

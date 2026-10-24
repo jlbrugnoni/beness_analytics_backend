@@ -50,12 +50,22 @@ class CustomUser(AbstractBaseUser, PermissionsMixin):
 
 class GroupAccessProfile(models.Model):
     group = models.OneToOneField(Group, on_delete=models.CASCADE, related_name="access_profile")
+    revision = models.PositiveIntegerField(default=1)
     can_view_money = models.BooleanField(default=False)
     can_upload_data = models.BooleanField(default=False)
     can_edit_data = models.BooleanField(default=False)
     can_reset_data = models.BooleanField(default=False)
     can_manage_users = models.BooleanField(default=False)
     can_view_admin_logs = models.BooleanField(default=False)
+    can_view_finance = models.BooleanField(default=False)
+    can_import_finance = models.BooleanField(default=False)
+    can_edit_finance = models.BooleanField(default=False)
+    can_reconcile_finance = models.BooleanField(default=False)
+    can_manage_finance_settings = models.BooleanField(default=False)
+    can_close_finance_periods = models.BooleanField(default=False)
+    can_export_finance = models.BooleanField(default=False)
+    can_view_finance_bank_accounts = models.BooleanField(default=False)
+    can_view_sensitive_finance = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Access profile for {self.group.name}"
@@ -71,6 +81,7 @@ class UserAccessProfile(models.Model):
     ]
 
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="access_profile")
+    revision = models.PositiveIntegerField(default=1)
     allowed_sites = models.ManyToManyField("Site", blank=True, related_name="allowed_user_profiles")
     allowed_studios = models.ManyToManyField("Studio", blank=True, related_name="allowed_user_profiles")
     language = models.CharField(max_length=2, choices=LANGUAGE_CHOICES, default=LANGUAGE_ENGLISH)
@@ -80,6 +91,15 @@ class UserAccessProfile(models.Model):
     can_reset_data = models.BooleanField(default=False)
     can_manage_users = models.BooleanField(default=False)
     can_view_admin_logs = models.BooleanField(default=False)
+    can_view_finance = models.BooleanField(default=False)
+    can_import_finance = models.BooleanField(default=False)
+    can_edit_finance = models.BooleanField(default=False)
+    can_reconcile_finance = models.BooleanField(default=False)
+    can_manage_finance_settings = models.BooleanField(default=False)
+    can_close_finance_periods = models.BooleanField(default=False)
+    can_export_finance = models.BooleanField(default=False)
+    can_view_finance_bank_accounts = models.BooleanField(default=False)
+    can_view_sensitive_finance = models.BooleanField(default=False)
 
     def __str__(self):
         return f"Access profile for {self.user.email}"

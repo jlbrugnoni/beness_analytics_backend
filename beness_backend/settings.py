@@ -26,6 +26,7 @@ SECRET_KEY = config("SECRET_KEY", default="analytics-local-development-key")
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = str(config("DEBUG", default="True")).lower() in ("1", "true", "yes", "on")
 ENABLE_ANALYTICS_RESET = str(config("ENABLE_ANALYTICS_RESET", default=str(DEBUG))).lower() in ("1", "true", "yes", "on")
+FINANCE_ENABLED = str(config("FINANCE_ENABLED", default="False")).lower() in ("1", "true", "yes", "on")
 ENABLE_PURCHASE_REPAIR = str(
     config("ENABLE_PURCHASE_REPAIR", default=str(ENABLE_ANALYTICS_RESET))
 ).lower() in ("1", "true", "yes", "on")
@@ -52,6 +53,7 @@ INSTALLED_APPS = [
     "djoser",
     "core_data",
     "analytics",
+    "finance",
 ]
 
 AUTH_USER_MODEL = "core_data.CustomUser"
