@@ -459,3 +459,15 @@ recommended operator sequence, but safe pending links must allow any arrival ord
 Current code has invoice and bank posting only; native payment import/allocation
 is not implemented. See ALEGRA_DUAL_REPORT_IMPORT_PLAN.md for identity, source
 conflicts, privacy, completeness, dependency/undo and discovery requirements.
+
+
+## Implemented workbook payment preview — Phase 3.3.3.1
+
+GET migration-imports/{id}/payments/ derives bounded, versioned Alegra_adm evidence
+from immutable workbook bytes without new DB rows. Separate raw payment number,
+original associations, original/corrected methods and prior flags remain intact.
+Exact source-reference grouping is not a posted invoice link. Company-wide source
+privacy reuses migration controls; source cells are paginated with payment rows.
+See PHASE_3_3_3_1_DELIVERY.md. Financial receipts/allocations, cross-file duplicate
+decisions, posting/linking and undo remain planned; preview does not alter the
+single source channel on existing FinancialSale records.

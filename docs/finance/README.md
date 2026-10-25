@@ -100,3 +100,5 @@ customer data in Git. Do not modify unrelated existing work.
 A future developer should be able to identify the accepted rules, unresolved
 questions, current implementation, test evidence, and next subphase from this
 folder. Never mark a phase complete merely because its documentation exists.
+
+Payment preview handover: [PHASE_3_3_3_1_DELIVERY.md](PHASE_3_3_3_1_DELIVERY.md).

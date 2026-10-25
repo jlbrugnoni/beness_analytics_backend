@@ -215,3 +215,14 @@ receipt, studio or settlement. Exact eligible links are rechecked when counterpa
 financial records are posted. Repeated/overlapping source files preserve identities,
 manual corrections and evidence. Native payment importer is not yet available;
 ALEGRA_DUAL_REPORT_IMPORT_PLAN.md defines discovery and delivery sequence.
+
+
+## Implemented workbook payment source inspection — Phase 3.3.3.1
+
+Open an existing migration workbook preview, then Show Alegra payments. Inspect
+payment month or All payment dates, filter by full invoice code or review issues,
+and open Payment source cells. Original Asociaciones provides the invoice reference
+when derived NCF is blank. Split payment occurrences remain separate; group totals
+span all payment dates in this workbook. Source assignments/flags are retained,
+not confirmed receipt/invoice/bank links. No financial record is created by this
+read-only panel. See PHASE_3_3_3_1_DELIVERY.md for the client test checklist.

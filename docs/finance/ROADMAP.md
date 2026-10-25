@@ -104,3 +104,9 @@ posting and order-independent invoice linking before historical financial postin
 behavior; extend partial-payment/status semantics deliberately. See
 ALEGRA_DUAL_REPORT_IMPORT_PLAN.md for subphases and acceptance scenarios.
 This dependency is planned, not delivered or tested.
+
+
+Phase 3.3.3.1 workbook payment source previews implemented and validated;
+client acceptance pending. Uses already-uploaded Alegra_adm sheets. Native payment
+CSV contract, receipt identity/posting, invoice links and dependent undo are later
+3.3.3 work before historical financial posting. See PHASE_3_3_3_1_DELIVERY.md.

@@ -15,6 +15,7 @@ from .access import can_use_finance
 from .sales_import_views import SalesPreviewPermission, sales_preview_companies
 from .migration_reader import MAX_BYTES, read_migration_xlsx
 from .migration_source import source_headers, readable_cells
+from .payment_preview import read_payment_preview, payment_totals
 from .models import Company, MigrationImportBatch, MigrationImportRow
 
 
@@ -119,6 +120,27 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
         if kind in ('credit','debit'):qs=qs.filter(kind=kind)
         elif kind!='all':raise serializers.ValidationError({'kind':'Choose credit, debit or all.'})
         return self.get_paginated_response(MigrationRowSerializer(self.paginate_queryset(qs),many=True).data)
+
+    @action(detail=True,methods=['get'],url_path='payments')
+    def payments(self,request,pk=None):
+        batch=self.get_object()
+        scope=request.query_params.get('scope','selected')
+        if scope not in ('selected','all'):raise serializers.ValidationError({'scope':'Choose selected or all.'})
+        invoice=request.query_params.get('invoice','').strip().upper()
+        import re
+        if invoice and not re.fullmatch(r'B0[12]\d{8}',invoice):
+            raise serializers.ValidationError({'invoice':'Use a complete B01/B02 invoice code.'})
+        review=request.query_params.get('review','all')
+        if review not in ('all','issues'):raise serializers.ValidationError({'review':'Choose all or issues.'})
+        parsed=read_payment_preview(bytes(batch.original_file))
+        rows=parsed['rows']
+        if scope=='selected':rows=[r for r in rows if (r['date'] or '').startswith(batch.selected_month.strftime('%Y-%m'))]
+        if invoice:rows=[r for r in rows if r['invoice_code']==invoice]
+        if review=='issues':rows=[r for r in rows if r['issues']]
+        response=self.get_paginated_response(self.paginate_queryset(rows))
+        response.data.update(parser_version=parsed['parser_version'],file_issues=parsed['file_issues'],
+            summary=parsed['summary'],filtered_summary=payment_totals(rows),selected_month=batch.selected_month.strftime('%Y-%m'))
+        return response
 
     @action(detail=True,methods=['get'],url_path='source-row')
     def source_row(self,request,pk=None):

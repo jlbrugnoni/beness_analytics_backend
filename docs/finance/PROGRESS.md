@@ -390,3 +390,21 @@ link posted; missing receipt ID/customer-label discrepancy remain review evidenc
 Recorded raw-versus-enriched method fields and source limitations in the dual
 report import plan. Enough structure for workbook-preset preview design; standalone
 native payment CSV support still unverified. Read-only analysis/documentation only.
+
+
+## Phase 3.3.3.1 payment workbook preview delivery
+
+2026-10-25: client said “perfect, continue” after source structure inspection.
+Implemented derived read-only Alegra_adm previews on existing saved migration
+workbooks: original invoice references, separate payment occurrences, preserved
+manual methods/studio/review flags, invoice/review/month filters, grouping, totals,
+pagination and readable source cells. Existing uploads need no source rewrite or
+re-upload; payment posting/linking is not implemented. No financial/grant changes.
+Real #3 read-only validation: 1,128 payments; September 615 /3,555,130.80 DOP;
+one missing-number review entry with explicit invoice reference. These are source
+checks only; invoice-vs-payment discrepancies and settlements remain unvalidated.
+281 supported PostgreSQL tests passed; SQLite 277 passed/four skips; ten final
+focused PG payment tests passed. Frontend lint/build, migration checks and
+synthetic browser QA passed. See PHASE_3_3_3_1_DELIVERY.md for limits, evidence and
+client checklist. No deployment/push/merge. Acceptance pending for this preview
+and prior source display; next is receipt identity discovery and reviewed posting.

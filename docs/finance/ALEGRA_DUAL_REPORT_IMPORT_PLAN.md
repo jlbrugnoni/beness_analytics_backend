@@ -149,3 +149,12 @@ retained in original bytes. No payment importer is implemented by this inspectio
 A separate native standalone CSV importer must still validate an actual native
 export before claiming support for it. This is not a reason to request the same
 workbook again or block workbook-preset preview design.
+
+
+## Implementation checkpoint: Phase 3.3.3.1
+
+The bounded historical workbook payment preview preset is now implemented on
+existing migration uploads. See PHASE_3_3_3_1_DELIVERY.md for current behavior,
+validation, privacy and acceptance checklist. Earlier statements that no payment
+importer exists refer to financial posting and standalone native CSV support,
+which remain planned. This preview performs no financial receipt/allocation writes.
