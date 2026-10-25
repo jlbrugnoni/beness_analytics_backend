@@ -1,7 +1,8 @@
 # Phase 3 imports and historical migration discovery
 
-Date: 2026-10-24. Phase 2.4 accepted (D-042). Q-011 sent; answers pending.
-This is discovery and development sequencing, not delivered import functionality.
+Date: 2026-10-24. Phase 2.4 accepted (D-042). Q-011 answered (D-043–046).
+This preserves discovery and sequencing. See PHASE_3_1_DELIVERY.md for the
+implemented bank-preview foundation; financial commit remains future work.
 
 ## Accepted behavior to preserve
 
@@ -53,8 +54,7 @@ This is discovery and development sequencing, not delivered import functionality
    commit claimed until its persistence and scope checks are implemented.
 2. **3.2 and initial 3.5: bank commit/overlap review.** Immutable source evidence,
    financial movements, atomic stale-preview checks, retry/occurrence handling,
-   ambiguous identity review and audit. Implement rollback/undo only after the
-   client answers Q-011. Never remove an existing record because it is absent
+   ambiguous identity review and audit. Implement audited undo using D-046, with detailed reversal case validation. Never remove an existing record because it is absent
    from a partial upload. Do not silently merge indistinguishable occurrences.
 3. **3.3: Alegra invoice/item imports.** Validate invoice identity, totals,
    complete-versus-filtered export semantics and source corrections before
@@ -81,5 +81,19 @@ financial import tests. The Popular sample has 175 movements (100 credits and
 partial-period fixtures cannot establish a complete monthly result.
 
 No code, migrations, real uploads, data/grant changes or production changes in
-this discovery checkpoint. Both repositories remain on feature/finance-phase-2;
+the original discovery checkpoint. Later implementation is documented separately. Both repositories remain on feature/finance-phase-2;
 branch naming is historical and does not imply any phase was deployed.
+
+### Q-011 answers received — 2026-10-24
+
+1. Popular downloads are normally daily due to volume; overlapping reports are
+   allowed to ensure all information. Caixa downloads occur every several days.
+   Do not assume a daily file excludes previously seen dates (D-043).
+2. All Alegra invoices are downloaded without the proposed filters (D-044).
+3. Client agreed to a completed DR month for migration comparison. Exact month
+   and cutoff remain to be chosen during Phase 3.4; none was named (D-045).
+4. Client accepted the proposed audited undo boundaries (D-046). This is future
+   financial commit/undo behavior; preview history stays immutable.
+
+No further business answer blocks bank-preview development. Exact pilot month
+and source-update reversal cases remain phase-specific follow-up.

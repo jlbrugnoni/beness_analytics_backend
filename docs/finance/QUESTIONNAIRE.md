@@ -198,7 +198,7 @@ optional configuration follow-up, not guessed defaults.
 
 ## Phase 3 questions — Q-011, 2026-10-24
 
-Status: sent; awaiting answers. Undo is proposed, not accepted.
+Status: answered (D-043–046). Exact pilot month remains Phase 3.4 preparation.
 
 1. For bank reports, do you usually download the whole month again, only new
    dates, or overlapping periods? Does this differ between Popular and Caixa?
@@ -212,3 +212,17 @@ Status: sent; awaiting answers. Undo is proposed, not accepted.
 4. Should an upload made by mistake support audited undo? Proposal: undo untouched
    records created by that upload; require review for later manually edited or
    reconciled records; preserve existing records merely encountered again.
+
+### Q-011 answers received — 2026-10-24
+
+1. Popular downloads are normally daily due to volume; overlapping reports are
+   allowed to ensure all information. Caixa downloads occur every several days.
+   Do not assume a daily file excludes previously seen dates (D-043).
+2. All Alegra invoices are downloaded without the proposed filters (D-044).
+3. Client agreed to a completed DR month for migration comparison. Exact month
+   and cutoff remain to be chosen during Phase 3.4; none was named (D-045).
+4. Client accepted the proposed audited undo boundaries (D-046). This is future
+   financial commit/undo behavior; preview history stays immutable.
+
+No further business answer blocks bank-preview development. Exact pilot month
+and source-update reversal cases remain phase-specific follow-up.

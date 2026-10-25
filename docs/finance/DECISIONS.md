@@ -58,6 +58,12 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-042 | 2026-10-24 | Accepted | Client replied "we can continue" after the Phase 2.4 delivery and test checklist. Phase 2.4 accepted; proceed to Phase 3 import/migration discovery under the agreed phased workflow. No production push, merge or deployment authorized. |
 
+| D-043 | 2026-10-24 | Accepted | Popular reports are normally downloaded daily due to volume, and overlapping downloads are allowed to ensure coverage. Caixa is downloaded every several days. Bank ingestion must support overlaps; download frequency is not a completeness guarantee. |
+| D-044 | 2026-10-24 | Accepted | Client downloads all Alegra invoices without product/category/payment-method filtering. Treat routine exports as the full selected-date invoice report, while validating actual invoice completeness/correction semantics in Phase 3.3. Absence from a partial period is not deletion. |
+| D-045 | 2026-10-24 | Accepted approach; exact month pending | Client accepted using one completed DR month with classified workbook entries and raw bank/Alegra reports for the first historical migration comparison. No particular month or cutoff was selected. Choose it during migration preparation; September 1–15 samples remain partial adapter fixtures. |
+| D-046 | 2026-10-24 | Accepted | Client accepted audited undo for an erroneous upload: undo untouched financial records created by that upload; require review for records edited/reconciled afterwards; preserve pre-existing records merely encountered again. Detailed source-update reversals need case validation at commit/overlap implementation. Raw preview history is not financial posting and is not deleted by this policy. |
+| D-047 | 2026-10-24 | Developer implementation of existing privacy policy | Unclassified bank source files may contain sensitive payroll. Bank preview/history/raw-row reads therefore require full-account and sensitive-detail access alongside financial view/money. Creating previews and retrieving original files additionally require import capability. This enforces D-023/BR-037 before category-aware transaction redaction exists; it does not grant any real users new access. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

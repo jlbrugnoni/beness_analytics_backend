@@ -1,12 +1,12 @@
 # Finance module handover
 
-Status: Phase 0 accepted; Phase 1 accepted; Phase 2.1 accepted; Phase 2.2 accepted; Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3 discovery underway. Updated: 2026-10-24.
+Status: Phase 0 accepted; Phase 1 accepted; Phase 2.1 accepted; Phase 2.2 accepted; Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 bank previews implemented and validated; client acceptance pending. Updated: 2026-10-24.
 
 The finance module will support bank imports, sales reconciliation, expense
 classification, historical migration, and monthly management results for the
 Dominican Republic and Spain. The client has accepted the overall direction.
 The main discovery batch is answered. Finance foundation/access and account/terminal/category/source-mapping/fee/timing/tax configuration code and
-migrations now exist; financial processing is still planned. See the Phase 1 delivery for
+migrations now exist. Bank previews/history are implemented; financial posting and results are still planned. See the Phase 1 delivery for
 implemented behavior, checks, setup, and acceptance steps.
 
 ## Documentation index
@@ -23,6 +23,7 @@ implemented behavior, checks, setup, and acceptance steps.
 | [Consolidated questionnaire](QUESTIONNAIRE.md) | Current numbered list for the client to answer together |
 | [Progress](PROGRESS.md) | Actual delivery status, validation, branches, and next work |
 | [Initial configuration](INITIAL_CONFIGURATION.md) | Confirmed accounts, terminals, historical fee defaults and savings baseline |
+| [Phase 3.1 delivery](PHASE_3_1_DELIVERY.md) | Bank CSV preview/history, guarded raw access, validation and client steps |
 | [Phase 3 discovery](PHASE_3_DISCOVERY.md) | Import sequence, existing boundaries and remaining business questions |
 | [Phase 2.4 delivery](PHASE_2_4_DELIVERY.md) | Dated fees/timing/tax settings, preview, validation and client steps |
 | [Phase 2.4 discovery](PHASE_2_4_DISCOVERY.md) | Confirmed fee/tax inputs, settlement questions and configuration scope |

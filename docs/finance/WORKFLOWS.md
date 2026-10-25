@@ -3,8 +3,8 @@
 Status: Phase 0 accepted, 2026-10-24. These describe the target screen flows.
 Phase 1 implements finance landing, group capabilities and user grants/effective
 access. Phases 2.1–2.4 implement company/account/terminal/category/source-mapping and
-fee/timing/tax configuration with previews. Imports, transactions and results
-remain future work. Phase 3 discovery is recorded in PHASE_3_DISCOVERY.md.
+fee/timing/tax configuration with previews. Bank previews/history now exist (Phase 3.1); financial import commit, transactions
+and results remain future work. Phase 3 discovery is recorded in PHASE_3_DISCOVERY.md.
 
 ## Entry and setup
 
@@ -135,3 +135,19 @@ assignments/origins/review state plus source warnings. It does not upload report
 or save financial corrections. Recurring can be selected manually to override a
 Tarjeta crédito -> Cierre suggestion; source evidence remains visible. See
 PHASE_2_3_DELIVERY.md for accepted defaults and client steps.
+
+## Implemented bank preview flow (Phase 3.1)
+
+Finance -> Bank report previews -> choose a supported bank account and format ->
+select raw CSV -> Save bank preview. Show immutable account-specific history and
+valid-row totals/issues. Select a batch to inspect transaction, invalid or all
+source rows; Source cells retains original values. Original CSV download uses a
+protected authenticated endpoint. Repeated upload is another preview, linked if
+its bytes match; no transaction count changes because no posting exists yet.
+
+Full bank-account scope and sensitive-detail capability guard all raw history/
+rows; import capability additionally guards saving/retrieving originals. No
+settings permission is required for an appropriately scoped importer. Read-only
+users with the detail grants can inspect history without uploading/downloading.
+No Commit, Reconcile or Undo action is presented in this delivery. See
+PHASE_3_1_DELIVERY.md for boundaries and the next step.

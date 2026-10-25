@@ -93,3 +93,18 @@ figure.
   No expense-tax fields or net-result calculation yet.
 - Preview evidence: applicable rule ID/revision, gross amount/currency, nullable
   fee/deposit/tax outputs and timing metadata. No financial record is saved.
+
+## Implemented bank preview fields (Phase 3.1)
+
+- BankImportBatch: immutable account/provider, filename, hash, byte_size, private
+  original_file bytes, encoding/parser_version, preview/failed status, summary,
+  file_issues, duplicate_of (same account/provider/bytes), uploaded_by, created_at.
+- BankImportRow: batch/row_number occurrence identity, physical source_line/end,
+  section, kind (header/preamble/blank/data), raw cells, parsed metadata, issues.
+- Parsed fields: bank_date, signed amount, nullable reported balance, currency,
+  direction, original description/short_description/reference/serial. No studio,
+  category, expense period or inferred operation date is assigned here.
+- Summary: valid/invalid counts, credit/debit counts/totals and net valid-row
+  movement, observed min/max dates, repeated occurrence count, header sections,
+  financial_records_created=0. These are parsing controls, not result/balance
+  values or proof of complete coverage. Exact decimal strings retain cents.

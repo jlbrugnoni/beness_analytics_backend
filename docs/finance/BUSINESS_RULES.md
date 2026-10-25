@@ -334,6 +334,25 @@ and changes to closed periods still need their phase-specific definitions.
   must snapshot applicable rule evidence; editing defaults cannot silently restate
   existing records. Policy previews create no financial entries.
 
+- **BR-052:** Popular is downloaded daily and Caixa every several days. Both
+  support overlapping reports. Frequency and observed minimum/maximum bank dates
+  do not prove complete coverage. Preserve occurrence counts; never collapse
+  equal-looking movements solely because of date/description/amount equality.
+- **BR-053:** Routine Alegra exports include all invoices without item/category/
+  payment filtering. Validate invoice items and period coverage before treating
+  a refresh as authoritative. Missing rows outside the selected range are not
+  cancellations/deletions. Source and manual assignments remain separate.
+- **BR-054:** Audited financial-import undo may reverse untouched records created
+  by that upload. Subsequent manual edits or reconciliation require review;
+  pre-existing records merely seen again remain. Retain provenance and do not
+  silently undo intervening work. Financial undo is later commit-phase behavior,
+  not deletion of immutable raw preview history.
+- **BR-055:** Before classifications/privacy are known, all raw bank preview,
+  history and source-cell access requires full-account and sensitive-detail
+  grants in addition to finance/money visibility. Upload and original retrieval
+  also require finance import capability. Raw files must not be public media or
+  bypass permissions through admin/download endpoints.
+
 ## Reference reports
 
 These are source fixtures, not committed datasets. Keep originals outside Git and

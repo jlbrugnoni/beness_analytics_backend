@@ -314,10 +314,11 @@ Existing DR rates and tax presentation are not reopened.
 Sent 2026-10-24 after Phase 2.4 acceptance (D-042). See PHASE_3_DISCOVERY.md
 and QUESTIONNAIRE.md for the four numbered questions. Existing operational
 imports were inspected for integration boundaries, without reading new reports
-or changing data. Bank coverage habits, filtered Alegra exports, historical
-pilot period and proposed undo behavior remain unanswered. Exact later migration
-coverage does not block generic bank-preview infrastructure, but unconfirmed
-refresh/undo semantics must not be implemented as accepted policy.
+or changing data. Answers received 2026-10-24 (D-043–046): Popular normally daily and potentially
+overlapping; Caixa every several days; all Alegra invoices downloaded. Completed
+DR-month migration pilot approach and proposed audited undo accepted. The exact
+pilot month/cutoff and detailed source-update reversal cases remain later
+phase-specific work. No further answer blocks bank-preview infrastructure.
 
 ## Recording an answer
 

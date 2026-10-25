@@ -4,7 +4,7 @@ Updated: 2026-10-24.
 
 ## Current checkpoint
 
-- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3 discovery underway.
+- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 bank previews implemented; client acceptance pending.
 - Phase 0: accepted on 2026-10-24 with "perfect, we can continue" (D-026).
 - Subphase 0.2: main business discovery batch resolved; all 12 consolidated
   answers and three focused clarifications recorded. DR-first editable account
@@ -29,7 +29,7 @@ Updated: 2026-10-24.
   exists; transaction/category redaction awaits their later models.
 - Phase 1.4: group editor, user form switches and protected finance landing
   implemented in English/Spanish. Validation described in PHASE_1_DELIVERY.md.
-- Phase 1 acceptance: client confirmed "great, it works properly" (D-027). Phase 2 discovery answered (Q-007/D-028–030); Phase 2.1 accepted. Phase 2.2 accepted. Phase 2.3 Q-009 answered, implemented and accepted; Phase 2.4 configuration implemented; phases 3–7 code not implemented.
+- Phase 1 acceptance: client confirmed "great, it works properly" (D-027). Phase 2 discovery answered (Q-007/D-028–030); Phase 2.1 accepted. Phase 2.2 accepted. Phase 2.3 Q-009 answered, implemented and accepted; Phase 2.4 accepted. Phase 3.1 bank preview/history implemented; financial commit, remaining Phase 3 and Phases 4–7 not implemented.
 
 ## Branches and working tree
 
@@ -104,12 +104,13 @@ The frontend working tree was clean before the documentation pointer was added.
 
 ## What the client should review
 
-Phase 2.4 accepted by the client (D-042). See PHASE_2_4_DELIVERY.md.
-The isolated local preview includes DO/ES fee, timing and tax settings and tests.
+Phase 3.1 bank preview/history is ready for review. See PHASE_3_1_DELIVERY.md.
+The isolated local preview includes synthetic DO/ES bank uploads and configuration.
 
 ## Next work
 
-Phase 3 import discovery (Q-011); see PHASE_3_DISCOVERY.md.
+Client acceptance of Phase 3.1 previews, then bank movement commit/overlap/undo.
+Q-011 answered (D-043–046); exact completed-month pilot selection remains Phase 3.4.
 Exact Spain method aliases remain editable and unconfigured until supplied.
 Exact Caixa fee amount/frequency and offer dates remain optional setup follow-up. Imported movements, expected balances and sensitive payment
 redaction remain future processing work.
@@ -216,3 +217,16 @@ Answers pending; no proposed undo policy is treated as accepted.
 First delivery target is bank previews/totals/history for Popular and Caixa,
 followed by financial commit/overlap handling, Alegra and enriched migration in
 separate reviewable steps. No new code/migration, reports or database changes.
+
+## Phase 3.1 implementation checkpoint
+
+2026-10-24: Q-011 answered (D-043–046). Added immutable bank preview batches/raw
+rows, versioned Popular/Caixa CSV readers, scoped history/row/original endpoints
+and EN/ES upload/inspection UI. Original bytes retained privately in the database;
+full account and sensitive-detail grants protect unclassified sources (D-047).
+Identical previews link to earlier files without collapsing occurrences. No
+financial transactions, overlap matches or undo operations are implemented yet.
+198 PostgreSQL tests, 14 focused SQLite tests, Django/migration checks and
+frontend lint/build passed. Read-only original-file totals and synthetic browser
+checks recorded in PHASE_3_1_DELIVERY.md. Client acceptance pending. Normal local/
+production data and grants unchanged; only synthetic QA setup and batches changed.

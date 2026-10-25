@@ -362,3 +362,40 @@ class TaxProfile(DatedPolicy):
                 raise ValidationError({'rate': 'Included tax requires a rate from 0 to 100.'})
         elif self.rate is not None:
             raise ValidationError({'rate': 'Only included tax has a percentage. Keep unknown, no-tax and exempt distinct.'})
+
+
+class BankImportBatch(models.Model):
+    account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name='bank_previews')
+    provider = models.CharField(max_length=10, choices=[('popular', 'Popular'), ('caixa', 'Caixa')])
+    file_name = models.CharField(max_length=255)
+    file_hash = models.CharField(max_length=64, db_index=True)
+    byte_size = models.PositiveIntegerField()
+    original_file = models.BinaryField(editable=False)
+    encoding = models.CharField(max_length=20, blank=True)
+    parser_version = models.CharField(max_length=40)
+    status = models.CharField(max_length=10, choices=[('preview', 'Preview'), ('failed', 'Failed')])
+    summary = models.JSONField(default=dict)
+    file_issues = models.JSONField(default=list)
+    duplicate_of = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        indexes = [models.Index(fields=['account', 'provider', 'file_hash'], name='finance_preview_hash')]
+
+
+class BankImportRow(models.Model):
+    batch = models.ForeignKey(BankImportBatch, on_delete=models.CASCADE, related_name='rows')
+    row_number = models.PositiveIntegerField()
+    source_line = models.PositiveIntegerField()
+    source_line_end = models.PositiveIntegerField()
+    section = models.PositiveIntegerField(default=0)
+    kind = models.CharField(max_length=10)
+    raw = models.JSONField(default=list)
+    parsed = models.JSONField(default=dict)
+    issues = models.JSONField(default=list)
+
+    class Meta:
+        ordering = ['row_number']
+        constraints = [models.UniqueConstraint(fields=['batch', 'row_number'], name='finance_preview_row_number')]

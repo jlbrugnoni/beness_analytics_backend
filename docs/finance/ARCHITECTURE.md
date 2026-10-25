@@ -1,10 +1,10 @@
 # Finance architecture
 
-Status: accepted target design; Phase 1 accepted, Phases 2.1–2.4 implemented; Phase 2.4 client acceptance pending.
+Status: accepted target design; Phase 1 accepted, Phases 2.1–2.4 accepted; Phase 3.1 bank previews implemented, client acceptance pending.
 Updated: 2026-10-24. Implemented models are finance.Company, finance.Account,
-finance.AccessChange, finance.Terminal, finance.Category, finance.SourceMapping, finance.ConfigurationChange, finance.FeePolicy, finance.SettlementPolicy, finance.TaxProfile and capability fields on existing access profiles. Financial
-transactions, reconciliation and results below remain future work.
-See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md and PHASE_2_3_DELIVERY.md and PHASE_2_4_DELIVERY.md for exact endpoints and limitations.
+finance.AccessChange, finance.Terminal, finance.Category, finance.SourceMapping, finance.ConfigurationChange, finance.FeePolicy, finance.SettlementPolicy, finance.TaxProfile, finance.BankImportBatch, finance.BankImportRow and capability fields on existing access profiles. Financial
+transactions, financial import commit, reconciliation and results below remain future work.
+See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md and PHASE_2_3_DELIVERY.md and PHASE_2_4_DELIVERY.md and PHASE_3_1_DELIVERY.md for exact endpoints and limitations.
 
 ## Existing integration points
 
@@ -320,3 +320,32 @@ no bank due date and uses no holiday calendar. Reimbursement fields describe
 expected offers, not matched refunds or automatic accounting entries. Current
 policies are company/channel scoped; provider/account-specific overrides are not
 implemented. Exact future actual-fee adjustment periods remain Phase 5/6 work.
+
+## Implemented bank preview foundation (Phase 3.1)
+
+BankImportBatch owns immutable original bytes, account/provider context, hash,
+encoding/parser version, actor/time, summary/issues and earlier-identical-batch
+reference. BankImportRow preserves every CSV record and physical source line
+range, including headers/preamble/blanks, parsed values and issue codes. Unique
+(batch,row_number) identifies a source occurrence, not a financial movement.
+There is deliberately no globally unique bank transaction hash or financial
+movement model in this delivery. Existing core_data operational imports are intact.
+
+Raw source storage is bounded database BinaryField, never a media URL. No raw
+preview models are registered in admin. All history/detail/row/original surfaces
+require finance view/money plus full-account and sensitive-detail capability.
+Create/original retrieval also require import capability. Rows inherit account
+scope through the parent batch; recheck state/scope before atomic persistence.
+Responses are private/no-store. Raw strings are rendered as text, not evaluated.
+
+Explicit provider/currency/country checks and versioned readers preserve money
+as decimal strings, dates as ISO values, and original cells separately. A failed
+file may retain a parsed prefix, but its status remains failed and no commit is
+possible. Missing/invalid source values never generate movements. Observed date
+ranges do not establish report completeness. Bank account numbers in preamble
+are preserved but not automatically matched to configured account ownership.
+
+Preview retries append upload history; only identical bytes under the same
+account/provider link to an earlier batch. Different-file overlap matching and
+financial undo remain next steps. A-01/other financial import scenarios are not
+considered implemented merely by passing reader controls.
