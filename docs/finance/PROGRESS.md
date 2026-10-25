@@ -280,3 +280,5 @@ frontend lint/build and Django consistency checks passed. Browser synthetic uplo
 repeated-item detail and review filter verified. Existing QA data retained.
 Client acceptance pending. Exact cancellation label is still requested; unknown
 statuses remain for review. See PHASE_3_3_1_DELIVERY.md for limits and test steps.
+
+Phase 3.3.1 implementation checkpoints: backend `2fff6e9`, frontend `bb988ee`.
