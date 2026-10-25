@@ -76,6 +76,7 @@ client-approved. Detailed behavior belongs in Business rules.
 | D-056 | 2026-10-25 | Accepted | Client confirmed "it worked well" after Phase 3.3.1 Alegra source-preview testing. Preview accepted; proceed to Phase 3.3.2 sales-posting/overlap/cancellation discovery. Exact cancelled ESTADO text remains unconfirmed. No finance deployment authorized. |
 | D-057 | 2026-10-25 | Accepted | Q-014: exact Alegra cancellation status is Anulada. Cobrada is paid; unknown statuses stay for review. Resolves D-055/Q-013 exact-label dependency. |
 | D-058 | 2026-10-25 | Accepted | Q-014: cancellation/reissue without returning client money can happen. Do not infer refund obligation or payment from cancellation alone. Preserve original-period sale treatment and record separate settlement/replacement evidence without a fabricated bank debit or double deduction. |
+| D-059 | 2026-10-25 | Accepted | Client said "you can cotinue" after Phase 3.3.2 delivery. Sales posting, cancellation/replacement review, manual assignments and protected undo accepted. Proceed to Phase 3.4 enriched migration discovery; no finance deployment or production migration authorized. |
 
 ## Open policy decisions
 

@@ -1,8 +1,8 @@
 # Phase 3.3.2 sales posting, overlap and cancellation review
 
 Date: 2026-10-25. Phase 3.3.1 source previews accepted (D-056).
-Q-014 answered (D-057–058). Phase 3.3.2 implemented and validated; client
-acceptance pending. See PHASE_3_3_2_DELIVERY.md for delivered behavior and limits.
+Q-014 answered (D-057–058). Phase 3.3.2 implemented, validated and accepted
+by the client (D-059). See PHASE_3_3_2_DELIVERY.md for delivered behavior and limits.
 
 ## Scope and accepted boundaries
 

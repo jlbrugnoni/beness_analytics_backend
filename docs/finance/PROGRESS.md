@@ -4,7 +4,7 @@ Updated: 2026-10-25.
 
 ## Current checkpoint
 
-- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 accepted (D-051); Phase 3.3.1 Alegra previews accepted (D-056); Phase 3.3.2 sales posting/review/undo implemented; client acceptance pending.
+- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 accepted (D-051); Phase 3.3.1 Alegra previews accepted (D-056); Phase 3.3.2 sales posting/review/undo accepted (D-059); Phase 3.4 discovery in progress.
 - Phase 0: accepted on 2026-10-24 with "perfect, we can continue" (D-026).
 - Subphase 0.2: main business discovery batch resolved; all 12 consolidated
   answers and three focused clarifications recorded. DR-first editable account
@@ -104,15 +104,16 @@ The frontend working tree was clean before the documentation pointer was added.
 
 ## What the client should review
 
-Phase 3.3.2 sales posting, cancellation review, manual assignments and undo are
-ready for review. See PHASE_3_3_2_DELIVERY.md. Q-014 answered (D-057–058).
+Phase 3.3.2 accepted (D-059). Q-015 covers historical pilot month, current workbook,
+cash markers and split bank payments. See PHASE_3_4_DISCOVERY.md. No new runtime
+tests are due at this checkpoint. Q-014 answered (D-057–058).
 Dedicated Posting QA account contains synthetic posting/correction/undo examples;
 pre-existing user-uploaded QA previews are retained.
 
 ## Next work
 
-Client acceptance of Phase 3.3.2, then Phase 3.4 enriched historical migration
-discovery and completed-month pilot selection. Other business definitions remain settled.
+Record Q-015 answers and confirm source evidence, then implement Phase 3.4.1
+enriched preview. Other business definitions remain settled.
 Q-012 answered (D-049–050).
 Q-011 answered (D-043–046); exact completed-month pilot selection remains Phase 3.4.
 Exact Spain method aliases remain editable and unconfigured until supplied.
@@ -308,3 +309,14 @@ checks passed. See PHASE_3_3_2_DELIVERY.md for limitations and client checklist.
 Client acceptance pending. No finance push, merge or deployment.
 
 Phase 3.3.2 implementation checkpoints: backend `13448a9`, frontend `d08de4a`.
+
+## Phase 3.4 discovery checkpoint
+
+2026-10-25: client accepted sales posting/review/undo with "you can cotinue"
+(D-059). Prepared PHASE_3_4_DISCOVERY.md and Q-015 covering completed Dominican
+pilot month, current source workbook, cash-entry provenance and split payment
+representation. Settled legacy review-flag and manual-preservation rules retained.
+Documented preview, assignment/provenance foundation and pilot comparison sequence;
+no migration models/code implemented or private source re-read at this checkpoint.
+Documentation checks only; existing QA/normal/production data unchanged. Both
+repositories remain feature/finance-phase-2; no push, merge or deployment.

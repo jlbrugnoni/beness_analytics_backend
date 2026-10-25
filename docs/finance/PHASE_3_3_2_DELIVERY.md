@@ -1,6 +1,6 @@
 # Phase 3.3.2 sales posting and cancellation review delivery
 
-Date: 2026-10-25. Implemented and validated; client acceptance pending.
+Date: 2026-10-25. Implemented, validated and accepted by the client (D-059).
 Backend/frontend branch: feature/finance-phase-2. Implementation checkpoints:
 backend 13448a9, frontend d08de4a. No push, merge or deployment.
 

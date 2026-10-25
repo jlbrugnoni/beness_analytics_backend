@@ -385,6 +385,14 @@ settled; these questions do not reopen them.
    or second profit deduction from that choice. Original-period treatment remains
    BR-038; refund-to-bank matching remains Phase 5.
 
+## Q-015: historical migration source, pilot and payment structure
+
+Sent 2026-10-25 after Phase 3.3.2 acceptance (D-059). See PHASE_3_4_DISCOVERY.md
+and QUESTIONNAIRE.md for one numbered batch. Exact completed DR month and current
+workbook copy remain to be chosen. Cash/manual expense markers and split bank
+payment representation need source/business evidence. Answers pending. Existing
+BR-022–028/035 and the completed-month approach D-045 remain accepted.
+
 ## Recording an answer
 
 Keep the question, append the client's answer with its date, state the accepted

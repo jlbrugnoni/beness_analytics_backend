@@ -302,3 +302,12 @@ Status: answered 2026-10-25 (D-057–058). Source previews accepted (D-056).
    invoice in the same company. A note is required. Do not create a bank movement
    or second profit deduction from that choice. Original-period treatment remains
    BR-038; refund-to-bank matching remains Phase 5.
+
+## Q-015: Phase 3.4 historical migration — 2026-10-25
+
+Status: awaiting answers. Sales posting accepted (D-059).
+
+1. Which completed Dominican month should we use for the first migration comparison? I suggest September 2026 if you have finalized it. The bank/Alegra examples supplied so far cover only September 1–15, so those alone cannot validate a full month.
+2. Is Ingresos_Egresos_DO_BI.xlsx still your current master workbook, or will you use a newer/different copy for migration?
+3. How does the workbook distinguish manually added cash expenses from bank-paid expenses? Is there a column or label identifying the account/payment origin, or must you identify those entries manually?
+4. Can one bank debit appear as several workbook rows because you split it between categories or studios? If yes, how do you identify those rows as parts of the same payment?
