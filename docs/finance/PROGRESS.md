@@ -230,3 +230,5 @@ financial transactions, overlap matches or undo operations are implemented yet.
 frontend lint/build passed. Read-only original-file totals and synthetic browser
 checks recorded in PHASE_3_1_DELIVERY.md. Client acceptance pending. Normal local/
 production data and grants unchanged; only synthetic QA setup and batches changed.
+
+Phase 3.1 implementation checkpoints: backend `472d66c`, frontend `d0b3250`.

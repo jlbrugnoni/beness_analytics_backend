@@ -119,3 +119,5 @@ Back up the database for future production rollout; it now owns retained source
 bytes as well as parsed preview history. This is not deployment authorization.
 Next gate: client acceptance of this preview step, then bank movement commit and
 overlap/undo delivery under the agreed workflow.
+
+Phase 3.1 implementation checkpoints: backend `472d66c`, frontend `d0b3250`.
