@@ -2,7 +2,7 @@
 
 Status: Phase 0 accepted, 2026-10-24. Names describe the target domain;
 exact Django field/API names are finalized during implementation. Phase 1 delivery
-and Phase 2.1/2.2 deliveries list the implemented company/account/terminal/category/access subset; other records remain planned.
+and Phase 2.1–2.3 deliveries list the implemented company/account/terminal/category/source-mapping/access subset; other records remain planned.
 
 ## Ownership and configuration
 
@@ -12,7 +12,8 @@ and Phase 2.1/2.2 deliveries list the implemented company/account/terminal/categ
 | Account | Editable label, company, bank/cash type, currency, provider, participating studios, active status. DR-first proposed label Banco Popular - Cuenta operativa (DOP). Optional reference opening balance/date (start of day) and statement-import expectation; unknown balance differs from zero. No expected-balance calculation yet. External account identifier optional; credentials are not collected. |
 | Terminal | Identifier as text, provider, account/company, existing studio, payment channel, active state and revision. Effective dates remain future configuration work. Estepona identifier 369092994. |
 | Category/subcategory | Company-owned editable names, immutable parent, stable catalog code, operating/extraordinary/review defaults, shared/direct default, own/effective sensitive and active flags, record/parent revisions. Used categories are archived, not destructively deleted. Parent sensitivity applies to children. |
-| Mapping/rule | Source label/pattern, target method/studio/terminal, fee rate or amount, effective dates, operation-date rule, reviewed priority. Manual assignments take priority. |
+| SourceMapping (implemented) | Company/source field/reported value identity, normalized exact key, map/review/neutral action, studio/channel target, review flag, active, revision. No regex/fuzzy matching. Manual choices take priority while raw values/rule evidence remain. |
+| Fee/date rule (future) | Fee rate/amount, effective dates, settlement/date interpretation and reviewed provenance. Source mapping does not calculate fees. |
 | Tax profile | Company default sales treatment/rate, prices-inclusive flag, effective dates. V1 uses inclusive results; expense tax is not guessed. |
 | Source policy | Company/period, one authoritative source. V1 DR Alegra; Spain existing Mindbody Sales. No Spain Alegra cutover is assumed. |
 

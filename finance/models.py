@@ -13,6 +13,10 @@ def custom_catalog_code():
     return f"custom-{uuid.uuid4().hex}"
 
 
+def normalized_source_value(value):
+    return " ".join(unicodedata.normalize("NFKC", value).split()).casefold()
+
+
 class Company(models.Model):
     name = models.CharField(max_length=180)
     site = models.ForeignKey("core_data.Site", on_delete=models.PROTECT, related_name="finance_companies")
@@ -34,8 +38,8 @@ class Company(models.Model):
         super().clean()
         if self.pk:
             previous = type(self).objects.get(pk=self.pk)
-            if previous.site_id != self.site_id and (self.accounts.exists() or self.categories.exists()):
-                raise ValidationError({"site": "A company with accounts or categories cannot be moved to another site."})
+            if previous.site_id != self.site_id and (self.accounts.exists() or self.categories.exists() or self.source_mappings.exists()):
+                raise ValidationError({"site": "A company with financial configuration cannot be moved to another site."})
             if previous.default_currency != self.default_currency and self.accounts.exists():
                 raise ValidationError({"default_currency": "A company with accounts cannot change its default currency."})
 
@@ -174,6 +178,64 @@ class Category(models.Model):
     def save(self, *args, **kwargs):
         self.name = self.name.strip()
         self.normalized_name = " ".join(unicodedata.normalize("NFKC", self.name).split()).casefold()
+        super().save(*args, **kwargs)
+
+
+class SourceMapping(models.Model):
+    FIELDS = [
+        ("alegra_cost_center", "Alegra / Centro de costo"), ("alegra_price_list", "Alegra / Lista de precios"),
+        ("alegra_payment_method", "Alegra / Método de pago"), ("mindbody_payment_method", "Mindbody / Payment method"),
+        ("mindbody_studio", "Mindbody / Studio"), ("historical_payment_method", "Historical / Payment method"),
+        ("historical_studio", "Historical / Studio"),
+    ]
+    CHANNELS = [("card_terminal", "Cierre"), ("recurring", "Recurrentes"), ("payment_link", "Link"),
+                ("transfer", "Transferencia"), ("cash", "Efectivo"), ("other", "Otros")]
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="source_mappings")
+    source_field = models.CharField(max_length=32, choices=FIELDS)
+    source_value = models.CharField(max_length=180)
+    normalized_value = models.CharField(max_length=240, blank=True, editable=False)
+    behavior = models.CharField(max_length=10, choices=[("map", "Map"), ("review", "Review"), ("neutral", "Neutral")], default="map")
+    studio = models.ForeignKey("core_data.Studio", null=True, blank=True, on_delete=models.PROTECT, related_name="finance_source_mappings")
+    channel = models.CharField(max_length=20, choices=CHANNELS, blank=True)
+    requires_review = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
+    revision = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["source_field", "source_value", "pk"]
+        constraints = [models.UniqueConstraint(fields=["company", "source_field", "normalized_value"], name="finance_mapping_source_value")]
+
+    def __str__(self):
+        return self.source_value
+
+    def clean(self):
+        super().clean()
+        self.normalized_value = normalized_source_value(self.source_value)
+        if not self.normalized_value or len(self.normalized_value) > 240:
+            raise ValidationError({"source_value": "Enter a source label of a suitable length."})
+        if self.pk:
+            previous = type(self).objects.get(pk=self.pk)
+            if (self.company_id, self.source_field, self.source_value) != (previous.company_id, previous.source_field, previous.source_value):
+                raise ValidationError("Company and source identity cannot change. Deactivate the old mapping and add a new one.")
+        if self.behavior == "neutral" and self.source_field != "alegra_price_list":
+            raise ValidationError({"behavior": "Neutral is only supported for Alegra price lists."})
+        if self.source_field == "alegra_price_list" and self.normalized_value == "general" and self.behavior != "neutral":
+            raise ValidationError({"behavior": "General is neutral price-list evidence, not a studio assignment."})
+        if self.behavior != "map":
+            if self.studio_id or self.channel or self.requires_review:
+                raise ValidationError("Review/neutral mappings cannot carry a target or an additional review flag.")
+        elif self.source_field.endswith("payment_method"):
+            if not self.channel or self.studio_id:
+                raise ValidationError("Payment methods require a channel and cannot assign a studio.")
+        elif not self.studio_id or self.channel:
+            raise ValidationError("Studio labels require a studio and cannot assign a payment channel.")
+        if self.studio_id and self.company_id and self.studio.site_id != self.company.site_id:
+            raise ValidationError({"studio": "Mapped studio must belong to the company's site."})
+
+    def save(self, *args, **kwargs):
+        self.normalized_value = normalized_source_value(self.source_value)
         super().save(*args, **kwargs)
 
 

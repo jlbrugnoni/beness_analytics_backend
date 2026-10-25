@@ -153,7 +153,7 @@ See D-032–035. Phase 2.2 has no remaining discovery question.
 
 ## Phase 2.3 mapping questions — Q-009, 2026-10-24
 
-Status: sent; answers pending. See PHASE_2_3_DISCOVERY.md.
+Status: answered 2026-10-24. See PHASE_2_3_DISCOVERY.md.
 
 1. Do generic Alegra Tarjeta crédito/Tarjeta débito labels also include Link or
    Recurrentes? If so, recommend pending channel review rather than assuming Cierre.
@@ -164,3 +164,14 @@ Status: sent; answers pending. See PHASE_2_3_DISCOVERY.md.
 Existing cost-center precedence, General neutrality, terminals and fee rates
 are already decided and are not being asked again. No proposed trust default
 is considered approved without a response.
+
+### Phase 2.3 answers received
+
+1. Alegra Tarjeta débito maps to Link; Tarjeta crédito normally maps to Cierre.
+   Recurring also uses Tarjeta crédito and needs manual distinction.
+2. Efectivo and Transferencia map directly, as above.
+3. Spain normally uses in-studio card and cash; no recurring or transfer payments.
+   Exact Mindbody labels were not provided. Keep aliases editable/unconfigured.
+
+D-037–038 supersede the proposed fully unassigned generic-card default. No
+additional question blocks Phase 2.3 configuration/preview development.

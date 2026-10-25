@@ -1,6 +1,6 @@
 from django.contrib import admin
 from django import forms
-from .models import AccessChange, Account, Category, Company, ConfigurationChange, Terminal, validate_account_studios
+from .models import AccessChange, Account, Category, Company, ConfigurationChange, SourceMapping, Terminal, validate_account_studios
 
 
 class TechnicalAdmin(admin.ModelAdmin):
@@ -47,6 +47,7 @@ class AccountAdmin(ConfigurationAdmin):
 admin.site.register(Company, ConfigurationAdmin)
 admin.site.register(Terminal, ConfigurationAdmin)
 admin.site.register(Category, ConfigurationAdmin)
+admin.site.register(SourceMapping, ConfigurationAdmin)
 
 
 @admin.register(AccessChange)

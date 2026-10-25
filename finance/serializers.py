@@ -1,6 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
-from .models import Account, Category, Company, Terminal, validate_account_studios
+from core_data.models import Studio
+from .models import Account, Category, Company, SourceMapping, Terminal, validate_account_studios
 
 
 class ConfigurationSerializer(serializers.ModelSerializer):
@@ -18,7 +19,7 @@ class ConfigurationSerializer(serializers.ModelSerializer):
                 setattr(candidate, key, value)
         if isinstance(candidate, Account) and candidate.company_id:
             candidate.company = Company.objects.select_for_update().get(pk=candidate.company_id)
-        if isinstance(candidate, Category) and candidate.company_id:
+        if isinstance(candidate, (Category, SourceMapping)) and candidate.company_id:
             candidate.company = Company.objects.select_for_update().get(pk=candidate.company_id)
         # Serialize terminal changes with participating-studio/account edits.
         if isinstance(candidate, Terminal) and candidate.account_id:
@@ -113,3 +114,43 @@ class CategorySerializer(ConfigurationSerializer):
                 raise serializers.ValidationError({"parent": "Activate the parent before adding subcategories."})
         attrs.pop("expected_parent_revision", None)
         return super().validate(attrs)
+
+
+class SourceMappingSerializer(ConfigurationSerializer):
+    studio_name = serializers.CharField(source="studio.name", read_only=True, allow_null=True)
+
+    class Meta:
+        model = SourceMapping
+        fields = ["id", "company", "source_field", "source_value", "behavior", "studio", "studio_name", "channel",
+                  "requires_review", "active", "revision", "expected_revision"]
+        read_only_fields = ["revision"]
+
+    def validate(self, attrs):
+        # Reject reassignment before acquiring another company's lock.
+        if self.instance and any(key in attrs and attrs[key] != getattr(self.instance, key)
+                                 for key in ("company", "source_field", "source_value")):
+            raise serializers.ValidationError("Company and source identity cannot change. Add a new mapping instead.")
+        company = attrs.get("company", self.instance.company if self.instance else None)
+        if company:
+            attrs["company"] = Company.objects.select_for_update().get(pk=company.pk)
+        return super().validate(attrs)
+
+
+class MappingPreviewSerializer(serializers.Serializer):
+    company = serializers.PrimaryKeyRelatedField(queryset=Company.objects.all())
+    source = serializers.ChoiceField(choices=["alegra", "mindbody", "historical"])
+    cost_center = serializers.CharField(max_length=180, allow_blank=True, default="", trim_whitespace=False)
+    price_list = serializers.CharField(max_length=180, allow_blank=True, default="", trim_whitespace=False)
+    payment_method = serializers.CharField(max_length=180, allow_blank=True, default="", trim_whitespace=False)
+    studio_label = serializers.CharField(max_length=180, allow_blank=True, default="", trim_whitespace=False)
+    manual_studio = serializers.PrimaryKeyRelatedField(queryset=Studio.objects.all(), allow_null=True, required=False)
+    manual_channel = serializers.ChoiceField(choices=SourceMapping.CHANNELS, allow_null=True, required=False)
+
+    def validate(self, attrs):
+        if attrs["source"] != "alegra" and (attrs["cost_center"] or attrs["price_list"]):
+            raise serializers.ValidationError("Cost center and price list apply to Alegra only.")
+        if attrs["source"] == "alegra" and attrs["studio_label"]:
+            raise serializers.ValidationError("Use the cost center for Alegra studio evidence.")
+        if "manual_studio" in attrs and attrs["manual_studio"] and attrs["manual_studio"].site_id != attrs["company"].site_id:
+            raise serializers.ValidationError({"manual_studio": "Use a studio from this company's site."})
+        return attrs

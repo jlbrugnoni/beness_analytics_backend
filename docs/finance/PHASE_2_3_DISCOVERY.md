@@ -1,7 +1,7 @@
 # Phase 2.3 source/payment/studio mappings discovery
 
-Date: 2026-10-24. Phase 2.2 accepted (D-036). Phase 2.3 questions sent (Q-009).
-No mapping models, resolver, API or UI have been implemented at this checkpoint.
+Date: 2026-10-24. Phase 2.2 accepted (D-036). Phase 2.3 questions answered (Q-009/D-037–038); implementation delivered for review.
+This document preserves discovery. See PHASE_2_3_DELIVERY.md for implemented models, preview and UI.
 
 ## Source evidence and existing integration
 
@@ -57,8 +57,15 @@ existing sales while preserving source lineage (BR-008).
    unconfigured and support in-app maintenance; this does not block the generic
    configuration editor or DR mappings.
 
-Answers pending. Do not treat the recommended review/direct defaults as client
-approval, seed unverified source aliases or infer Spain mappings from DR labels.
+Answers received 2026-10-24:
+1. Normally Tarjeta débito = Link, Tarjeta crédito = Cierre. Recurring payments
+   are also recorded as Tarjeta crédito and must be distinguished manually.
+   Use the Cierre suggestion plus a review flag, rather than the originally
+   proposed fully unassigned generic-card channel (D-037).
+2. Efectivo = cash and Transferencia = transfer, as confirmed in answer 1.
+3. Spain currently has no recurring or transfer payments; clients normally use
+   card in the studio and cash. Exact method labels were not supplied (D-038).
+   Leave those aliases unconfigured instead of assuming English/Spanish labels.
 No additional terminal/fee/category questions are needed at this checkpoint.
 
 ## Planned implementation after answers

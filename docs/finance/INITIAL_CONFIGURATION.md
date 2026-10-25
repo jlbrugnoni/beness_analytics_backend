@@ -77,3 +77,26 @@ studio assignments must still be preserved during later migration.
 
 These are editable classification defaults, not automatically applied financial
 entries. The invalid historical 1 / 1 pair is not a catalog entry.
+
+## Source/payment mappings (D-037–038)
+
+| Alegra source label | Suggested financial channel | Review |
+| --- | --- | --- |
+| Tarjeta débito | Link / payment_link | No additional source ambiguity confirmed |
+| Tarjeta crédito | Cierre / card_terminal | Required; recurring payments share this label |
+| Efectivo | cash | Direct mapping |
+| Transferencia | transfer | Direct mapping |
+
+Recurring is assigned manually to the individual sale/receipt interpretation,
+not by overwriting all Tarjeta crédito aliases. Source label/rule evidence must
+remain separate. This bookkeeping convention is not a statement about physical
+card fees. Fees are configured in Phase 2.4, not calculated by source mappings.
+
+Map cost-center and price-list studio names Bella Vista, Piantini, Arroyo Hondo
+to their existing studio records selected explicitly by the settings manager.
+General is neutral price-list evidence. Initial setup adds 11 missing aliases
+(6 studio, 1 neutral and 4 payment) and preserves existing edits/inactive entries.
+
+Spain initially uses in-studio card and cash, with no recurring or transfer.
+Exact Mindbody labels remain unconfirmed; no aliases are guessed. Existing
+site-scoped payment-method names are offered as input suggestions when available.

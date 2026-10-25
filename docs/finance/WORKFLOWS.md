@@ -2,7 +2,7 @@
 
 Status: Phase 0 accepted, 2026-10-24. These describe the target screen flows.
 Phase 1 implements finance landing, group capabilities and user grants/effective
-access. Phases 2.1–2.2 implement company/account/terminal/category configuration.
+access. Phases 2.1–2.3 implement company/account/terminal/category/source-mapping configuration.
 Imports, transactions, remaining rule configuration and results remain future work.
 
 ## Entry and setup
@@ -120,3 +120,17 @@ Display own versus inherited privacy/defaults and effective inactive state. A
 category settings manager without sensitive-detail access can edit ordinary
 categories; protected-category and sensitivity controls remain unavailable.
 Changing defaults is not historical reclassification. See PHASE_2_2_DELIVERY.md.
+
+## Implemented mapping setup and tests
+
+In Financial configuration -> Source mappings, select company, then add an exact
+source-field/value alias to a channel or studio, leave for review, or mark a price
+list neutral. DR setup proposes the three explicitly selected existing studios
+and adds missing agreed aliases without replacing existing choices. Spain method
+labels are entered from actual source evidence, not guessed from DR conventions.
+
+Test mappings accepts reported values and optional manual choices. It shows
+assignments/origins/review state plus source warnings. It does not upload reports
+or save financial corrections. Recurring can be selected manually to override a
+Tarjeta crédito -> Cierre suggestion; source evidence remains visible. See
+PHASE_2_3_DELIVERY.md for accepted defaults and client steps.

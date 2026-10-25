@@ -290,6 +290,36 @@ and changes to closed periods still need their phase-specific definitions.
   scope; this does not imply payment-detail access. Transaction privacy remains
   an explicit later-phase obligation under BR-037/A-28.
 
+## Source mappings
+
+- **BR-045:** DR Alegra conventions are explicit configuration: Tarjeta débito
+  maps to Link, Tarjeta crédito suggests Cierre with review required, Efectivo
+  maps to cash, Transferencia maps to bank transfer. Recurring sales also use
+  Tarjeta crédito; correct individual assignments manually to Recurrentes.
+  Preserve the source label, suggested channel and rule/version evidence apart
+  from manual decisions. Do not change the source payment method or rewrite all
+  credit-card sales as recurring to correct one transaction. The debit/credit
+  labels are client bookkeeping conventions, not fee rules derived from card type.
+- **BR-046:** Spain initially uses card terminal and cash. Exact Mindbody labels
+  remain to be selected from source evidence/configuration; no speculative
+  recurring, transfer or link alias is seeded. Lack of those aliases does not
+  block generic editor development. Future explicit channels remain configurable.
+- **BR-047:** Match source labels by company and specific source field after
+  Unicode/case/whitespace normalization. Do not fuzzy-match missing/unknown input
+  or infer a studio from a payment method. Different spellings/accents may be
+  separate explicit aliases. General is always neutral Alegra price-list evidence.
+  Known cost center is primary; contradictory studio price list remains a warning.
+  Missing cost center never silently falls back to a known price-list studio.
+- **BR-048:** Rule changes require company-wide financial settings scope, audit
+  and revision checks. Preserve inactive/edited records and source identities;
+  changing an identity means adding a new mapping. Initial DR setup creates only
+  missing aliases and never overwrites existing assignments/review/active flags.
+  Preview tests store no transactions or manual corrections. Explicit manual
+  choices override automatic assignments while original evidence/warnings remain.
+  These settings do not by themselves implement uploads, reconciliation, fees
+  or historical reclassification. A sales channel of transfer is distinct from
+  an own-account internal bank movement (BR-014).
+
 ## Reference reports
 
 These are source fixtures, not committed datasets. Keep originals outside Git and

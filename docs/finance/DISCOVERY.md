@@ -290,7 +290,11 @@ PHASE_2_3_DISCOVERY.md records the source-field distinction and accepted studio
 rules. Asked whether generic Alegra card labels also cover Link/Recurrentes,
 whether cash/transfer labels can be trusted directly, and for Spain Mindbody
 method names if available. Spain aliases can remain unconfigured while generic
-configuration/DR work proceeds. Client answers pending; no guessed aliases seeded.
+configuration/DR work proceeds. Client answers received 2026-10-24: debit = Link, credit = Cierre, cash = cash,
+transfer = transfer; recurring also appears as credit and needs manual separation.
+Spain initially uses in-studio card and cash, with no recurring or transfer.
+Exact Mindbody labels remain unspecified and unseeded. See D-037–038. No further
+business answer blocks this editor/preview subphase.
 
 ## Recording an answer
 

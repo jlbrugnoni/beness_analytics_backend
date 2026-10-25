@@ -1,11 +1,11 @@
 # Finance module handover
 
-Status: Phase 0 accepted; Phase 1 accepted; Phase 2.1 accepted; Phase 2.2 accepted; Phase 2.3 mapping discovery in progress. Updated: 2026-10-24.
+Status: Phase 0 accepted; Phase 1 accepted; Phase 2.1 accepted; Phase 2.2 accepted; Phase 2.3 mappings implemented; client validation pending. Updated: 2026-10-24.
 
 The finance module will support bank imports, sales reconciliation, expense
 classification, historical migration, and monthly management results for the
 Dominican Republic and Spain. The client has accepted the overall direction.
-The main discovery batch is answered. Finance foundation/access and account/terminal/category configuration code and
+The main discovery batch is answered. Finance foundation/access and account/terminal/category/source-mapping configuration code and
 migrations now exist; financial processing is still planned. See the Phase 1 delivery for
 implemented behavior, checks, setup, and acceptance steps.
 
@@ -23,7 +23,8 @@ implemented behavior, checks, setup, and acceptance steps.
 | [Consolidated questionnaire](QUESTIONNAIRE.md) | Current numbered list for the client to answer together |
 | [Progress](PROGRESS.md) | Actual delivery status, validation, branches, and next work |
 | [Initial configuration](INITIAL_CONFIGURATION.md) | Confirmed accounts, terminals, historical fee defaults and savings baseline |
-| [Phase 2.3 discovery](PHASE_2_3_DISCOVERY.md) | Source-label evidence and pending payment-channel reliability questions |
+| [Phase 2.3 discovery](PHASE_2_3_DISCOVERY.md) | Source-label evidence and accepted payment conventions |
+| [Phase 2.3 delivery](PHASE_2_3_DELIVERY.md) | Editable source aliases, interpretation tests, validation and client steps |
 | [Phase 2.2 discovery](PHASE_2_2_DISCOVERY.md) | Workbook category catalog and accepted business defaults |
 | [Phase 2.2 delivery](PHASE_2_2_DELIVERY.md) | Editable taxonomy, inherited privacy, common initialization and client tests |
 | [Phase 2.1 delivery](PHASE_2_1_DELIVERY.md) | Account/terminal configuration, validation and client test steps |

@@ -1,10 +1,10 @@
 # Finance architecture
 
-Status: accepted target design; Phase 1 accepted, Phases 2.1–2.2 implemented.
+Status: accepted target design; Phase 1 accepted, Phases 2.1–2.3 implemented.
 Updated: 2026-10-24. Implemented models are finance.Company, finance.Account,
-finance.AccessChange, finance.Terminal, finance.Category, finance.ConfigurationChange and capability fields on existing access profiles. Financial
-transactions, configuration beyond accounts/terminals/categories, and results below remain future work.
-See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md for exact endpoints and limitations.
+finance.AccessChange, finance.Terminal, finance.Category, finance.SourceMapping, finance.ConfigurationChange and capability fields on existing access profiles. Financial
+transactions, configuration beyond accounts/terminals/categories/source aliases, and results below remain future work.
+See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md and PHASE_2_3_DELIVERY.md for exact endpoints and limitations.
 
 ## Existing integration points
 
@@ -282,3 +282,17 @@ Company-wide settings scope controls writes; sensitive-detail capability also
 protects sensitive categories, changing sensitivity and editing a parent with
 sensitive children. No sensitive transaction endpoint exists yet. No result or
 allocation calculation is performed by editing category defaults.
+
+## Implemented source interpretation (Phase 2.3)
+
+SourceMapping stores company/source-field/normalized-value identity and an explicit
+studio/channel, review or neutral result. Source identities are immutable; targets,
+review and active flags are audited editable settings. Interpretation retains raw
+labels and rule/version evidence; manual choices take precedence with source
+warnings retained. The API test area invokes the helper without importing or
+saving financial corrections. Actual adapters/import persistence remain later work.
+
+Alegra cost center is primary and price list is secondary warning evidence;
+General is intrinsically neutral. No price-list fallback or fuzzy alias matching.
+Client DR conventions and the mixed credit/recurring review case are recorded in
+BR-045. Spanish Mindbody alias names remain unguessed (BR-046).
