@@ -283,3 +283,10 @@ Phase 3.2 accepted (D-051). See PHASE_3_3_DISCOVERY.md.
 First delivery: Phase 3.3.1 source previews. Invoice posting, approval of changed
 statuses and refund reconciliation follow after preview review. This subdivision
 keeps unconfirmed cancellation labels from being guessed.
+
+## Q-014: Phase 3.3.2 cancellation details — 2026-10-25
+
+Status: awaiting answers. Source previews accepted (D-056).
+
+1. What exact text appears in Alegra's ESTADO column for a cancelled invoice? The supplied sample contains only Cobrada; we still need the cancelled label rather than guessing it.
+2. Do you sometimes cancel an invoice and issue a replacement without returning money to the client, or does every cancellation require a refund? For example, correcting an invoice could leave the original payment in place. This determines whether a cancellation should show a refund pending or a replacement/no-refund explanation.

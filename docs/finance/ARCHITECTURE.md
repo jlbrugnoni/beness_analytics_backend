@@ -1,6 +1,6 @@
 # Finance architecture
 
-Status: accepted target design; Phase 1 accepted, Phases 2.1–2.4 accepted; Phase 3.1 accepted; Phase 3.2 accepted (D-051); Phase 3.3.1 source previews implemented; client acceptance pending.
+Status: accepted target design; Phase 1 accepted, Phases 2.1–2.4 accepted; Phase 3.1 accepted; Phase 3.2 accepted (D-051); Phase 3.3.1 source previews accepted (D-056); Phase 3.3.2 discovery in progress.
 Updated: 2026-10-24. Implemented models are finance.Company, finance.Account,
 finance.AccessChange, finance.Terminal, finance.Category, finance.SourceMapping, finance.ConfigurationChange, finance.FeePolicy, finance.SettlementPolicy, finance.TaxProfile, finance.BankImportBatch, finance.BankImportRow, finance.BankPosting, finance.BankMovement, finance.BankDecision, finance.BankEvent and capability fields on existing access profiles.
 Sales imports, classification, reconciliation and results below remain future work.

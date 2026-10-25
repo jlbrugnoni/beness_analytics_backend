@@ -1,6 +1,6 @@
 # Phase 3.3.1 Alegra source preview delivery
 
-Date: 2026-10-25. Implemented and validated; client acceptance pending.
+Date: 2026-10-25. Implemented, validated and accepted by the client (D-056).
 Both repositories: feature/finance-phase-2. Implementation checkpoints: backend
 2fff6e9, frontend bb988ee. No push, merge or deployment.
 

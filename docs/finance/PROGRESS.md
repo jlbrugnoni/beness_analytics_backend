@@ -4,7 +4,7 @@ Updated: 2026-10-25.
 
 ## Current checkpoint
 
-- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 accepted (D-051); Phase 3.3.1 Alegra previews implemented; client acceptance pending.
+- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 accepted (D-051); Phase 3.3.1 Alegra previews accepted (D-056); Phase 3.3.2 discovery in progress.
 - Phase 0: accepted on 2026-10-24 with "perfect, we can continue" (D-026).
 - Subphase 0.2: main business discovery batch resolved; all 12 consolidated
   answers and three focused clarifications recorded. DR-first editable account
@@ -104,14 +104,15 @@ The frontend working tree was clean before the documentation pointer was added.
 
 ## What the client should review
 
-Phase 3.3.1 Alegra previews are ready for testing. See PHASE_3_3_1_DELIVERY.md.
-Q-013 answered (D-052–055); exact cancellation label remains pending.
+Phase 3.3.1 accepted (D-056). Q-014 covers the exact cancellation status and
+replacement/no-refund cases. See PHASE_3_3_2_DISCOVERY.md. No new runtime tests due.
 Dedicated Posting QA account contains synthetic posting/correction/undo examples;
 pre-existing user-uploaded QA previews are retained.
 
 ## Next work
 
-Client preview acceptance, then Phase 3.3.2 financial sales posting and status review.
+Record Q-014 cancellation answers, then Phase 3.3.2 financial sales posting and
+status review. Other business definitions remain settled.
 Q-012 answered (D-049–050).
 Q-011 answered (D-043–046); exact completed-month pilot selection remains Phase 3.4.
 Exact Spain method aliases remain editable and unconfigured until supplied.
@@ -282,3 +283,14 @@ Client acceptance pending. Exact cancellation label is still requested; unknown
 statuses remain for review. See PHASE_3_3_1_DELIVERY.md for limits and test steps.
 
 Phase 3.3.1 implementation checkpoints: backend `2fff6e9`, frontend `bb988ee`.
+
+## Phase 3.3.2 discovery checkpoint
+
+2026-10-25: client accepted Phase 3.3.1 with "it worked well" (D-056).
+Prepared PHASE_3_3_2_DISCOVERY.md and Q-014: carry forward exact cancellation
+status, clarify whether cancelled/reissued invoices sometimes keep the payment
+without refund. Existing original-period/no-double-deduction policy is unchanged.
+Documented invoice identity, immutable fact anomalies, source overlap, assignment
+preservation, stale checks and audited undo using already accepted authority.
+Documentation only: no runtime/data changes or new application tests. Existing
+QA data retained. Both repositories remain feature/finance-phase-2; no deployment.

@@ -364,6 +364,15 @@ First delivery: Phase 3.3.1 source previews. Invoice posting, approval of change
 statuses and refund reconciliation follow after preview review. This subdivision
 keeps unconfirmed cancellation labels from being guessed.
 
+## Q-014: sales posting and cancellation settlement
+
+Sent 2026-10-25 after source-preview acceptance (D-056). See
+PHASE_3_3_2_DISCOVERY.md and QUESTIONNAIRE.md. Two questions: exact cancellation
+ESTADO text (carried forward, still unanswered), and whether cancelled/reissued
+invoices can retain payment without a refund. Answers pending. Original-sale-month
+refund treatment and explicit approval of posted status changes are already
+settled; these questions do not reopen them.
+
 ## Recording an answer
 
 Keep the question, append the client's answer with its date, state the accepted

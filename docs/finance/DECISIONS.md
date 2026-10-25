@@ -73,6 +73,7 @@ client-approved. Detailed behavior belongs in Business rules.
 | D-053 | 2026-10-25 | Accepted | Q-013: approval required for changed invoice evidence. Client states Alegra allows cancellation but cannot modify date, amount or client. Keep those original values; unexpected changes are anomalies for investigation, not normal editable fields. Preserve old evidence/manual work. Status approval belongs to posting, not source preview. |
 | D-054 | 2026-10-25 | Accepted | Q-013: current invoices do not use mixed payment methods. A client may use one or two cards at the same moment; daily bank settlement aggregates them. V1 does not require per-card splits for an invoice. |
 | D-055 | 2026-10-25 | Accepted; exact label pending | Q-013: cancelled invoices remain in Alegra with cancelled status; later refund appears as a bank debit. Apply BR-038 once in the original sale month and link bank refund separately. Exact ESTADO cancellation text was not supplied; unknown statuses stay for review. |
+| D-056 | 2026-10-25 | Accepted | Client confirmed "it worked well" after Phase 3.3.1 Alegra source-preview testing. Preview accepted; proceed to Phase 3.3.2 sales-posting/overlap/cancellation discovery. Exact cancelled ESTADO text remains unconfirmed. No finance deployment authorized. |
 
 ## Open policy decisions
 
