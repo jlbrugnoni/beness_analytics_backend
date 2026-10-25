@@ -448,3 +448,14 @@ preview never creates financial movements, sales, assignments or reconciliation.
 All source paths require site-wide company finance/money/bank/sensitive access;
 upload/original retrieval also require import. Existing bank/sales ledgers remain
 unchanged. Source coverage is measured from saved data, not client-stated cutoff.
+
+
+## Planned complementary Alegra payment source (D-065)
+
+Original invoice/items remain the authoritative sale; native payment export adds
+separate receipt/allocation evidence and does not add revenue or bank transactions.
+Mixed-method historical receipts require support. Invoice → payment → bank is the
+recommended operator sequence, but safe pending links must allow any arrival order.
+Current code has invoice and bank posting only; native payment import/allocation
+is not implemented. See ALEGRA_DUAL_REPORT_IMPORT_PLAN.md for identity, source
+conflicts, privacy, completeness, dependency/undo and discovery requirements.

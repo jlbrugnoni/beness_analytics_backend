@@ -363,3 +363,17 @@ financial changes. See SEPTEMBER_ALEGRA_COMPARISON.md for exact codes and rows.
 This corrects the earlier “615 invoice numbers” wording. Historical mixed methods
 need review before reconciliation; current no-split assumption is not silently
 changed. Source-display acceptance and financial pilot validation remain pending.
+
+
+## Dual Alegra report workflow planning
+
+2026-10-25: D-065 records client confirmation of complementary invoice and payment
+reports, including historical mixed payments. Reviewed existing invoice posting:
+one FinancialSale with a single source channel; no receipt/allocation importer.
+Documented recommended invoice → payment → bank sequence with safe pending links
+for other arrival orders, identity/retry rules, conflict review, dependent undo,
+privacy and incomplete-evidence handling. Inserted Phase 3.3.3 dependency before
+historical posting. Native unmodified payment export is needed to define identity
+and layout safely; no report-menu name or stable ID is assumed. Source version
+explanation recorded without mutating September evidence. Documentation checks
+only; no implementation, workbook/financial mutation or deployment.

@@ -94,3 +94,13 @@ Record implemented behavior, affected files/migrations, relevant automated
 results, manual acceptance steps, open issues, and client acceptance status.
 Documentation-only tasks need document/link verification, not application tests.
 Broaden runtime testing when changed dependencies or failures justify it.
+
+
+## Added dependency: Phase 3.3.3 complementary Alegra payment import
+
+D-065: inspect native payment export, then implement preview, receipt/allocation
+posting and order-independent invoice linking before historical financial posting
+(3.4.2) and channel reconciliation. Preserve already accepted invoice/bank import
+behavior; extend partial-payment/status semantics deliberately. See
+ALEGRA_DUAL_REPORT_IMPORT_PLAN.md for subphases and acceptance scenarios.
+This dependency is planned, not delivered or tested.

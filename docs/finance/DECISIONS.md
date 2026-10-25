@@ -84,6 +84,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-064 | 2026-10-25 | Accepted | Client explicitly selected the original item-level Alegra report over Alegra_adm as sales source of truth. Group original items into invoices; retain administration corrections/payment allocations separately as historical evidence, not duplicate sales. September comparison found mixed-payment evidence despite earlier no-split assumption; preserve it and review allocation scope before migration/reconciliation. See SEPTEMBER_ALEGRA_COMPARISON.md. |
 
+| D-065 | 2026-10-25 | Accepted source scope; workflow proposed | Client confirmed both Alegra invoice/item and payment/administration reports are needed: invoice details/studio from the former, fractional payments from the latter. This supersedes the no-mixed-payment assumption in D-054 for historical support. Client attributes observed September discrepancies to source-report versions; no mismatched records are automatically corrected. Recommended invoice → payment → bank sequence and order-independent pending links are documented in ALEGRA_DUAL_REPORT_IMPORT_PLAN.md; native payment export still needs inspection before implementation. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

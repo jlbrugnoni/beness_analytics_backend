@@ -202,4 +202,16 @@ fields and raw cells/formula caches. Unknown bank/cash provenance and saved erro
 are review issues. All entries includes incomplete rows. Empty checkbox template
 rows do not become movements. Reupload records source lineage, without posting
 financial transactions. Financial migration decisions and complete-month
-comparison remain Phases 3.4.2–3.4.3; current full saved source paths are pending.
+comparison remain Phases 3.4.2–3.4.3; updated sources are present in the local app
+as documented in SEPTEMBER_ALEGRA_COMPARISON.md.
+
+
+## Proposed paired invoice/payment uploads (D-065)
+
+Recommended sequence: original invoice/item report → original payment report →
+bank reconciliation. Bank uploads remain independent and can precede either.
+Missing counterpart creates a visible pending link, never a fabricated invoice,
+receipt, studio or settlement. Exact eligible links are rechecked when counterpart
+financial records are posted. Repeated/overlapping source files preserve identities,
+manual corrections and evidence. Native payment importer is not yet available;
+ALEGRA_DUAL_REPORT_IMPORT_PLAN.md defines discovery and delivery sequence.
