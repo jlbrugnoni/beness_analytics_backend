@@ -180,3 +180,5 @@ Django/migration checks and frontend lint/build passed. Browser QA verified
 setup, source ambiguity/manual recurring correction and mapping edit restoration.
 No reports imported, financial corrections persisted or production changes made.
 Client acceptance pending. See PHASE_2_3_DELIVERY.md for exact boundaries.
+
+Phase 2.3 implementation checkpoints: backend `0511e8a`, frontend `040f394`.

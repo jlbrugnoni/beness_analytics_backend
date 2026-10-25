@@ -122,3 +122,5 @@ exports/ remains untouched. No external review agent was used.
 
 No finance changes pushed, merged or deployed to production. Next gate: client
 acceptance of Phase 2.3; then Phase 2.4 dated fees/settlement/tax configuration.
+
+Phase 2.3 implementation checkpoints: backend `0511e8a`, frontend `040f394`.
