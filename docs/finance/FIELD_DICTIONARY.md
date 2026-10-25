@@ -143,3 +143,16 @@ figure.
 | contribution | Full original invoice total only while active and paid, otherwise zero; not profit |
 | revision / active / reconciled | Stale/undo guards; reversal preserves history; later bank matching must maintain guards |
 | SalesPosting/Decision/Event | Financial committer, source decisions and before/after audit, separate from raw uploader |
+
+## Implemented enriched source preview — Phase 3.4.1
+
+| Field | Meaning |
+| --- | --- |
+| selected_month | Pilot filter context, September 2026 initially; preserves all source rows outside it |
+| bank_date | Native Fecha/source transaction date; naming does not prove a bank account origin |
+| operation_date / expense_period | Preserved independent manual date/expense month |
+| payment_origin | Unknown in this workbook; no cash/bank inference |
+| legacy_reviewed | Preserved checkbox only; does not set reconciled status |
+| raw | Cell reference/type, saved value, formula text/attributes, saved result or error |
+| parsed | Preserved original/manual descriptions and known legacy assignments; not committed classifications |
+| summary / issues | Valid monetary/date totals by basis/type, ignored template rows, source review issues and partial-file status |

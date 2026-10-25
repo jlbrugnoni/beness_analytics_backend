@@ -77,6 +77,10 @@ client-approved. Detailed behavior belongs in Business rules.
 | D-057 | 2026-10-25 | Accepted | Q-014: exact Alegra cancellation status is Anulada. Cobrada is paid; unknown statuses stay for review. Resolves D-055/Q-013 exact-label dependency. |
 | D-058 | 2026-10-25 | Accepted | Q-014: cancellation/reissue without returning client money can happen. Do not infer refund obligation or payment from cancellation alone. Preserve original-period sale treatment and record separate settlement/replacement evidence without a fabricated bank debit or double deduction. |
 | D-059 | 2026-10-25 | Accepted | Client said "you can cotinue" after Phase 3.3.2 delivery. Sales posting, cancellation/replacement review, manual assignments and protected undo accepted. Proceed to Phase 3.4 enriched migration discovery; no finance deployment or production migration authorized. |
+| D-060 | 2026-10-25 | Accepted | Q-015: use September 2026 for the DR pilot; client has September 1–15 and 14–30 bank reports to test overlapping September 14–15. Second report path and full-month evidence remain pending, so no real overlap/full-month pilot completion is claimed. |
+| D-061 | 2026-10-25 | Accepted source choice; saved-copy discrepancy pending | Q-015: use Ingresos_Egresos_DO_BI.xlsx, which client says is current through October 22. The provided saved path still contains the August 31–September 2 sample; requested the current saved copy/path. Record observed coverage separately from intended master coverage. |
+| D-062 | 2026-10-25 | Accepted | Q-015: workbook has no marker distinguishing cash from bank-paid expenses. Preserve payment origin as unknown; later source matching/manual review must establish account provenance without fabricated bank/cash facts. |
+| D-063 | 2026-10-25 | Accepted | Q-015: one bank debit is not represented by multiple split rows in the existing workbook. Native migration does not infer allocation groups. Future manual split support and genuine duplicate occurrence preservation remain unchanged. |
 
 ## Open policy decisions
 

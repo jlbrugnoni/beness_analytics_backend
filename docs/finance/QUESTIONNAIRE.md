@@ -305,9 +305,30 @@ Status: answered 2026-10-25 (D-057–058). Source previews accepted (D-056).
 
 ## Q-015: Phase 3.4 historical migration — 2026-10-25
 
-Status: awaiting answers. Sales posting accepted (D-059).
+Status: answered 2026-10-25 (D-060–063). Current saved master and second bank
+report paths remain pending. Sales posting accepted (D-059).
 
 1. Which completed Dominican month should we use for the first migration comparison? I suggest September 2026 if you have finalized it. The bank/Alegra examples supplied so far cover only September 1–15, so those alone cannot validate a full month.
 2. Is Ingresos_Egresos_DO_BI.xlsx still your current master workbook, or will you use a newer/different copy for migration?
 3. How does the workbook distinguish manually added cash expenses from bank-paid expenses? Is there a column or label identifying the account/payment origin, or must you identify those entries manually?
 4. Can one bank debit appear as several workbook rows because you split it between categories or studios? If yes, how do you identify those rows as parts of the same payment?
+
+
+## Q-015 answers received — 2026-10-25
+
+1. September 2026 is the Dominican pilot month. Client has bank reports for
+   September 1–15 and 14–30 to test overlapping September 14–15 (D-060).
+2. Client confirms Ingresos_Egresos_DO_BI.xlsx as the master and states it is updated
+   through October 22 (D-061). The saved file at the previously supplied path was
+   inspected read-only and remains a partial sample: 16 debit and 25 income
+   financial entries dated August 31–September 2. It also has an incomplete
+   classification-only debit row. Client's intended master coverage and observed
+   local file coverage must be kept separate. The current saved master path/copy
+   and 14–30 bank report path were requested asynchronously; no replacement path
+   has been supplied at this checkpoint.
+3. The workbook does not distinguish cash from bank-paid entries (D-062). Keep
+   payment origin unknown; preserve source/manual fields and propose later
+   matching/manual review. Do not infer an account from descriptions or balances.
+4. One bank debit is not split into multiple workbook rows (D-063). No legacy
+   split reconstruction is needed for this format. Future manual allocation
+   support remains in Phase 4; genuine repeated movements still remain distinct.

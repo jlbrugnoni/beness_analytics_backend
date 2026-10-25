@@ -390,8 +390,29 @@ settled; these questions do not reopen them.
 Sent 2026-10-25 after Phase 3.3.2 acceptance (D-059). See PHASE_3_4_DISCOVERY.md
 and QUESTIONNAIRE.md for one numbered batch. Exact completed DR month and current
 workbook copy remain to be chosen. Cash/manual expense markers and split bank
-payment representation need source/business evidence. Answers pending. Existing
+payment representation need source/business evidence. Q-015 answered (D-060–063);
+current full saved workbook and second bank-report paths remain pending. Existing
 BR-022–028/035 and the completed-month approach D-045 remain accepted.
+
+
+## Q-015 answers received — 2026-10-25
+
+1. September 2026 is the Dominican pilot month. Client has bank reports for
+   September 1–15 and 14–30 to test overlapping September 14–15 (D-060).
+2. Client confirms Ingresos_Egresos_DO_BI.xlsx as the master and states it is updated
+   through October 22 (D-061). The saved file at the previously supplied path was
+   inspected read-only and remains a partial sample: 16 debit and 25 income
+   financial entries dated August 31–September 2. It also has an incomplete
+   classification-only debit row. Client's intended master coverage and observed
+   local file coverage must be kept separate. The current saved master path/copy
+   and 14–30 bank report path were requested asynchronously; no replacement path
+   has been supplied at this checkpoint.
+3. The workbook does not distinguish cash from bank-paid entries (D-062). Keep
+   payment origin unknown; preserve source/manual fields and propose later
+   matching/manual review. Do not infer an account from descriptions or balances.
+4. One bank debit is not split into multiple workbook rows (D-063). No legacy
+   split reconstruction is needed for this format. Future manual allocation
+   support remains in Phase 4; genuine repeated movements still remain distinct.
 
 ## Recording an answer
 

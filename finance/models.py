@@ -39,10 +39,10 @@ class Company(models.Model):
         super().clean()
         if self.pk:
             previous = type(self).objects.get(pk=self.pk)
-            if previous.site_id != self.site_id and (self.accounts.exists() or self.categories.exists() or self.source_mappings.exists() or self.feepolicy_set.exists() or self.settlementpolicy_set.exists() or self.taxprofile_set.exists() or self.sales_previews.exists()):
-                raise ValidationError({"site": "A company with financial configuration or sales sources cannot be moved to another site."})
-            if previous.default_currency != self.default_currency and (self.accounts.exists() or self.feepolicy_set.exists() or self.sales_previews.exists()):
-                raise ValidationError({"default_currency": "A company with accounts, fee policies or sales sources cannot change its default currency."})
+            if previous.site_id != self.site_id and (self.accounts.exists() or self.categories.exists() or self.source_mappings.exists() or self.feepolicy_set.exists() or self.settlementpolicy_set.exists() or self.taxprofile_set.exists() or self.sales_previews.exists() or self.migration_previews.exists()):
+                raise ValidationError({"site": "A company with financial configuration or import history cannot be moved to another site."})
+            if previous.default_currency != self.default_currency and (self.accounts.exists() or self.feepolicy_set.exists() or self.sales_previews.exists() or self.migration_previews.exists()):
+                raise ValidationError({"default_currency": "A company with accounts, fee policies or import history cannot change its default currency."})
 
 
 class Account(models.Model):
@@ -562,3 +562,43 @@ class SalesEvent(models.Model):
 
     class Meta:
         ordering = ['created_at', 'pk']
+
+
+class MigrationImportBatch(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name='migration_previews')
+    selected_month = models.DateField()
+    file_name = models.CharField(max_length=255)
+    file_hash = models.CharField(max_length=64, db_index=True)
+    byte_size = models.PositiveIntegerField()
+    original_file = models.BinaryField(editable=False)
+    parser_version = models.CharField(max_length=40)
+    status = models.CharField(max_length=10)
+    summary = models.JSONField(default=dict)
+    file_issues = models.JSONField(default=list)
+    sheets = models.JSONField(default=list)
+    mappings = models.JSONField(default=dict)
+    duplicate_of = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at','-pk']
+        indexes = [models.Index(fields=['company','file_hash'],name='finance_migration_hash')]
+
+
+class MigrationImportRow(models.Model):
+    batch = models.ForeignKey(MigrationImportBatch, on_delete=models.CASCADE, related_name='rows')
+    sheet = models.CharField(max_length=128)
+    source_row = models.PositiveIntegerField()
+    kind = models.CharField(max_length=10)
+    bank_date = models.DateField(null=True)
+    operation_date = models.DateField(null=True)
+    expense_period = models.DateField(null=True)
+    amount = models.DecimalField(max_digits=18, decimal_places=2, null=True)
+    raw = models.JSONField(default=list)
+    parsed = models.JSONField(default=dict)
+    issues = models.JSONField(default=list)
+
+    class Meta:
+        ordering = ['sheet','source_row']
+        constraints = [models.UniqueConstraint(fields=['batch','sheet','source_row'],name='finance_migration_row')]

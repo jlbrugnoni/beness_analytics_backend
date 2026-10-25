@@ -6,6 +6,7 @@ from .views import AccountViewSet, CategoryViewSet, CompanyViewSet, Configuratio
 
 from .policy_views import FeePolicyViewSet, SettlementPolicyViewSet, TaxProfileViewSet, PolicyPreview, PolicySetup
 
+from .migration_views import MigrationImportViewSet
 from .sales_posting_views import SalesPostingImportViewSet, FinancialSaleViewSet
 from .posting_views import BankPostingImportViewSet, BankMovementViewSet
 
@@ -23,6 +24,7 @@ router.register("source-mappings", SourceMappingViewSet, basename="finance-sourc
 router.register("fee-policies", FeePolicyViewSet, basename="finance-fee-policy")
 router.register("settlement-policies", SettlementPolicyViewSet, basename="finance-settlement-policy")
 router.register("tax-profiles", TaxProfileViewSet, basename="finance-tax-profile")
+router.register("migration-imports", MigrationImportViewSet, basename="finance-migration-import")
 router.register("sales", FinancialSaleViewSet, basename="finance-sale")
 router.register("sales-imports", SalesPostingImportViewSet, basename="finance-sales-import")
 router.register("bank-imports", BankPostingImportViewSet, basename="finance-bank-import")

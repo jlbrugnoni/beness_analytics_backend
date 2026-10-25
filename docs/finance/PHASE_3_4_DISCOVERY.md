@@ -1,13 +1,14 @@
 # Phase 3.4 enriched historical migration discovery
 
-Date: 2026-10-25. Phase 3.3.2 accepted (D-059). Q-015 awaiting answers.
-Documentation/discovery checkpoint only; no historical migration implemented yet.
+Date: 2026-10-25. Phase 3.3.2 accepted (D-059). Q-015 answered (D-060–063). Phase 3.4.1 source previews implemented and validated;
+client acceptance pending. Financial migration and complete-month pilot remain
+unimplemented. See PHASE_3_4_1_DELIVERY.md.
 
 ## Purpose and accepted scope
 
 Bring the existing enriched financial history into finance without losing manual
 work or counting it again when routine raw reports overlap. The accepted pilot
-approach is one completed Dominican month (D-045); exact month is still pending.
+approach is one completed Dominican month (D-045); September 2026 is selected (D-060).
 The original September 1–15 bank/Alegra examples are partial adapter evidence.
 Spain history remains in the agreed broader scope, after the Dominican pilot.
 
@@ -57,7 +58,8 @@ Spain history remains in the agreed broader scope, after the Dominican pilot.
 
 Questions 1–2 establish pilot evidence and source version. Questions 3–4 determine
 account provenance and payment-versus-allocation structure; they do not reopen
-manual-entry support or genuine duplicate preservation. Answers are pending.
+manual-entry support or genuine duplicate preservation. Answers received below
+(D-060–063).
 
 ## Proposed delivery sequence
 
@@ -96,7 +98,28 @@ is proposed sequencing, not evidence that new code/models/imports exist.
   manual classifications. Existing financial postings remain intact.
 - Privacy checks cover preview cells, originals, account choices, issue queues,
   history, commit and undo. Sensitive expense descriptions remain restricted.
-- Exact pilot month/cutoff coverage, current workbook copy, cash markers and split
-  representation await Q-015. The existing complete-month approach is accepted;
-  no production cutover date is inferred. No new application testing is due at
-  this documentation-only checkpoint.
+- September 2026, unknown cash/bank origin and no legacy split rows are confirmed
+  by Q-015. The current full saved workbook and second bank-report path remain
+  pending. Phase 3.4.1 source previews are ready for testing; see the delivery
+  checklist. Financial migration and complete-month certification remain future
+  work. No production cutover date is inferred.
+
+
+## Q-015 answers received — 2026-10-25
+
+1. September 2026 is the Dominican pilot month. Client has bank reports for
+   September 1–15 and 14–30 to test overlapping September 14–15 (D-060).
+2. Client confirms Ingresos_Egresos_DO_BI.xlsx as the master and states it is updated
+   through October 22 (D-061). The saved file at the previously supplied path was
+   inspected read-only and remains a partial sample: 16 debit and 25 income
+   financial entries dated August 31–September 2. It also has an incomplete
+   classification-only debit row. Client's intended master coverage and observed
+   local file coverage must be kept separate. The current saved master path/copy
+   and 14–30 bank report path were requested asynchronously; no replacement path
+   has been supplied at this checkpoint.
+3. The workbook does not distinguish cash from bank-paid entries (D-062). Keep
+   payment origin unknown; preserve source/manual fields and propose later
+   matching/manual review. Do not infer an account from descriptions or balances.
+4. One bank debit is not split into multiple workbook rows (D-063). No legacy
+   split reconstruction is needed for this format. Future manual allocation
+   support remains in Phase 4; genuine repeated movements still remain distinct.

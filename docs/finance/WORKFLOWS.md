@@ -193,3 +193,13 @@ expense classification and period results remain later deliveries.
 Undo previews eligible/protected/reused invoices. Only untouched creations reverse;
 manual/reconciled/dependent/approved-cancellation records remain protected. All and
 Reversed views retain history. Undo does not delete immutable source uploads.
+
+## Implemented enriched workbook preview — Phase 3.4.1
+
+Choose Dominican company, pilot month and native XLSX. Save a private source
+preview, then inspect transaction/operation/expense-month totals, known manual
+fields and raw cells/formula caches. Unknown bank/cash provenance and saved errors
+are review issues. All entries includes incomplete rows. Empty checkbox template
+rows do not become movements. Reupload records source lineage, without posting
+financial transactions. Financial migration decisions and complete-month
+comparison remain Phases 3.4.2–3.4.3; current full saved source paths are pending.

@@ -395,6 +395,16 @@ and changes to closed periods still need their phase-specific definitions.
   fabricates a bank debit, proves a refund occurred or deducts the sale twice.
   Bank matching and monthly result calculation remain later phases.
 
+- **BR-064:** September 2026 is the DR migration pilot. The client's 1–15 and
+  14–30 bank reports provide a planned overlap case for September 14–15. Report
+  availability is not evidence that both files or complete monthly coverage have
+  been validated. Track observed source coverage separately from client cutoffs.
+- **BR-065:** The legacy workbook does not identify cash versus bank origin.
+  Preserve origin as unknown until evidence/manual review establishes it. Do not
+  assign a default bank account or infer cash from a missing bank match. The
+  original table has no split-row representation of one debit; do not synthesize
+  allocation groups. Preserve genuine repeated independent rows.
+
 ## Reference reports
 
 These are source fixtures, not committed datasets. Keep originals outside Git and

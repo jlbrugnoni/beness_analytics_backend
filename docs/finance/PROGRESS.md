@@ -4,7 +4,7 @@ Updated: 2026-10-25.
 
 ## Current checkpoint
 
-- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 accepted (D-051); Phase 3.3.1 Alegra previews accepted (D-056); Phase 3.3.2 sales posting/review/undo accepted (D-059); Phase 3.4 discovery in progress.
+- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 accepted (D-051); Phase 3.3.1 Alegra previews accepted (D-056); Phase 3.3.2 sales posting/review/undo accepted (D-059); Phase 3.4.1 migration source previews implemented; client acceptance pending.
 - Phase 0: accepted on 2026-10-24 with "perfect, we can continue" (D-026).
 - Subphase 0.2: main business discovery batch resolved; all 12 consolidated
   answers and three focused clarifications recorded. DR-first editable account
@@ -104,18 +104,19 @@ The frontend working tree was clean before the documentation pointer was added.
 
 ## What the client should review
 
-Phase 3.3.2 accepted (D-059). Q-015 covers historical pilot month, current workbook,
-cash markers and split bank payments. See PHASE_3_4_DISCOVERY.md. No new runtime
-tests are due at this checkpoint. Q-014 answered (D-057–058).
+Phase 3.4.1 workbook previews ready for testing; see PHASE_3_4_1_DELIVERY.md.
+Q-015 answered (D-060–063). September 2026 chosen; current full saved source
+copy and September 14–30 bank-report paths remain requested.
 Dedicated Posting QA account contains synthetic posting/correction/undo examples;
 pre-existing user-uploaded QA previews are retained.
 
 ## Next work
 
-Record Q-015 answers and confirm source evidence, then implement Phase 3.4.1
-enriched preview. Other business definitions remain settled.
+Client preview acceptance, then Phase 3.4.2 assignment/provenance and migration
+decisions. Obtain current saved full source and second bank report before claiming
+a complete September comparison. Other business definitions remain settled.
 Q-012 answered (D-049–050).
-Q-011 answered (D-043–046); exact completed-month pilot selection remains Phase 3.4.
+Q-011 answered (D-043–046); September 2026 pilot selected by Q-015 (D-060).
 Exact Spain method aliases remain editable and unconfigured until supplied.
 Exact Caixa fee amount/frequency and offer dates remain optional setup follow-up. Calculated balances and category-aware sensitive payment
 redaction remain future processing work.
@@ -320,3 +321,15 @@ Documented preview, assignment/provenance foundation and pilot comparison sequen
 no migration models/code implemented or private source re-read at this checkpoint.
 Documentation checks only; existing QA/normal/production data unchanged. Both
 repositories remain feature/finance-phase-2; no push, merge or deployment.
+
+## Phase 3.4.1 implementation checkpoint
+
+2026-10-25: Q-015 answered D-060–063. Added native DR enriched XLSX previews,
+immutable source/formula evidence, month-basis summaries/filters and protected
+history/raw/original API/UI. No financial migration or account guessing. The
+saved original path remains a partial Aug 31–Sep 2 sample (41 financial entries
+plus an incomplete category row); full master and Sep 14–30 source paths requested.
+PostgreSQL 269 tests passed; SQLite 265 passed/4 skipped; focused migration tests,
+frontend lint/build and Django checks passed. Synthetic-only browser QA verified
+cross-month values, cache errors and invalid-row retention. Client acceptance
+pending. No changes to existing bank/sales postings or grants; no deployment.

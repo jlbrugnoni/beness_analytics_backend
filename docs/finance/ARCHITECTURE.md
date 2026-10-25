@@ -1,6 +1,6 @@
 # Finance architecture
 
-Status: accepted target design; Phase 1 accepted, Phases 2.1–2.4 accepted; Phase 3.1 accepted; Phase 3.2 accepted (D-051); Phase 3.3.1 source previews accepted (D-056); Phase 3.3.2 sales posting/review/undo accepted (D-059); Phase 3.4 discovery in progress.
+Status: accepted target design; Phase 1 accepted, Phases 2.1–2.4 accepted; Phase 3.1 accepted; Phase 3.2 accepted (D-051); Phase 3.3.1 source previews accepted (D-056); Phase 3.3.2 sales posting/review/undo accepted (D-059); Phase 3.4.1 migration previews implemented; client acceptance pending.
 Updated: 2026-10-25. Implemented models are finance.Company, finance.Account,
 finance.AccessChange, finance.Terminal, finance.Category, finance.SourceMapping, finance.ConfigurationChange, finance.FeePolicy, finance.SettlementPolicy, finance.TaxProfile, finance.BankImportBatch, finance.BankImportRow, finance.BankPosting, finance.BankMovement, finance.BankDecision, finance.BankEvent, finance.SalesImportBatch, finance.SalesImportRow, finance.SalesImportInvoice, finance.SalesPosting, finance.FinancialSale, finance.SalesDecision, finance.SalesEvent and capability fields on existing access profiles.
 Sales posting is implemented; broader expense classification, bank reconciliation and results remain future work.
@@ -430,3 +430,21 @@ PostgreSQL assignment locking uses FOR UPDATE OF self to avoid nullable-studio
 outer-join locks. Undo only reverses eligible untouched creations; edits, linked
 replacement targets, reconciliation, other imports and approved cancellations are
 protected. All source/ledger/history paths retain full company/privacy gates.
+
+## Implemented enriched source previews (Phase 3.4.1)
+
+MigrationImportBatch/Row retain the native DR workbook, selected pilot month,
+raw cells/formulas/caches, known sheet/column map, dates/amounts and legacy manual
+fields. Standard-library ZIP/XML reader has bounded archive/part/row/cell limits,
+rejects DTD/macros/invalid references and never executes formulas or external links.
+Only Debitos/Ingresos create preview rows; summaries/Alegra sheets remain original
+comparison evidence. Generic column-mapping controls remain a later extension.
+
+Payment origin is explicitly unknown; no bank/cash account or verified balance is
+inferred. Checkbox-only rows are ignored, nonempty incomplete data remains review
+evidence, cached errors leave values unresolved and valid independent values stay
+visible. Distinct bank/operation/expense dates govern separate totals. Source
+preview never creates financial movements, sales, assignments or reconciliation.
+All source paths require site-wide company finance/money/bank/sensitive access;
+upload/original retrieval also require import. Existing bank/sales ledgers remain
+unchanged. Source coverage is measured from saved data, not client-stated cutoff.
