@@ -4,6 +4,8 @@ Updated: 2026-10-25.
 
 ## Current checkpoint
 
+- Latest: Phase 3.3.3.1 payment preview accepted (D-066); Phase 3.3.3.2 shared receipt/routine import processing implemented and validated, client acceptance pending. Historical financial migration is not complete. See PHASE_3_3_3_2_DELIVERY.md.
+
 - Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 accepted (D-051); Phase 3.3.1 Alegra previews accepted (D-056); Phase 3.3.2 sales posting/review/undo accepted (D-059); Phase 3.4.1 migration source previews implemented; client acceptance pending.
 - Phase 0: accepted on 2026-10-24 with "perfect, we can continue" (D-026).
 - Subphase 0.2: main business discovery batch resolved; all 12 consolidated
@@ -423,3 +425,23 @@ payment Numero is permanent/company-wide unique and whether one receipt can cove
 several invoices. Answers pending; no posting identity/cardinality assumption
 implemented. Documentation checks only; runtime/data/grants unchanged. No push,
 merge or deployment. Next: answer Q-016 and implement the shared payment structure.
+
+
+## Phase 3.3.3.2 shared receipts / routine import delivery
+
+2026-10-25: Q-016 answered (D-068). Implemented shared receipts and source/posting/
+decision/event history, guarded company/provider/payment-number identity, one
+invoice per receipt, several receipts per invoice, exact pending invoice links
+in either arrival order and protected undo. Routine Payment imports screen and
+strict observed-column CSV preset share the same services with existing-workbook
+preparation; initial migration is now secondary setup navigation. Source conflicts
+stay pending, independent valid rows proceed and manual channel corrections survive.
+Migration 0011 applied only in isolated QA/tests. No real source posted, no grants
+changed, no push/merge/deployment. Synthetic browser company #6/import #1 has two
+linked receipts with one manual Recurring correction; repeated source plan #2
+recognizes them. Real source #3 and its company financial receipts remain untouched.
+PostgreSQL 299 supported tests passed; final focused PG18 and SQLite26/2 skips;
+frontend lint/build and system/migration checks passed. See
+PHASE_3_3_3_2_DELIVERY.md for exact scope, native-format limitation and client tests.
+Client acceptance pending. Next: client receipt-processing test, then historical
+assignment/provenance decisions and actual native payment export acceptance.

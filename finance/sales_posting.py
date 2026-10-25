@@ -133,6 +133,8 @@ def commit(batch, company, actor, expected):
         elif status == 'invalid':
             resolution = 'invalid'
         SalesDecision.objects.create(posting=posting, invoice=invoice, sale=sale, resolution=resolution)
+    from .payment_posting import refresh_links
+    refresh_links(company,actor)
     event(posting, actor, 'commit', after={'interpretation_version': VERSION})
     advance(company)
     return posting
@@ -158,6 +160,8 @@ def resolve(decision, company, actor, action, note, expected_revision):
         decision.resolution = 'retained'; event(decision.posting, actor, 'retain', sale, note=note)
     else:
         raise serializers.ValidationError('Choose cancel or retain current facts.')
+    from .payment_posting import refresh_links
+    refresh_links(company,actor)
     decision.revision += 1; decision.save(update_fields=['resolution', 'revision'])
     decision.posting.revision += 1; decision.posting.save(update_fields=['revision'])
     advance(company)
@@ -211,6 +215,7 @@ def undo_plan(posting, company):
         elif sale.active:
             reason = None
             if sale.reconciled: reason = 'reconciled'
+            elif sale.receipts.filter(active=True).exists(): reason = 'payment_link'
             elif sale.revision != 1: reason = 'changed'
             elif sale.replaces.filter(active=True).exists(): reason = 'replacement_link'
             elif sale.decisions.filter(posting__status__in=['active','partial_undo']).exclude(posting=posting).exists(): reason = 'other_import'

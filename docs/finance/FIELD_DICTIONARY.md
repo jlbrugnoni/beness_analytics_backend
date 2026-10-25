@@ -156,3 +156,18 @@ figure.
 | raw | Cell reference/type, saved value, formula text/attributes, saved result or error |
 | parsed | Preserved original/manual descriptions and known legacy assignments; not committed classifications |
 | summary / issues | Valid monetary/date totals by basis/type, ignored template rows, source review issues and partial-file status |
+
+
+## Shared receipt fields — Phase 3.3.3.2
+
+| Field | Meaning |
+| --- | --- |
+| PaymentImportBatch.origin / migration_batch | Routine report or initial workbook source, feeding shared receipts |
+| selected_month | Optional prepared source scope; null retains all payment dates |
+| FinancialReceipt.number | Normal external payment identity within company/provider; conflicting facts require review |
+| source / assignments | Preserved normalized source evidence versus current manual/configured interpretation |
+| sale / link_issue | Full positive receipt allocation to one eligible invoice, or explicit pending/review reason |
+| studio / effective_studio | Matched historical manual assignment, or inherited invoice studio; unknown labels stay pending |
+| edited / reconciled / revision | Manual-change and reconciliation protections, optimistic action revision |
+| PaymentDecision.resolution | Created/reused/pending/invalid/retained outcome for one source occurrence |
+| PaymentEvent | Immutable action, actor/time, before/after and reason evidence |

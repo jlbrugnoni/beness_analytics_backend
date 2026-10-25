@@ -167,3 +167,12 @@ ongoing operation uses regular source reports. Shared financial receipt/invoice/
 bank records and identity/manual-preservation services are required across both
 entry points. Next is PHASE_3_3_3_2_DISCOVERY.md / Q-016, not further migration-only
 preview expansion. Existing preview implementation remains source inspection only.
+
+
+## Shared receipt implementation checkpoint
+
+Q-016 answered with guarded normal payment-number identity and single-invoice
+receipts (D-068). Shared financial payment processing now implemented; see
+PHASE_3_3_3_2_DELIVERY.md. The strict CSV preset implements observed workbook column
+names and synthetic export fixtures; actual native-file compatibility still needs
+verification. Previous planning-only/no-payment-posting statements are historical.

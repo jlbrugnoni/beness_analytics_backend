@@ -434,3 +434,16 @@ maintain the shared history thereafter (D-067). Two numbered questions asked:
 Answers pending. Do not infer global identity from the current 1,127 distinct
 sample numbers. Native source contract and shared posting acceptance cases are
 specified in PHASE_3_3_3_2_DISCOVERY.md. No new runtime behavior claimed.
+
+
+## Q-016 answers — 2026-10-25
+
+1. “normally it does”: accept stable payment Numero across downloads/company
+   accounts as the guarded normal identity, not a universal guarantee. Conflicting
+   facts for the same identity remain pending; missing numbers are not invented.
+2. “as far as i know, it only have one invoice”: one referenced invoice per receipt
+   in v1; several receipts can pay one invoice. Multiple references remain for review.
+
+D-068 records the interpretation. Shared import processing implemented and validated
+in PHASE_3_3_3_2_DELIVERY.md; client acceptance pending. No native CSV layout is
+inferred as verified merely from these business answers.

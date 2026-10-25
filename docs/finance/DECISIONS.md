@@ -89,6 +89,8 @@ client-approved. Detailed behavior belongs in Business rules.
 | D-066 | 2026-10-25 | Accepted | Client said “perfect. continue” after testing Phase 3.3.3.1 payment workbook preview. Payment preview accepted; proceed to shared receipt/routine import discovery. This is not acceptance of financial migration/posting or deployment. |
 | D-067 | 2026-10-25 | Accepted | Client clarified migration is a rarely used initial setup operation, normally once; subsequent history is maintained by regular report uploads. Use shared financial records/identities, assignments and import services across both paths; do not require recurring enriched workbooks or build a parallel migration ledger. See PHASE_3_3_3_2_DISCOVERY.md. |
 
+| D-068 | 2026-10-25 | Accepted normal-case contract, guarded exceptions | Q-016: client says payment Numero normally stays stable/company-wide unique and, as far as known, one receipt refers to one invoice. V1 uses company/provider/payment-number identity with unchanged-fact verification; reused/conflicting numbers, missing identities and unsupported multiple-invoice references remain for review, never silent merging. Several receipts can pay one invoice. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

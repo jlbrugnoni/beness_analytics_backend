@@ -19,6 +19,7 @@ def normalized_source_value(value):
 
 class Company(models.Model):
     sales_revision = models.PositiveIntegerField(default=1, editable=False)
+    payment_revision = models.PositiveIntegerField(default=1, editable=False)
     name = models.CharField(max_length=180)
     site = models.ForeignKey("core_data.Site", on_delete=models.PROTECT, related_name="finance_companies")
     default_currency = models.CharField(max_length=3, validators=[currency_validator])
@@ -39,9 +40,9 @@ class Company(models.Model):
         super().clean()
         if self.pk:
             previous = type(self).objects.get(pk=self.pk)
-            if previous.site_id != self.site_id and (self.accounts.exists() or self.categories.exists() or self.source_mappings.exists() or self.feepolicy_set.exists() or self.settlementpolicy_set.exists() or self.taxprofile_set.exists() or self.sales_previews.exists() or self.migration_previews.exists()):
+            if previous.site_id != self.site_id and (self.accounts.exists() or self.categories.exists() or self.source_mappings.exists() or self.feepolicy_set.exists() or self.settlementpolicy_set.exists() or self.taxprofile_set.exists() or self.sales_previews.exists() or self.migration_previews.exists() or self.payment_previews.exists()):
                 raise ValidationError({"site": "A company with financial configuration or import history cannot be moved to another site."})
-            if previous.default_currency != self.default_currency and (self.accounts.exists() or self.feepolicy_set.exists() or self.sales_previews.exists() or self.migration_previews.exists()):
+            if previous.default_currency != self.default_currency and (self.accounts.exists() or self.feepolicy_set.exists() or self.sales_previews.exists() or self.migration_previews.exists() or self.payment_previews.exists()):
                 raise ValidationError({"default_currency": "A company with accounts, fee policies or import history cannot change its default currency."})
 
 
@@ -602,3 +603,89 @@ class MigrationImportRow(models.Model):
     class Meta:
         ordering = ['sheet','source_row']
         constraints = [models.UniqueConstraint(fields=['batch','sheet','source_row'],name='finance_migration_row')]
+
+
+class PaymentImportBatch(models.Model):
+    """Shared immutable source snapshots for historical and routine payment imports."""
+    company = models.ForeignKey(Company,on_delete=models.PROTECT,related_name='payment_previews')
+    provider = models.CharField(max_length=16,default='alegra')
+    origin = models.CharField(max_length=16,default='report')
+    migration_batch = models.ForeignKey(MigrationImportBatch,null=True,on_delete=models.PROTECT)
+    selected_month = models.DateField(null=True)
+    file_name = models.CharField(max_length=255)
+    file_hash = models.CharField(max_length=64)
+    original_file = models.BinaryField(default=bytes,editable=False)
+    parser_version = models.CharField(max_length=40)
+    summary = models.JSONField(default=dict)
+    file_issues = models.JSONField(default=list)
+    duplicate_of = models.ForeignKey('self',null=True,on_delete=models.PROTECT)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL,null=True,on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering=['-pk']
+
+
+class PaymentImportRow(models.Model):
+    batch = models.ForeignKey(PaymentImportBatch,on_delete=models.CASCADE,related_name='rows')
+    source_row = models.PositiveIntegerField()
+    source = models.JSONField(default=dict)
+
+    class Meta:
+        ordering=['source_row']
+        constraints=[models.UniqueConstraint(fields=['batch','source_row'],name='finance_payment_source_row')]
+
+
+class PaymentPosting(models.Model):
+    batch = models.OneToOneField(PaymentImportBatch,on_delete=models.PROTECT,related_name='posting')
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL,null=True,on_delete=models.SET_NULL)
+    status = models.CharField(max_length=20,default='active')
+    revision = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class FinancialReceipt(models.Model):
+    company = models.ForeignKey(Company,on_delete=models.PROTECT,related_name='financial_receipts')
+    provider = models.CharField(max_length=16,default='alegra')
+    number = models.CharField(max_length=64)
+    source = models.JSONField(default=dict)
+    created_from = models.ForeignKey(PaymentImportRow,on_delete=models.PROTECT)
+    sale = models.ForeignKey(FinancialSale,null=True,on_delete=models.PROTECT,related_name='receipts')
+    link_issue = models.CharField(max_length=40,default='invoice_missing')
+    channel = models.CharField(max_length=24,blank=True)
+    studio = models.ForeignKey('core_data.Studio',null=True,on_delete=models.PROTECT)
+    assignments = models.JSONField(default=dict)
+    revision = models.PositiveIntegerField(default=1)
+    edited = models.BooleanField(default=False)
+    reconciled = models.BooleanField(default=False)
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering=['-pk']
+        constraints=[models.UniqueConstraint(fields=['company','provider','number'],condition=models.Q(active=True),name='finance_active_receipt_number')]
+
+
+class PaymentDecision(models.Model):
+    posting = models.ForeignKey(PaymentPosting,on_delete=models.PROTECT,related_name='decisions')
+    row = models.OneToOneField(PaymentImportRow,on_delete=models.PROTECT)
+    receipt = models.ForeignKey(FinancialReceipt,null=True,on_delete=models.PROTECT,related_name='decisions')
+    resolution = models.CharField(max_length=24)
+    revision = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering=['row__source_row']
+
+
+class PaymentEvent(models.Model):
+    posting = models.ForeignKey(PaymentPosting,null=True,on_delete=models.PROTECT,related_name='events')
+    receipt = models.ForeignKey(FinancialReceipt,null=True,on_delete=models.PROTECT,related_name='events')
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL,null=True,on_delete=models.SET_NULL)
+    action = models.CharField(max_length=30)
+    before = models.JSONField(default=dict)
+    after = models.JSONField(default=dict)
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering=['created_at','pk']

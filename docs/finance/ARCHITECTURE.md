@@ -6,6 +6,8 @@ finance.AccessChange, finance.Terminal, finance.Category, finance.SourceMapping,
 Sales posting is implemented; broader expense classification, bank reconciliation and results remain future work.
 See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md and PHASE_2_3_DELIVERY.md and PHASE_2_4_DELIVERY.md and PHASE_3_1_DELIVERY.md and PHASE_3_2_DELIVERY.md for exact endpoints and limitations.
 
+Current shared receipt/import checkpoint: Phase 3.3.3.2 implemented; acceptance pending. See PHASE_3_3_3_2_DELIVERY.md.
+
 ## Existing integration points
 
 - `core_data.models` owns users, `Site`, `Studio`, `PaymentMethod`, `SaleLine`,
@@ -481,3 +483,17 @@ adapters must share identities, assignments, matching/review and dependent-undo
 services. Never fork financial history by entry point or require a recurring
 manual workbook. See PHASE_3_3_3_2_DISCOVERY.md for the receipt structure and
 cross-entry overlap acceptance cases. Payment financial posting remains planned.
+
+
+## Implemented shared receipts and routine payment imports — Phase 3.3.3.2
+
+PaymentImportBatch/Row → PaymentPosting/Decision/Event → FinancialReceipt is the
+shared path for initial workbook payment preparation and routine CSV previews.
+Original sources/assignments remain distinct; active company/provider/number
+identity is verified against source facts. Receipt.sale is a single-invoice
+allocation for the full receipt amount in v1. Several receipts can link one sale;
+multiple-invoice rows remain unsupported/reviewed. Company locks and payment/sales/
+mapping revisions guard commit and linking; linked active receipts protect sale
+undo. Payments do not add revenue or bank movements. See
+PHASE_3_3_3_2_DELIVERY.md for implemented behavior and outstanding native-format,
+missing identity, source-replacement and historical migration limitations.

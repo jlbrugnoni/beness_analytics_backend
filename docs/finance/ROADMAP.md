@@ -1,6 +1,8 @@
 # Finance development roadmap
 
 Updated: 2026-10-25. Phase 0 accepted; Phase 1 implemented, validated, and accepted by the client. Phase 2.1 accepted; Phase 2.2 accepted; Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 bank previews/history and initial 3.2 readers accepted (D-048); bank transaction commit/overlap/review/undo accepted (D-051). Phase 3.3.1 Alegra source previews accepted (D-056); Phase 3.3.2 sales posting/review/undo accepted (D-059); Phase 3.4.1 enriched source previews implemented; client acceptance pending. Financial migration and Phases 4–7 remain future work. See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md and PHASE_2_3_DELIVERY.md and PHASE_2_4_DELIVERY.md and PHASE_3_1_DELIVERY.md and PHASE_3_2_DELIVERY.md for evidence.
+Latest: Phase 3.3.3.2 shared receipt/routine import processing implemented; client acceptance pending.
+
 Each phase begins with targeted business discovery and ends with validation,
 documentation updates, and client acceptance. Acceptance is recorded in Progress.
 
@@ -117,3 +119,10 @@ one-time setup; ongoing reports feed the same financial history. Next shared
 payment/routine import discovery is PHASE_3_3_3_2_DISCOVERY.md (Q-016 pending).
 Cross-entry deduplication and manual preservation take priority over additional
 migration-only screens. No financial payment-posting delivery is claimed.
+
+
+Phase 3.3.3.2 shared receipts, workbook handoff, strict CSV column preset, reviewed
+commit/retain/assignment and protected undo implemented/validated; client acceptance
+pending. Q-016 resolved (D-068). Native export acceptance, historical assignment/
+provenance posting and completed September comparison remain dependencies; do not
+claim this as a completed financial migration. See PHASE_3_3_3_2_DELIVERY.md.

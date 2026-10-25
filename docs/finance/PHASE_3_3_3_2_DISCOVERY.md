@@ -101,3 +101,11 @@ After Q-016, implement shared receipt/allocation posting and reuse it from histo
 and routine source adapters; add a routine payment-report screen once its source
 contract is verified. Avoid further migration-only feature expansion unrelated to
 preserving and reviewing the initial financial history.
+
+
+## Answer and implementation checkpoint
+
+Q-016 answered (D-068): normally stable/company-wide payment number, normally one
+invoice per payment. Guard exceptions. PHASE_3_3_3_2_DELIVERY.md supersedes the
+planning-only runtime statements above: shared receipt processing and a strict
+CSV column preset now exist; actual standalone export acceptance remains pending.

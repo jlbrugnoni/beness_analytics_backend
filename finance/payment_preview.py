@@ -15,7 +15,7 @@ FIELDS = {'account':'Cuenta','date':'Fecha','number':'Numero','customer':'Client
     'customer_id':'ID','amount':'Valor','observations':'Observaciones','notes':'Notas',
     'associations':'Asociaciones','kind':'Tipo_nota','source_reviewed':'Conciliada',
     'original_method':'Metodo_pago','status':'Estado','method':'Metodo',
-    'manual_reviewed':'Conciliado','location':'Ubicación','cached_invoice':'NCF'}
+    'manual_reviewed':'Conciliado','location':'Ubicación','cached_invoice':'NCF','currency':'Moneda'}
 REQUIRED = {'date','number','amount','associations','kind','original_method'}
 CODE = re.compile(r'(?<![A-Za-z0-9])B0[12]\d{8}(?![A-Za-z0-9])', re.I)
 METHODS = {'cierre','link','recurrente','transferencia','efectivo'}
@@ -78,10 +78,10 @@ def payment_totals(rows):
         'split_invoice_groups':sum(n>1 for n in Counter(r['invoice_code'] for r in rows if r['invoice_code']).values())}
 
 
-def read_payment_preview(content):
+def read_payment_preview(content, prepared=None):
     result={'parser_version':VERSION,'rows':[],'file_issues':[],'summary':{}}
     try:
-        name,epoch,headers,mapping,source=worksheet(content)
+        name,epoch,headers,mapping,source=prepared if prepared is not None else worksheet(content)
         ignored=0
         for number,cells in source:
             mapped={key:cells.get(column) for key,column in mapping.items()}
@@ -91,6 +91,8 @@ def read_payment_preview(content):
             if len(result['rows'])>=MAX_ROWS:raise ValueError('workbook_limit')
             row={key:text(mapped.get(key)) for key in FIELDS};row.update(sheet=name,source_row=number,issues=[],cells=[])
             issues=row['issues'];row['date']=None;row['amount']=None
+            row['currency']=(row.get('currency') or 'DOP').upper()
+            if row['currency']!='DOP':issues.append({'code':'currency_review','field':'currency'})
             for key,cell in mapped.items():
                 if cell and cell['issue']:issues.append({'code':cell['issue'],'field':key})
             try:row['date']=parse_date(mapped.get('date'),epoch)
@@ -102,8 +104,9 @@ def read_payment_preview(content):
             except ValueError:issues.append({'code':'invalid_amount','field':'amount'})
             cell=mapped.get('number')
             if not row['number']:issues.append({'code':'missing_payment_number','field':'number'})
-            elif not re.fullmatch(r'[0-9]+',row['number']) or (cell and cell['type']=='b'):
+            elif len(row['number'])>64 or not re.fullmatch(r'[0-9]+',row['number']) or (cell and cell['type']=='b'):
                 issues.append({'code':'invalid_payment_number','field':'number'})
+            if row.get('status'):issues.append({'code':'payment_status_review','field':'status'})
             row['kind']=normalized(row['kind'] or '')
             if row['kind']!='ingreso':issues.append({'code':'unsupported_payment_kind','field':'kind'})
             references=list(dict.fromkeys(c.upper() for c in CODE.findall(row['associations'] or '')))
@@ -154,4 +157,47 @@ def read_payment_preview(content):
     dates=[r['date'] for r in result['rows'] if r['date']]
     result['summary'].update(payment_totals(result['rows']),currency='DOP',financial_records_created=0,
         first_date=min(dates,default=None),last_date=max(dates,default=None))
+    return result
+
+
+def read_payment_csv(content):
+    """Strict CSV preset using observed payment columns; unknown layouts fail closed."""
+    import csv
+    result={'parser_version':'alegra-payment-csv-v1','rows':[],'file_issues':[],'summary':{}}
+    try:
+        if len(content)>MAX_BYTES:raise ValueError('file_too_large')
+        if b'\x00' in content:raise ValueError('invalid_payment_csv')
+        try:decoded=content.decode('utf-8-sig');encoding='utf-8-sig'
+        except UnicodeDecodeError:decoded=content.decode('cp1252');encoding='cp1252'
+        candidates=[]
+        for delimiter in (';',',','\t'):
+            reader=csv.reader(io.StringIO(decoded,newline=''),delimiter=delimiter,strict=True)
+            first=next(reader,[])
+            names=[normalized(v) for v in first]
+            if all(normalized(FIELDS[k]) in names for k in REQUIRED):candidates.append((delimiter,first))
+        if len(candidates)!=1:raise ValueError('missing_payment_header')
+        delimiter,first=candidates[0]
+        if len(first)>256:raise ValueError('workbook_limit')
+        mapping={}
+        for k,label in FIELDS.items():
+            matches=[i+1 for i,v in enumerate(first) if normalized(v) in ({'moneda','currency'} if k=='currency' else {normalized(label)})]
+            if len(matches)>1:raise ValueError('duplicate_header')
+            if matches:mapping[k]=matches[0]
+        def cell(column,line,value):
+            letters='';n=column
+            while n:n,r=divmod(n-1,26);letters=chr(65+r)+letters
+            return {'cell':f'{letters}{line}','type':'inlineStr','value':value,'reported_value':value,
+                'formula':None,'formula_attributes':{},'issue':None}
+        headers={i+1:cell(i+1,1,v) for i,v in enumerate(first)};rows=[]
+        reader=csv.reader(io.StringIO(decoded,newline=''),delimiter=delimiter,strict=True);next(reader)
+        for i,values in enumerate(reader,2):
+            if i>MAX_SCAN_ROWS or i*len(first)>MAX_CELLS:raise ValueError('workbook_limit')
+            if not any(v.strip() for v in values):continue
+            if len(values)!=len(first):raise ValueError('invalid_payment_csv')
+            rows.append((i,{j+1:cell(j+1,i,v) for j,v in enumerate(values)}))
+        result=read_payment_preview(b'',prepared=('Payments CSV',False,headers,mapping,rows))
+        result.update(parser_version='alegra-payment-csv-v1',encoding=encoding)
+    except (UnicodeError,ValueError,csv.Error) as error:
+        result['file_issues']=[str(error) if str(error) in {'file_too_large','missing_payment_header','duplicate_header','workbook_limit'} else 'invalid_payment_csv']
+        result['summary']=payment_totals([])
     return result

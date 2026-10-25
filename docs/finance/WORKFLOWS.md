@@ -226,3 +226,20 @@ when derived NCF is blank. Split payment occurrences remain separate; group tota
 span all payment dates in this workbook. Source assignments/flags are retained,
 not confirmed receipt/invoice/bank links. No financial record is created by this
 read-only panel. See PHASE_3_3_3_1_DELIVERY.md for the client test checklist.
+
+
+## Implemented shared payment imports — Phase 3.3.3.2
+
+Routine: Finance → Payment imports → upload CSV matching the observed payment
+column contract → inspect source, new/reused/conflict/invalid plan → confirm Import
+valid payments. Historical: initial setup → existing workbook → payment preview →
+Prepare shared payment import → same review/commit screen. Preparation uses chosen
+payment-date scope, not invoice/review search filters. Initial setup is not required
+for subsequent CSV uploads. Unknown native layouts retain a clear source error.
+
+New valid receipts link eligible exact invoices or wait visibly for them. Invalid
+source identities do not block other receipts. Conflicts offer audited Keep current
+payment; replacements are not silently approved. Current payment methods can be
+edited with a reason; later raw sources cannot erase them. Undo preview preserves
+edited/reconciled/reused/supported receipts; sale undo protects active receipt links.
+No bank settlement or extra revenue is created by receipt posting.
