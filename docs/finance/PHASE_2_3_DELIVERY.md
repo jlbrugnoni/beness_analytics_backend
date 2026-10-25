@@ -1,6 +1,6 @@
 # Phase 2.3 source mappings delivery
 
-Date: 2026-10-24. Implemented and validated; client acceptance pending.
+Date: 2026-10-24. Implemented, validated and accepted by the client (D-039: "it looks good").
 Both repositories: feature/finance-phase-2. Phase 2.4 remains future work.
 
 ## What I did
@@ -120,7 +120,7 @@ compatible backend/frontend release order still apply. Only temporary QA/test
 databases were migrated. No raw reports or credentials are committed. Unrelated
 exports/ remains untouched. No external review agent was used.
 
-No finance changes pushed, merged or deployed to production. Next gate: client
-acceptance of Phase 2.3; then Phase 2.4 dated fees/settlement/tax configuration.
+No finance changes pushed, merged or deployed to production. Phase 2.3 accepted (D-039). Next: Phase 2.4 discovery and dated
+fees/settlement/tax configuration.
 
 Phase 2.3 implementation checkpoints: backend `0511e8a`, frontend `040f394`.

@@ -296,6 +296,15 @@ Spain initially uses in-studio card and cash, with no recurring or transfer.
 Exact Mindbody labels remain unspecified and unseeded. See D-037–038. No further
 business answer blocks this editor/preview subphase.
 
+## Q-010: Phase 2.4 fee and settlement setup
+
+Sent 2026-10-24 after Phase 2.3 acceptance (D-039). See
+PHASE_2_4_DISCOVERY.md and QUESTIONNAIRE.md for the numbered questions.
+The earlier Caixa answer confirmed a charge and reimbursement, but did not
+explicitly settle whether each card deposit arrives gross or net. Fee amounts,
+offer dates and channel-specific payout timing remain unspecified.
+Answers pending. Existing DR rates and tax presentation are not reopened.
+
 ## Recording an answer
 
 Keep the question, append the client's answer with its date, state the accepted

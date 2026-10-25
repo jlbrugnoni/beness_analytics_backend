@@ -175,3 +175,11 @@ is considered approved without a response.
 
 D-037–038 supersede the proposed fully unassigned generic-card default. No
 additional question blocks Phase 2.3 configuration/preview development.
+
+## Phase 2.4 questions — Q-010, 2026-10-24
+
+Status: sent; awaiting answers. "Unknown for now" is valid.
+
+1. In Spain, does Caixa deposit the full card-sales amount and charge terminal fees separately, or deduct anything from each deposit?
+2. What is Caixa's fee arrangement (monthly amount, percentage, or both), and when does the first-year reimbursement offer start/end? Unknown settings can remain pending rather than zero.
+3. For DR Cierre, Recurrentes and Link, do deposits normally arrive within the previously mentioned 24–48 hours? Do weekends delay them? Timing guides suggestions; operation dates remain editable.

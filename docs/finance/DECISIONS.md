@@ -51,6 +51,8 @@ client-approved. Detailed behavior belongs in Business rules.
 | D-037 | 2026-10-24 | Accepted | Client clarified Alegra conventions: Tarjeta débito = Link, Tarjeta crédito = Cierre, Efectivo = cash, Transferencia = transfer. Recurring payments also use Tarjeta crédito and must be distinguished manually. Default credit to Cierre with review required; a per-record manual recurring correction takes precedence without rewriting the source label. This supersedes Q-009's proposal to leave generic card channels entirely unassigned. |
 | D-038 | 2026-10-24 | Accepted | Spain currently has no recurring or transfer payments; clients normally use in-studio card and cash. Configure these as the initial operational channels. Exact Mindbody exported method names were not supplied, so do not invent aliases or reuse DR Alegra names. Support editable mappings and future channels without implying they are presently used. |
 
+| D-039 | 2026-10-24 | Accepted | Client confirmed "it looks good" after the Phase 2.3 mapping handoff. Phase 2.3 accepted; proceed to Phase 2.4 fee/settlement/tax discovery under the phased agreement. No production deployment authorized. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |
