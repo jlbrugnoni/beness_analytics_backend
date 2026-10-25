@@ -306,3 +306,5 @@ synthetic Sales posting QA company used for browser postings.
 PostgreSQL 253 tests passed including 2 new races; frontend lint/build and Django
 checks passed. See PHASE_3_3_2_DELIVERY.md for limitations and client checklist.
 Client acceptance pending. No finance push, merge or deployment.
+
+Phase 3.3.2 implementation checkpoints: backend `13448a9`, frontend `d08de4a`.
