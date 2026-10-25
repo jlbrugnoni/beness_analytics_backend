@@ -320,6 +320,15 @@ DR-month migration pilot approach and proposed audited undo accepted. The exact
 pilot month/cutoff and detailed source-update reversal cases remain later
 phase-specific work. No further answer blocks bank-preview infrastructure.
 
+## Q-012: transaction commit, source correction and undo authority
+
+Sent 2026-10-24 after Phase 3.1 acceptance (D-048). Existing D-046 sets undo
+record safeguards, but does not identify who may undo another user's upload.
+Source history/manual preservation is settled; the exact amount/date replacement
+approval path remains to be defined. See PHASE_3_2_DISCOVERY.md and QUESTIONNAIRE.md.
+Recommendations are pending, not assumed accepted. These questions do not reopen
+permission inheritance, scope, missing-row deletion or valid-row continuation.
+
 ## Recording an answer
 
 Keep the question, append the client's answer with its date, state the accepted

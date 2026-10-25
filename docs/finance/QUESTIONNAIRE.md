@@ -226,3 +226,16 @@ Status: answered (D-043–046). Exact pilot month remains Phase 3.4 preparation.
 
 No further business answer blocks bank-preview development. Exact pilot month
 and source-update reversal cases remain phase-specific follow-up.
+
+## Phase 3.2 questions — Q-012, 2026-10-24
+
+Status: sent; awaiting answers. Both recommendations remain proposals.
+
+1. Who may undo another user's import? Recommend operators undo their own;
+   users with Manage financial configuration can undo others' imports too.
+   Relevant import/edit permissions and full account access remain required;
+   edited/reconciled record safeguards apply to everyone.
+2. If a later bank report appears to correct an existing transaction's amount
+   or date, should replacement require review? Recommend preserving the existing
+   transaction and displaying the proposed correction for approval, while
+   independent valid new rows can still import.

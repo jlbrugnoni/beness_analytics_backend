@@ -1,6 +1,6 @@
 # Phase 3.1 bank preview and history delivery
 
-Date: 2026-10-24. Implemented and validated; client acceptance pending.
+Date: 2026-10-24. Implemented, validated and accepted by the client (D-048: "perfect. it worked well").
 Both repositories: feature/finance-phase-2. This covers Phase 3.1 and the initial
 Popular/Caixa CSV readers from 3.2, not the complete Phase 3 import pipeline.
 
@@ -117,7 +117,7 @@ untouched. No external review agent used. No push, merge or production deploymen
 Apply migration 0006 before updated backend traffic, even when finance is hidden.
 Back up the database for future production rollout; it now owns retained source
 bytes as well as parsed preview history. This is not deployment authorization.
-Next gate: client acceptance of this preview step, then bank movement commit and
-overlap/undo delivery under the agreed workflow.
+Phase 3.1 accepted (D-048); next is bank movement commit and overlap/undo
+discovery under the agreed workflow.
 
 Phase 3.1 implementation checkpoints: backend `472d66c`, frontend `d0b3250`.

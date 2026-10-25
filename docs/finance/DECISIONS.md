@@ -64,6 +64,8 @@ client-approved. Detailed behavior belongs in Business rules.
 | D-046 | 2026-10-24 | Accepted | Client accepted audited undo for an erroneous upload: undo untouched financial records created by that upload; require review for records edited/reconciled afterwards; preserve pre-existing records merely encountered again. Detailed source-update reversals need case validation at commit/overlap implementation. Raw preview history is not financial posting and is not deleted by this policy. |
 | D-047 | 2026-10-24 | Developer implementation of existing privacy policy | Unclassified bank source files may contain sensitive payroll. Bank preview/history/raw-row reads therefore require full-account and sensitive-detail access alongside financial view/money. Creating previews and retrieving original files additionally require import capability. This enforces D-023/BR-037 before category-aware transaction redaction exists; it does not grant any real users new access. |
 
+| D-048 | 2026-10-24 | Accepted | Client confirmed "perfect. it worked well" after Phase 3.1 bank-preview testing. Phase 3.1 accepted; proceed to Phase 3.2 transaction commit/overlap/undo discovery. Production deployment remains unauthorized. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |
