@@ -10,8 +10,8 @@ Both repositories: feature/finance-phase-2. Implementation checkpoints: backend
   master through October 22; unknown cash/bank provenance; no split debit rows.
 - Inspected the original saved workbook read-only. Its actual copy is the earlier
   partial sample, not a demonstrated October 22 master. Requested the current
-  saved master and September 14–30 bank report paths. No full-month coverage or
-  real 1–15/14–30 overlap comparison has been performed.
+  saved master and September 14–30 bank report paths. This was the initial
+  checkpoint; the subsequent app-upload inspection below supersedes that dependency.
 - Added bounded native DR XLSX reader dr-enriched-xlsx-v1 using standard-library
   ZIP/XML, without adding a dependency or executing/recalculating formulas/macros.
   It reads Debitos/Ingresos, retains the full original file, sheet inventory and
@@ -119,6 +119,57 @@ This is a source preview, not migrated financial history. Account/origin decisio
 studio/category resolution, manual cash/expense records, links to existing bank
 postings, conflicts, commit/undo and pilot comparison remain Phases 3.4.2–3.4.3.
 A Conciliado checkbox preserves prior recognition only, not a reconstructed match.
-No complete September pilot can be certified from the present short saved sample.
-The current full master and September 14–30 bank report paths remain pending.
-Client-provided October 22 cutoff remains intended coverage, not verified data.
+The full sources are now present in the isolated app as documented below. Their
+presence and aggregate inspection do not certify a completed September reconciliation.
+
+
+## Source-cell display correction and uploaded-source inspection
+
+2026-10-25: client reported numeric Excel storage references in source cells.
+Fixed presentation for existing previews, without rewriting original bytes, raw
+cells, parser versions, classifications or financial records. The API adds a
+separate cells presentation with original column labels, decoded shared strings,
+ISO transaction/operation dates, YYYY-MM periods and two-decimal source amounts.
+The UI translates booleans to Yes/No (Sí/No), marks valid empty strings and keeps
+formula errors/missing caches unresolved. Original technical cell data remains
+in a collapsed disclosure. No re-upload required. Permissions remain unchanged.
+
+Read-only inspection of the client's existing local uploads:
+
+- Migration preview #2, Ingresos_Egresos_DO_BI2.xlsx, observed transaction dates
+  September 1–October 22, 2026. 538 financial rows plus one incomplete
+  classification-only row retained. September transaction-date entries: 313,
+  comprising 177 income rows (3,483,239.59 DOP) and 136 expense rows
+  (3,369,302.99 DOP). These source totals include unresolved cash/bank provenance,
+  internal movements and other classifications; they are not profit or proof
+  that every expected transaction is present.
+- Workbook Alegra sheet: 654 September item rows, 611 distinct invoice codes;
+  653 item rows Cobrada and one Por cobrar. Alegra_adm: 615 distinct September
+  invoice numbers. Both sheets contain dated rows September 1–October 22.
+  The count difference requires invoice-level review; no authoritative sale
+  was created from these workbook sheets. The separate Alegra CSV previews
+  still cover only September 1–15 (456 item rows / 438 invoices).
+- Popular previews #7 (1–15) and #12 (14–30) are already uploaded. Comparing
+  complete parsed row dictionaries as multisets yields 53 identical overlapping
+  occurrences and a 292-occurrence union (maximum multiplicity per signature),
+  income 3,417,972.39 DOP / debits 3,271,850.99 DOP. This is an inspection of
+  source overlap, not a committed duplicate decision or confirmed reconciliation.
+  Workbook-vs-bank differences remain unresolved; no rows were posted/removed.
+- The earlier OneDrive-path sample remains distinct from this updated app upload.
+  No further file paths are needed for these already-uploaded sources.
+
+Validation: all 190 finance tests discovered on isolated SQLite, 186 passed and
+four existing PostgreSQL concurrency tests skipped. Includes two new API
+regressions for pre-existing immutable preview display, shared-string decoding,
+Excel 1900/1904 epochs, periods, amounts, booleans and unresolved formula evidence.
+Frontend lint and production build passed with existing unrelated warnings.
+Browser verification on synthetic preview #1 confirms readable dates, source
+column labels, text, Yes/No and periods. Screenshot:
+/private/tmp/finance-migration-readable-cells.png. Real-source Debitos!17 was
+checked read-only: A17 2026-09-04, H17 2026-09, F17 true; text indexes decoded.
+No new upload, grant change, financial posting, deployment or production mutation.
+Client acceptance remains pending.
+
+Client retest: refresh the page, reopen existing preview #2 and Source cells on
+Debitos row 17; compare readable values/labels to Excel. Check an income formula
+row and verify errors remain visible. No file modification or re-upload needed.

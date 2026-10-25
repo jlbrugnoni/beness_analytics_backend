@@ -1,5 +1,7 @@
 import hashlib
 import io
+import zipfile
+from xml.etree.ElementTree import ParseError
 from datetime import date, datetime
 from django.db import transaction
 from django.http import FileResponse
@@ -12,6 +14,7 @@ from rest_framework.permissions import IsAuthenticated
 from .access import can_use_finance
 from .sales_import_views import SalesPreviewPermission, sales_preview_companies
 from .migration_reader import MAX_BYTES, read_migration_xlsx
+from .migration_source import source_headers, readable_cells
 from .models import Company, MigrationImportBatch, MigrationImportRow
 
 
@@ -123,7 +126,11 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
         if not row_id.isdecimal():raise serializers.ValidationError({'row':'Use a row ID.'})
         from django.shortcuts import get_object_or_404
         row=get_object_or_404(batch.rows,pk=row_id)
-        return Response({**MigrationRowSerializer(row).data,'raw':row.raw})
+        try:
+            labels,epoch1904=source_headers(bytes(batch.original_file),row.sheet)
+        except (ValueError,KeyError,RuntimeError,OverflowError,zipfile.BadZipFile,ParseError):
+            raise serializers.ValidationError('Could not read the saved source column labels.')
+        return Response({**MigrationRowSerializer(row).data,'raw':row.raw,'cells':readable_cells(row,labels,epoch1904)})
 
     @action(detail=True,methods=['get'])
     def original(self,request,pk=None):

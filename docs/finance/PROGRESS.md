@@ -335,3 +335,17 @@ cross-month values, cache errors and invalid-row retention. Client acceptance
 pending. No changes to existing bank/sales postings or grants; no deployment.
 
 Phase 3.4.1 implementation checkpoints: backend `7a025d4`, frontend `01df158`.
+
+
+## Phase 3.4.1 source display correction
+
+2026-10-25: corrected Excel storage indexes/date serials in Source cells with
+readable original column names, decoded text, dates, periods, amounts and Yes/No.
+Existing uploaded evidence stays immutable; no re-upload required. Full workbook
+BI2 and both September Popular reports found in app; observed workbook dates
+Sep 1–Oct 22, September 313 movements. Alegra item/admin invoice counts differ
+(611/615), and source-bank/workbook comparisons remain pending; source presence
+does not certify reconciliation. See PHASE_3_4_1_DELIVERY.md for aggregate evidence.
+190 finance tests discovered: 186 passed / four existing PG-only skips on SQLite;
+frontend lint/build and synthetic browser QA passed. No financial changes or
+push/merge/deployment. Client acceptance pending; next is existing-upload retest.

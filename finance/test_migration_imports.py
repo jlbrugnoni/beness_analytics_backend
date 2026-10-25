@@ -157,6 +157,43 @@ class MigrationAPITests(APITestCase):
         self.assertFalse(BankMovement.objects.exists());self.assertFalse(FinancialSale.objects.exists())
         for method in ('patch','delete'):self.assertEqual(getattr(self.client,method)(url,{},format='json').status_code,405)
 
+    def test_existing_source_display_decodes_dates_text_and_preserves_evidence(self):
+        source=workbook(debits=[{'bank_date':{'type':'n','value':46269},'amount':100,
+            'manual_description':{'type':'s','value':0},'legacy_reviewed':True,
+            'expense_period':{'type':'n','value':46266}}],credits=[],
+            extra_parts={'xl/sharedStrings.xml':f'<sst xmlns="{MAIN}"><si><t>Readable utility</t></si></sst>'})
+        uploaded=self.upload(source);self.assertEqual(uploaded.status_code,201,uploaded.data)
+        batch=MigrationImportBatch.objects.get(pk=uploaded.data['id']);row=batch.rows.get();before=row.raw
+        detail=self.client.get(f'/api/finance/migration-imports/{batch.pk}/source-row/?row={row.pk}')
+        self.assertEqual(detail.status_code,200,detail.data)
+        cells={cell['field']:cell for cell in detail.data['cells']}
+        self.assertEqual(cells['bank_date']['readable_value'],'2026-09-04')
+        self.assertEqual(cells['expense_period']['readable_value'],'2026-09')
+        self.assertEqual(cells['manual_description']['readable_value'],'Readable utility')
+        self.assertEqual(cells['manual_description']['reported_value'],'0')
+        self.assertEqual(cells['manual_description']['column_label'],'Concepto')
+        self.assertEqual(cells['amount']['readable_value'],'100.00')
+        self.assertIs(cells['legacy_reviewed']['readable_value'],True)
+        row.refresh_from_db();batch.refresh_from_db()
+        self.assertEqual(row.raw,before);self.assertEqual(detail.data['raw'],before)
+        self.assertEqual(bytes(batch.original_file),source)
+        self.assertFalse(BankMovement.objects.exists());self.assertFalse(FinancialSale.objects.exists())
+
+    def test_source_display_uses_workbook_epoch_and_keeps_unresolved_formula_evidence(self):
+        serial=(date(2026,9,9)-date(1904,1,1)).days
+        source=workbook(debits=[],credits=[{'bank_date':{'type':'n','value':serial},'amount':200,
+            'location':{'type':'e','formula':'LOOKUP(A2)','value':'#NAME?'},
+            'terminal':{'formula':'LEFT(B2,11)','missing':True}}],epoch1904=True)
+        uploaded=self.upload(source);row=MigrationImportRow.objects.get(batch_id=uploaded.data['id'])
+        detail=self.client.get(f"/api/finance/migration-imports/{uploaded.data['id']}/source-row/?row={row.pk}")
+        self.assertEqual(detail.status_code,200,detail.data)
+        cells={cell['field']:cell for cell in detail.data['cells']}
+        self.assertEqual(cells['bank_date']['readable_value'],'2026-09-09')
+        self.assertEqual(cells['location']['readable_value'],'#NAME?')
+        self.assertEqual(cells['location']['formula'],'LOOKUP(A2)')
+        self.assertIsNone(cells['terminal']['readable_value'])
+        self.assertEqual(cells['terminal']['issue'],'formula_cache_missing')
+
     def test_month_basis_and_all_rows_filters(self):
         response=self.upload();url=f"/api/finance/migration-imports/{response.data['id']}/rows/"
         self.assertEqual(self.client.get(url+'?basis=expense_period').data['count'],0)
