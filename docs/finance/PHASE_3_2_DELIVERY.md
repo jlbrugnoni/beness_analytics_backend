@@ -142,3 +142,5 @@ Back up the full database, including retained source bytes, before any authorize
 release. QA frontend 3037/backend 8027 remain the local testing surface.
 
 Next gate: client acceptance, then Phase 3.3 Alegra invoice/item import discovery.
+
+Phase 3.2 implementation checkpoints: backend `8de1698`, frontend `7a343fd`.

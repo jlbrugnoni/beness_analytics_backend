@@ -257,3 +257,5 @@ SQLite tests, frontend lint/build and Django/migration checks documented in
 PHASE_3_2_DELIVERY.md. Browser verified synthetic commit/retry/review/history/undo.
 Client acceptance pending. No real financial movements were created by the agent;
 normal/production DB and real grants unchanged. Dedicated synthetic QA setup only.
+
+Phase 3.2 implementation checkpoints: backend `8de1698`, frontend `7a343fd`.
