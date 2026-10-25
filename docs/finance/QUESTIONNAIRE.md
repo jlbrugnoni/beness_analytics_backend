@@ -251,9 +251,35 @@ No further business question blocks bank transaction posting/review/undo.
 
 ## Q-013: Phase 3.3 Alegra questions — 2026-10-25
 
-Status: awaiting answers. Phase 3.2 accepted (D-051). See PHASE_3_3_DISCOVERY.md.
+Status: answered 2026-10-25 (D-052–055); exact cancelled-status text pending.
+Phase 3.2 accepted (D-051). See PHASE_3_3_DISCOVERY.md.
 
 1. Can an invoice number ever be reused in another year or numbering series, or is the full number unique within the company? If you use several series, does the exported number include the prefix?
 2. When a later export changes an existing invoice's date, amount or items, should the app keep the current invoice and ask you to approve the complete updated version? I recommend this, preserving its previous version and manual assignments, and flagging assignments affected by changed items.
 3. Can one invoice be paid using two methods, such as part cash and part card? If yes, does your Alegra export show the amounts for each method, or do you record that split elsewhere?
 4. When an invoice is cancelled or refunded, does it remain in this export with a status, disappear, or appear in a separate credit-note report? If you do not know, we can leave those cases for review until we have an example; a missing invoice will never be treated automatically as cancelled.
+
+
+### Q-013 answers received — 2026-10-25
+
+1. Full invoice codes should not repeat within either company. Dominican series
+   begin B01/B02 followed by eight digits. Keep company/source/full code identity,
+   including prefix, rather than year-based reuse (D-052).
+2. Yes to approval of changed source evidence, but Alegra currently allows only
+   cancellation, not edits to invoice date, amount or client. Treat such changes
+   as anomalies, retain the original and require investigation rather than offering
+   ordinary edits to those values. Cancellation/status approval remains a later
+   posting workflow (D-053).
+3. No mixed payment methods in the current workflow. One or two cards can fund one
+   invoice at the same moment; bank settlement is the whole day's card deposit.
+   Do not require a split per card or assume card count changes invoice totals
+   (D-054). Partial/grouped settlement matching remains Phase 5.
+4. Cancelled invoices remain in the export with a cancellation status. The refund
+   happens later as a bank debit. Preserve both events, remove the sale's result
+   contribution in its original month and do not deduct the same refund twice
+   (D-055, BR-038). Exact cancellation text in ESTADO is still pending: the sample
+   contains only Cobrada. A focused asynchronous question requests that text.
+
+First delivery: Phase 3.3.1 source previews. Invoice posting, approval of changed
+statuses and refund reconciliation follow after preview review. This subdivision
+keeps unconfirmed cancellation labels from being guessed.

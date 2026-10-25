@@ -38,10 +38,10 @@ class Company(models.Model):
         super().clean()
         if self.pk:
             previous = type(self).objects.get(pk=self.pk)
-            if previous.site_id != self.site_id and (self.accounts.exists() or self.categories.exists() or self.source_mappings.exists() or self.feepolicy_set.exists() or self.settlementpolicy_set.exists() or self.taxprofile_set.exists()):
-                raise ValidationError({"site": "A company with financial configuration cannot be moved to another site."})
-            if previous.default_currency != self.default_currency and (self.accounts.exists() or self.feepolicy_set.exists()):
-                raise ValidationError({"default_currency": "A company with accounts or fee policies cannot change its default currency."})
+            if previous.site_id != self.site_id and (self.accounts.exists() or self.categories.exists() or self.source_mappings.exists() or self.feepolicy_set.exists() or self.settlementpolicy_set.exists() or self.taxprofile_set.exists() or self.sales_previews.exists()):
+                raise ValidationError({"site": "A company with financial configuration or sales sources cannot be moved to another site."})
+            if previous.default_currency != self.default_currency and (self.accounts.exists() or self.feepolicy_set.exists() or self.sales_previews.exists()):
+                raise ValidationError({"default_currency": "A company with accounts, fee policies or sales sources cannot change its default currency."})
 
 
 class Account(models.Model):
@@ -454,3 +454,54 @@ class BankEvent(models.Model):
 
     class Meta:
         ordering = ['created_at', 'pk']
+
+
+class SalesImportBatch(models.Model):
+    """Immutable source preview; does not represent posted financial sales."""
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name='sales_previews')
+    provider = models.CharField(max_length=16, default='alegra')
+    file_name = models.CharField(max_length=255)
+    file_hash = models.CharField(max_length=64, db_index=True)
+    byte_size = models.PositiveIntegerField()
+    original_file = models.BinaryField(editable=False)
+    encoding = models.CharField(max_length=20, blank=True)
+    parser_version = models.CharField(max_length=40)
+    status = models.CharField(max_length=10)
+    summary = models.JSONField(default=dict)
+    file_issues = models.JSONField(default=list)
+    duplicate_of = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT)
+    uploaded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at', '-pk']
+        indexes = [models.Index(fields=['company', 'provider', 'file_hash'], name='finance_sales_preview_hash')]
+
+
+class SalesImportRow(models.Model):
+    batch = models.ForeignKey(SalesImportBatch, on_delete=models.CASCADE, related_name='rows')
+    row_number = models.PositiveIntegerField()
+    source_line = models.PositiveIntegerField()
+    source_line_end = models.PositiveIntegerField()
+    kind = models.CharField(max_length=10)
+    raw = models.JSONField(default=list)
+    parsed = models.JSONField(default=dict)
+    issues = models.JSONField(default=list)
+
+    class Meta:
+        ordering = ['row_number']
+        constraints = [models.UniqueConstraint(fields=['batch', 'row_number'], name='finance_sales_preview_row')]
+
+
+class SalesImportInvoice(models.Model):
+    batch = models.ForeignKey(SalesImportBatch, on_delete=models.CASCADE, related_name='invoices')
+    occurrence = models.PositiveIntegerField()
+    code = models.TextField()
+    source = models.JSONField(default=dict)
+    item_count = models.PositiveIntegerField()
+    row_numbers = models.JSONField(default=list)
+    issues = models.JSONField(default=list)
+
+    class Meta:
+        ordering = ['occurrence']
+        constraints = [models.UniqueConstraint(fields=['batch', 'occurrence'], name='finance_sales_preview_invoice')]

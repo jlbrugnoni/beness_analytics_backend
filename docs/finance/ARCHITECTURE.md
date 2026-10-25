@@ -1,6 +1,6 @@
 # Finance architecture
 
-Status: accepted target design; Phase 1 accepted, Phases 2.1–2.4 accepted; Phase 3.1 accepted; Phase 3.2 accepted (D-051); Phase 3.3 discovery in progress.
+Status: accepted target design; Phase 1 accepted, Phases 2.1–2.4 accepted; Phase 3.1 accepted; Phase 3.2 accepted (D-051); Phase 3.3.1 source previews implemented; client acceptance pending.
 Updated: 2026-10-24. Implemented models are finance.Company, finance.Account,
 finance.AccessChange, finance.Terminal, finance.Category, finance.SourceMapping, finance.ConfigurationChange, finance.FeePolicy, finance.SettlementPolicy, finance.TaxProfile, finance.BankImportBatch, finance.BankImportRow, finance.BankPosting, finance.BankMovement, finance.BankDecision, finance.BankEvent and capability fields on existing access profiles.
 Sales imports, classification, reconciliation and results below remain future work.
@@ -392,3 +392,18 @@ Bank batch APIs expose processing_status separately from parse status. Movement
 history exposes source batch IDs for consistent tracing. Ledger/candidates/events
 inherit full bank and sensitive-detail gates from 3.1. No result engine, verified
 balance, bank-number ownership detection or sales reconciliation is implemented.
+
+## Implemented sales source previews (Phase 3.3.1)
+
+SalesImportBatch/Row/Invoice store immutable Alegra source evidence, not financial
+sales. Group by full invoice code within one company/provider/batch, preserving
+item multiplicity and validating header consistency plus exported item-total sum.
+SUBTOTAL - PRODUCTOS/SERVICIOS varies per item in the sample. Repeated tax headers
+remain raw positional evidence. Unknown status is review-only; only Cobrada counts
+in validated paid preview totals until further status evidence is confirmed.
+
+Sources require company-wide site access and sensitive detail; partial studio
+access cannot expose them. Upload/original retrieval also require import. There
+is no global cross-batch sales identity/posting/cancellation engine yet. Future
+posting must honor immutable invoice facts, explicit status approval, manual
+assignments and original-period refunds without double deductions.

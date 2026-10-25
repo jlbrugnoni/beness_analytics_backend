@@ -335,9 +335,34 @@ permission inheritance, scope, missing-row deletion or valid-row continuation.
 Sent 2026-10-25 after Phase 3.2 acceptance (D-051). See
 PHASE_3_3_DISCOVERY.md and QUESTIONNAIRE.md for the single numbered batch.
 Questions cover numbering reuse/series, approval of complete corrected invoices,
-split payment evidence, and cancellation/credit-note export behavior. Answers are
-pending. Do not reinterpret absent invoices as cancellations or automatically
-replace items while this correction policy is unconfirmed.
+split payment evidence, and cancellation/credit-note export behavior. Answers
+received 2026-10-25 (D-052–055); exact cancelled-status text remains pending. Do not reinterpret absent invoices as cancellations or automatically
+replace current items/status without the accepted approval safeguards.
+
+
+### Q-013 answers received — 2026-10-25
+
+1. Full invoice codes should not repeat within either company. Dominican series
+   begin B01/B02 followed by eight digits. Keep company/source/full code identity,
+   including prefix, rather than year-based reuse (D-052).
+2. Yes to approval of changed source evidence, but Alegra currently allows only
+   cancellation, not edits to invoice date, amount or client. Treat such changes
+   as anomalies, retain the original and require investigation rather than offering
+   ordinary edits to those values. Cancellation/status approval remains a later
+   posting workflow (D-053).
+3. No mixed payment methods in the current workflow. One or two cards can fund one
+   invoice at the same moment; bank settlement is the whole day's card deposit.
+   Do not require a split per card or assume card count changes invoice totals
+   (D-054). Partial/grouped settlement matching remains Phase 5.
+4. Cancelled invoices remain in the export with a cancellation status. The refund
+   happens later as a bank debit. Preserve both events, remove the sale's result
+   contribution in its original month and do not deduct the same refund twice
+   (D-055, BR-038). Exact cancellation text in ESTADO is still pending: the sample
+   contains only Cobrada. A focused asynchronous question requests that text.
+
+First delivery: Phase 3.3.1 source previews. Invoice posting, approval of changed
+statuses and refund reconciliation follow after preview review. This subdivision
+keeps unconfirmed cancellation labels from being guessed.
 
 ## Recording an answer
 

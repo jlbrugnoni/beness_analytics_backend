@@ -364,6 +364,26 @@ and changes to closed periods still need their phase-specific definitions.
   with a reason. Preserve previous values and actor/history. Pending corrections
   and identity issues do not block independent valid new movements.
 
+- **BR-058:** Invoice identity uses company/source/full prefixed code. Client
+  expects no reuse in either country; Dominican codes are B01/B02 plus eight
+  digits. Current payments do not mix methods. Two cards at the same moment still
+  represent one invoice; bank reconciliation uses grouped daily card receipts.
+- **BR-059:** Alegra invoice date, amount and client are immutable in the current
+  client workflow; cancellation is supported. Unexpected source changes remain
+  anomalies for investigation, retaining current values and all source evidence.
+  No routine date/amount/client edit is introduced. Later status changes require
+  explicit approval before altering posted sales.
+- **BR-060:** Cancellation remains visible as invoice status; the later bank debit
+  records the refund. Exclude the cancelled sale in its original period under
+  BR-038 and do not additionally deduct the refund principal from profit. Exact
+  cancellation status aliases require evidence. Unknown states must be visible
+  for review and excluded from validated paid totals, never treated as paid.
+- **BR-061:** Raw Alegra previews span company studios and private notes. Until a
+  scoped sales-detail surface exists, require finance/money visibility, sensitive
+  detail and site-wide company access. Upload/original download additionally
+  require import capability. Bank-account capability is not required for sales.
+  Studio-restricted users cannot read company-wide source files or preview items.
+
 ## Reference reports
 
 These are source fixtures, not committed datasets. Keep originals outside Git and
