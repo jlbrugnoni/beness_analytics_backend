@@ -4,7 +4,7 @@ Updated: 2026-10-24.
 
 ## Current checkpoint
 
-- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 discovery underway.
+- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 implemented and validated; client acceptance pending.
 - Phase 0: accepted on 2026-10-24 with "perfect, we can continue" (D-026).
 - Subphase 0.2: main business discovery batch resolved; all 12 consolidated
   answers and three focused clarifications recorded. DR-first editable account
@@ -29,7 +29,7 @@ Updated: 2026-10-24.
   exists; transaction/category redaction awaits their later models.
 - Phase 1.4: group editor, user form switches and protected finance landing
   implemented in English/Spanish. Validation described in PHASE_1_DELIVERY.md.
-- Phase 1 acceptance: client confirmed "great, it works properly" (D-027). Phase 2 discovery answered (Q-007/D-028–030); Phase 2.1 accepted. Phase 2.2 accepted. Phase 2.3 Q-009 answered, implemented and accepted; 2.4 and 3–7 code not implemented.
+- Phase 1 acceptance: client confirmed "great, it works properly" (D-027). Phase 2 discovery answered (Q-007/D-028–030); Phase 2.1 accepted. Phase 2.2 accepted. Phase 2.3 Q-009 answered, implemented and accepted; Phase 2.4 configuration implemented; phases 3–7 code not implemented.
 
 ## Branches and working tree
 
@@ -104,14 +104,14 @@ The frontend working tree was clean before the documentation pointer was added.
 
 ## What the client should review
 
-Phase 2.3 accepted by the client (D-039). See PHASE_2_3_DELIVERY.md.
-The isolated local preview includes approved DR aliases and a mapping test area.
+Phase 2.4 is ready for client review. See PHASE_2_4_DELIVERY.md.
+The isolated local preview includes DO/ES fee, timing and tax settings and tests.
 
 ## Next work
 
-Phase 2.4 fee/date/tax configuration discovery (Q-010).
+Client acceptance of Phase 2.4, then Phase 3 import discovery.
 Exact Spain method aliases remain editable and unconfigured until supplied.
-See PHASE_2_4_DISCOVERY.md for confirmed inputs and unresolved settlement details. Imported movements, expected balances and sensitive payment
+Exact Caixa fee amount/frequency and offer dates remain optional setup follow-up. Imported movements, expected balances and sensitive payment
 redaction remain future processing work.
 
 ## Delivery history
@@ -190,3 +190,15 @@ Prepared Q-010 as one numbered batch, covering Caixa gross/net deposits, fee/off
 terms and DR settlement timing. Confirmed DR rates and tax-inclusive result
 policy are retained. Answers pending; unknown fees must not become zero.
 Documentation only; no new runtime configuration, migrations or app behavior.
+
+## Phase 2.4 implementation checkpoint
+
+2026-10-24: Q-010 answered (D-040–041). Implemented dated FeePolicy,
+SettlementPolicy and TaxProfile, missing-only country setup, scope/audit/stale
+checks, EN/ES editors and read-only calculations. Confirmed DO rates, typical
+weekend-delayed 24–48 hours and Spain full deposits/21% included tax are available.
+Approximate Caixa fee and offer end year remain notes, not invented exact terms.
+184 PostgreSQL tests and frontend lint/build passed; Django/migration checks clean.
+Browser verified setup, estimates, overlap rejection and timing edit/restoration.
+Client acceptance pending. PHASE_2_4_DELIVERY.md records boundaries and legacy
+core_data.tests discovery failure. No financial processing or production changes.

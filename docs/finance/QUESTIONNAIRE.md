@@ -178,8 +178,20 @@ additional question blocks Phase 2.3 configuration/preview development.
 
 ## Phase 2.4 questions — Q-010, 2026-10-24
 
-Status: sent; awaiting answers. "Unknown for now" is valid.
+Status: answered; exact Caixa terms remain unknown and editable.
 
 1. In Spain, does Caixa deposit the full card-sales amount and charge terminal fees separately, or deduct anything from each deposit?
 2. What is Caixa's fee arrangement (monthly amount, percentage, or both), and when does the first-year reimbursement offer start/end? Unknown settings can remain pending rather than zero.
 3. For DR Cierre, Recurrentes and Link, do deposits normally arrive within the previously mentioned 24–48 hours? Do weekends delay them? Timing guides suggestions; operation dates remain editable.
+
+### Q-010 answers received — 2026-10-24
+
+1. Caixa deposits the full card amount and charges its terminal fee independently,
+   later returning that fee (D-040).
+2. Fee is somewhere near EUR 36; offer ends in 2027. Exact amount, frequency and
+   dates remain unspecified. Keep these structured values unknown and preserve
+   the approximation/year in notes. They do not block generic configuration.
+3. DR normally takes 24–48 hours, sometimes longer on weekends (D-041).
+
+No further answer blocks Phase 2.4 configuration. Exact Caixa terms remain an
+optional configuration follow-up, not guessed defaults.

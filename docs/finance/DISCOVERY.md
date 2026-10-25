@@ -303,7 +303,11 @@ PHASE_2_4_DISCOVERY.md and QUESTIONNAIRE.md for the numbered questions.
 The earlier Caixa answer confirmed a charge and reimbursement, but did not
 explicitly settle whether each card deposit arrives gross or net. Fee amounts,
 offer dates and channel-specific payout timing remain unspecified.
-Answers pending. Existing DR rates and tax presentation are not reopened.
+Answers received 2026-10-24: Caixa full deposits with independent refunded fee;
+approximately EUR 36 and offer ending in 2027, without exact amount/frequency/dates.
+DR normally 24–48 hours, sometimes longer on weekends. See D-040–041.
+Unknown Caixa terms stay optional setup follow-up; no configuration blocker remains.
+Existing DR rates and tax presentation are not reopened.
 
 ## Recording an answer
 

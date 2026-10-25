@@ -1,7 +1,7 @@
 # Phase 2.4 fees, settlement timing and company tax profiles
 
-Date: 2026-10-24. Phase 2.3 accepted (D-039). Q-010 sent; answers pending.
-This is discovery and proposed implementation scope, not delivered functionality.
+Date: 2026-10-24. Phase 2.3 accepted (D-039). Q-010 answered (D-040–041).
+This document preserves discovery; see PHASE_2_4_DELIVERY.md for delivered behavior.
 
 ## Confirmed inputs
 
@@ -13,7 +13,8 @@ This is discovery and proposed implementation scope, not delivered functionality
   debits remain review items. Do not derive actual fees solely from a mismatch.
 - Caixa charges and separately reimburses terminal fees during its first-year
   offer. Preserve both movements; reimbursement is an expense offset, not sales.
-  Exact amounts, dates and gross/net deposit behavior remain unconfirmed.
+  Deposits are now confirmed gross. Exact fee amount, frequency and offer dates
+  remain unconfirmed; around EUR 36 and an end during 2027 are retained as notes.
 - Company sales tax defaults: Spain 21% included; DR activity no sales tax,
   as supplied by the client. V1 result and allocation weights remain inclusive.
   Explicit source tax takes priority; no expense IVA inferred from bank amounts.
@@ -44,3 +45,15 @@ This is discovery and proposed implementation scope, not delivered functionality
 
 No new code, migrations, financial entries or reports were created during this
 checkpoint. Keep both repositories on feature/finance-phase-2.
+
+### Q-010 answers received — 2026-10-24
+
+1. Caixa deposits the full card amount and charges its terminal fee independently,
+   later returning that fee (D-040).
+2. Fee is somewhere near EUR 36; offer ends in 2027. Exact amount, frequency and
+   dates remain unspecified. Keep these structured values unknown and preserve
+   the approximation/year in notes. They do not block generic configuration.
+3. DR normally takes 24–48 hours, sometimes longer on weekends (D-041).
+
+No further answer blocks Phase 2.4 configuration. Exact Caixa terms remain an
+optional configuration follow-up, not guessed defaults.

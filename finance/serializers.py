@@ -1,7 +1,7 @@
 from django.core.exceptions import ValidationError as DjangoValidationError
 from rest_framework import serializers
 from core_data.models import Studio
-from .models import Account, Category, Company, SourceMapping, Terminal, validate_account_studios
+from .models import Account, Category, Company, DatedPolicy, FeePolicy, SettlementPolicy, TaxProfile, SourceMapping, Terminal, validate_account_studios
 
 
 class ConfigurationSerializer(serializers.ModelSerializer):
@@ -19,7 +19,7 @@ class ConfigurationSerializer(serializers.ModelSerializer):
                 setattr(candidate, key, value)
         if isinstance(candidate, Account) and candidate.company_id:
             candidate.company = Company.objects.select_for_update().get(pk=candidate.company_id)
-        if isinstance(candidate, (Category, SourceMapping)) and candidate.company_id:
+        if isinstance(candidate, (Category, SourceMapping, DatedPolicy)) and candidate.company_id:
             candidate.company = Company.objects.select_for_update().get(pk=candidate.company_id)
         # Serialize terminal changes with participating-studio/account edits.
         if isinstance(candidate, Terminal) and candidate.account_id:
@@ -154,3 +154,44 @@ class MappingPreviewSerializer(serializers.Serializer):
         if "manual_studio" in attrs and attrs["manual_studio"] and attrs["manual_studio"].site_id != attrs["company"].site_id:
             raise serializers.ValidationError({"manual_studio": "Use a studio from this company's site."})
         return attrs
+
+
+class PolicySerializer(ConfigurationSerializer):
+    def validate(self, attrs):
+        if self.instance and any(key in attrs and attrs[key] != getattr(self.instance, key) for key in ('company', 'channel')):
+            raise serializers.ValidationError('Company and channel cannot change. Add a new policy instead.')
+        company = attrs.get('company', self.instance.company if self.instance else None)
+        if company:
+            attrs['company'] = Company.objects.select_for_update().get(pk=company.pk)
+        return super().validate(attrs)
+
+
+class FeePolicySerializer(PolicySerializer):
+    class Meta:
+        model = FeePolicy
+        fields = ['id', 'company', 'channel', 'valid_from', 'valid_until', 'notes', 'active', 'revision', 'expected_revision',
+                  'deposit_mode', 'percentage', 'separate_fee_amount', 'separate_fee_frequency',
+                  'reimbursement_expected', 'reimbursement_from', 'reimbursement_until']
+        read_only_fields = ['revision']
+
+
+class SettlementPolicySerializer(PolicySerializer):
+    class Meta:
+        model = SettlementPolicy
+        fields = ['id', 'company', 'channel', 'valid_from', 'valid_until', 'notes', 'active', 'revision', 'expected_revision',
+                  'minimum_hours', 'maximum_hours', 'weekend_delays']
+        read_only_fields = ['revision']
+
+
+class TaxProfileSerializer(PolicySerializer):
+    class Meta:
+        model = TaxProfile
+        fields = ['id', 'company', 'valid_from', 'valid_until', 'notes', 'active', 'revision', 'expected_revision', 'treatment', 'rate']
+        read_only_fields = ['revision']
+
+
+class PolicyPreviewSerializer(serializers.Serializer):
+    company = serializers.PrimaryKeyRelatedField(queryset=Company.objects.all())
+    date = serializers.DateField()
+    channel = serializers.ChoiceField(choices=SourceMapping.CHANNELS)
+    amount = serializers.DecimalField(max_digits=18, decimal_places=2, min_value=0)

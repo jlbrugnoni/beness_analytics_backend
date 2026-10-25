@@ -2,7 +2,7 @@
 
 Status: Phase 0 accepted, 2026-10-24. Names describe the target domain;
 exact Django field/API names are finalized during implementation. Phase 1 delivery
-and Phase 2.1–2.3 deliveries list the implemented company/account/terminal/category/source-mapping/access subset; other records remain planned.
+and Phase 2.1–2.4 deliveries list the implemented configuration/access subset; other records remain planned.
 
 ## Ownership and configuration
 
@@ -79,3 +79,17 @@ not given) and income starts February 2026. Imported files establish actual boun
 These are custom management measures. A formal EBITDA measure requires a separate
 agreed definition; it is not an alternative label for the final financing-inclusive
 figure.
+
+## Implemented dated configuration (Phase 2.4)
+
+- Shared: company, nullable valid_from/valid_until (inclusive; null means
+  unbounded), notes, active, revision and audit history.
+- FeePolicy: immutable channel, deposit_mode (unknown/full/net), nullable withheld
+  percentage, nullable separate_fee_amount with confirmed frequency, expected
+  reimbursement flag and optional exact offer dates. Unknown amount is not zero.
+- SettlementPolicy: immutable channel, minimum_hours, maximum_hours and
+  weekend_delays. Typical elapsed-hour guidance, not a holiday-aware deadline.
+- TaxProfile: treatment (unknown/inclusive/no_tax/exempt), rate only for inclusive.
+  No expense-tax fields or net-result calculation yet.
+- Preview evidence: applicable rule ID/revision, gross amount/currency, nullable
+  fee/deposit/tax outputs and timing metadata. No financial record is saved.

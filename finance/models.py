@@ -38,10 +38,10 @@ class Company(models.Model):
         super().clean()
         if self.pk:
             previous = type(self).objects.get(pk=self.pk)
-            if previous.site_id != self.site_id and (self.accounts.exists() or self.categories.exists() or self.source_mappings.exists()):
+            if previous.site_id != self.site_id and (self.accounts.exists() or self.categories.exists() or self.source_mappings.exists() or self.feepolicy_set.exists() or self.settlementpolicy_set.exists() or self.taxprofile_set.exists()):
                 raise ValidationError({"site": "A company with financial configuration cannot be moved to another site."})
-            if previous.default_currency != self.default_currency and self.accounts.exists():
-                raise ValidationError({"default_currency": "A company with accounts cannot change its default currency."})
+            if previous.default_currency != self.default_currency and (self.accounts.exists() or self.feepolicy_set.exists()):
+                raise ValidationError({"default_currency": "A company with accounts or fee policies cannot change its default currency."})
 
 
 class Account(models.Model):
@@ -274,3 +274,91 @@ def validate_account_studios(account, studios):
         ids = {studio.pk for studio in studios}
         if account.terminals.exclude(studio_id__in=ids).exists():
             raise ValidationError("Keep all mapped terminal studios in the account, including inactive mappings.")
+
+
+class DatedPolicy(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.PROTECT)
+    valid_from = models.DateField(null=True, blank=True)
+    valid_until = models.DateField(null=True, blank=True)
+    notes = models.TextField(blank=True, max_length=2000)
+    active = models.BooleanField(default=True)
+    revision = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        abstract = True
+        ordering = ['company_id', '-valid_from', 'pk']
+
+    def __str__(self):
+        return f'{self.company} / {getattr(self, "channel", "tax")}'[:180]
+
+    def clean(self):
+        super().clean()
+        if self.valid_from and self.valid_until and self.valid_until < self.valid_from:
+            raise ValidationError({'valid_until': 'End date must be on or after the start date.'})
+        if self.pk:
+            previous = type(self).objects.get(pk=self.pk)
+            if previous.company_id != self.company_id or getattr(previous, 'channel', None) != getattr(self, 'channel', None):
+                raise ValidationError('Company and channel cannot change; deactivate and create another policy.')
+        if self.active and self.company_id:
+            overlap = type(self).objects.filter(company_id=self.company_id, active=True).exclude(pk=self.pk)
+            if hasattr(self, 'channel'):
+                overlap = overlap.filter(channel=self.channel)
+            if self.valid_from:
+                overlap = overlap.filter(models.Q(valid_until__isnull=True) | models.Q(valid_until__gte=self.valid_from))
+            if self.valid_until:
+                overlap = overlap.filter(models.Q(valid_from__isnull=True) | models.Q(valid_from__lte=self.valid_until))
+            if overlap.exists():
+                raise ValidationError('Active policy dates overlap. End or deactivate the previous policy first. End dates are inclusive.')
+
+
+class FeePolicy(DatedPolicy):
+    channel = models.CharField(max_length=20, choices=SourceMapping.CHANNELS)
+    deposit_mode = models.CharField(max_length=10, choices=[('full', 'Full amount'), ('net', 'Net of withholding'), ('unknown', 'Unknown')], default='unknown')
+    percentage = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
+    separate_fee_amount = models.DecimalField(max_digits=18, decimal_places=2, null=True, blank=True)
+    separate_fee_frequency = models.CharField(max_length=20, choices=[('unknown', 'Unknown'), ('monthly', 'Monthly'), ('per_transaction', 'Per transaction'), ('per_settlement', 'Per settlement')], default='unknown')
+    reimbursement_expected = models.BooleanField(default=False)
+    reimbursement_from = models.DateField(null=True, blank=True)
+    reimbursement_until = models.DateField(null=True, blank=True)
+
+    def clean(self):
+        super().clean()
+        if self.percentage is not None and not 0 <= self.percentage <= 100:
+            raise ValidationError({'percentage': 'Use a percentage from 0 to 100.'})
+        if self.deposit_mode != 'net' and self.percentage is not None:
+            raise ValidationError({'percentage': 'Withheld percentage applies only to net deposits. Use separate fee fields for independent charges.'})
+        if self.separate_fee_amount is not None and self.separate_fee_amount < 0:
+            raise ValidationError({'separate_fee_amount': 'Use a non-negative fee amount.'})
+        if (self.separate_fee_amount is None) != (self.separate_fee_frequency == 'unknown'):
+            raise ValidationError('Provide both a confirmed separate fee amount and its frequency, or leave both unknown.')
+        if not self.reimbursement_expected and (self.reimbursement_from or self.reimbursement_until):
+            raise ValidationError('Enable expected reimbursement before entering offer dates.')
+        if self.reimbursement_from and self.reimbursement_until and self.reimbursement_until < self.reimbursement_from:
+            raise ValidationError({'reimbursement_until': 'Offer end must be on or after its start.'})
+
+
+class SettlementPolicy(DatedPolicy):
+    channel = models.CharField(max_length=20, choices=SourceMapping.CHANNELS)
+    minimum_hours = models.PositiveIntegerField(default=24)
+    maximum_hours = models.PositiveIntegerField(default=48)
+    weekend_delays = models.BooleanField(default=False)
+
+    def clean(self):
+        super().clean()
+        if self.maximum_hours < self.minimum_hours:
+            raise ValidationError({'maximum_hours': 'Maximum must be at least the minimum.'})
+
+
+class TaxProfile(DatedPolicy):
+    treatment = models.CharField(max_length=12, choices=[('inclusive', 'Included in sales'), ('no_tax', 'No sales tax'), ('exempt', 'Exempt'), ('unknown', 'Unknown')], default='unknown')
+    rate = models.DecimalField(max_digits=7, decimal_places=4, null=True, blank=True)
+
+    def clean(self):
+        super().clean()
+        if self.treatment == 'inclusive':
+            if self.rate is None or not 0 <= self.rate <= 100:
+                raise ValidationError({'rate': 'Included tax requires a rate from 0 to 100.'})
+        elif self.rate is not None:
+            raise ValidationError({'rate': 'Only included tax has a percentage. Keep unknown, no-tax and exempt distinct.'})

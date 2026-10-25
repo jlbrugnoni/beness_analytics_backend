@@ -320,6 +320,20 @@ and changes to closed periods still need their phase-specific definitions.
   or historical reclassification. A sales channel of transfer is distinct from
   an own-account internal bank movement (BR-014).
 
+- **BR-049:** Caixa card deposits currently arrive gross, with terminal fees and
+  reimbursements as independent bank movements. The approximate EUR 36 charge
+  and offer ending sometime in 2027 are notes, not exact amount/frequency/date
+  defaults. Unknown separate fees never become zero or deductions per deposit.
+- **BR-050:** DR timing is normally 24–48 elapsed hours, potentially longer over
+  weekends. Timing is suggestive, not a hard reconciliation cutoff or authority
+  to overwrite operation dates. V1 configuration has no holiday calendar.
+- **BR-051:** Fee/tax/timing defaults may use an undated historical baseline or
+  inclusive effective-date intervals. Active rules of the same kind/company/channel
+  cannot overlap. Company/channel identity is immutable. Edits are audited and
+  revision checked, with company locking around overlap validation. Future imports
+  must snapshot applicable rule evidence; editing defaults cannot silently restate
+  existing records. Policy previews create no financial entries.
+
 ## Reference reports
 
 These are source fixtures, not committed datasets. Keep originals outside Git and

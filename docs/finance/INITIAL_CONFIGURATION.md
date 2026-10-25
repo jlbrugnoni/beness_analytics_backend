@@ -54,13 +54,13 @@ Do not invent Spain's channel, commission, or settlement-account setup from DR.
 
 Client reports these have applied "since forever". Treat as defaults applicable
 throughout available historical coverage; no rate change/start date was supplied.
-Future dated fee configuration must permit this historical baseline without
+Dated fee configuration permits this historical baseline without
 inventing an actual contract date. No fixed charge was confirmed. Unknown methods
 remain for review rather than being assigned one of these rates or zero.
 
-These rates are documented inputs for Phase 2.4, not executable rules in Phase
-2.1. Fee calculation and comparison with net deposits arrive in later processing
-phases. Preserve P-002's single deduction and actual-adjustment treatment.
+Phase 2.4 implements these as editable defaults and a read-only calculation
+preview. Applying fees to financial records and comparing actual deposits remain
+later processing work. Preserve P-002's single deduction and actual-adjustment treatment.
 
 ## Category catalog (D-032–035)
 
@@ -100,3 +100,17 @@ General is neutral price-list evidence. Initial setup adds 11 missing aliases
 Spain initially uses in-studio card and cash, with no recurring or transfer.
 Exact Mindbody labels remain unconfirmed; no aliases are guessed. Existing
 site-scoped payment-method names are offered as input suggestions when available.
+
+## Fee, timing and sales-tax setup (Phase 2.4)
+
+The explicit setup action adds missing policies only, preserving any existing
+rules for that company/channel/kind, including inactive or dated custom settings.
+DO creates three withholding rules, three typical 24–48-hour timing rules with
+weekend-delay flags, and a no-sales-tax profile. Spain creates a full-deposit card
+rule with reimbursement expected and a 21% inclusive-tax historical default.
+No Spain timing, cash fee or transfer fee is guessed.
+
+Caixa's fee is around EUR 36 and the offer ends in 2027 (D-040). Amount,
+frequency, and exact offer dates stay null/unknown. Notes preserve the evidence;
+no monthly charge or precise offer expiry is created. The full-deposit preview
+can be known even while a separate fee remains unknown.

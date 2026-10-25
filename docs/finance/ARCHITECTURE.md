@@ -1,10 +1,10 @@
 # Finance architecture
 
-Status: accepted target design; Phase 1 accepted, Phases 2.1–2.3 implemented.
+Status: accepted target design; Phase 1 accepted, Phases 2.1–2.4 implemented; Phase 2.4 client acceptance pending.
 Updated: 2026-10-24. Implemented models are finance.Company, finance.Account,
-finance.AccessChange, finance.Terminal, finance.Category, finance.SourceMapping, finance.ConfigurationChange and capability fields on existing access profiles. Financial
-transactions, configuration beyond accounts/terminals/categories/source aliases, and results below remain future work.
-See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md and PHASE_2_3_DELIVERY.md for exact endpoints and limitations.
+finance.AccessChange, finance.Terminal, finance.Category, finance.SourceMapping, finance.ConfigurationChange, finance.FeePolicy, finance.SettlementPolicy, finance.TaxProfile and capability fields on existing access profiles. Financial
+transactions, reconciliation and results below remain future work.
+See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md and PHASE_2_3_DELIVERY.md and PHASE_2_4_DELIVERY.md for exact endpoints and limitations.
 
 ## Existing integration points
 
@@ -296,3 +296,27 @@ Alegra cost center is primary and price list is secondary warning evidence;
 General is intrinsically neutral. No price-list fallback or fuzzy alias matching.
 Client DR conventions and the mixed credit/recurring review case are recorded in
 BR-045. Spanish Mindbody alias names remain unguessed (BR-046).
+
+## Implemented dated policies (Phase 2.4)
+
+FeePolicy, SettlementPolicy and TaxProfile share nullable baseline/start/end,
+notes, active state and revision. Inclusive intervals may not overlap active
+rules of the same type/company/channel (tax has no channel). API writes lock
+Company first, including setup; model validation checks overlap under that lock.
+Do not bypass this path with unvalidated ORM writes. Technical admin is read-only.
+Company/channel cannot be reassigned. Company site is protected by any policy;
+company currency is also protected by fee policies with monetary fields.
+
+The preview helper resolves policy IDs/revisions by operation date. It computes
+withheld percentage from gross, rounds that fee once to 0.01 using ROUND_HALF_UP,
+then subtracts the rounded fee. Full-deposit policies preserve the gross amount;
+independent charges are returned as metadata, not deducted again. Included sales
+tax is informational; result_basis stays tax_inclusive. Unknown tax/withholding
+remains null/review. Explicit source-tax precedence belongs to the later adapter.
+No invoice/payout rounding policy is asserted by this isolated preview.
+
+Settlement output is elapsed-hour metadata and a weekend-delay flag; it computes
+no bank due date and uses no holiday calendar. Reimbursement fields describe
+expected offers, not matched refunds or automatic accounting entries. Current
+policies are company/channel scoped; provider/account-specific overrides are not
+implemented. Exact future actual-fee adjustment periods remain Phase 5/6 work.
