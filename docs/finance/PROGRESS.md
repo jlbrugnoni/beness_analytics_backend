@@ -333,3 +333,5 @@ PostgreSQL 269 tests passed; SQLite 265 passed/4 skipped; focused migration test
 frontend lint/build and Django checks passed. Synthetic-only browser QA verified
 cross-month values, cache errors and invalid-row retention. Client acceptance
 pending. No changes to existing bank/sales postings or grants; no deployment.
+
+Phase 3.4.1 implementation checkpoints: backend `7a025d4`, frontend `01df158`.

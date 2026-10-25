@@ -1,7 +1,8 @@
 # Phase 3.4.1 enriched workbook source preview delivery
 
 Date: 2026-10-25. Implemented and validated; client acceptance pending.
-Both repositories: feature/finance-phase-2. No push, merge or production migration.
+Both repositories: feature/finance-phase-2. Implementation checkpoints: backend
+7a025d4, frontend 01df158. No push, merge or production migration.
 
 ## What I did
 
