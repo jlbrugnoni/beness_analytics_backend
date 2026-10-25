@@ -100,3 +100,5 @@ hidden. Compatible backend/frontend release order and earlier additive migration
 still apply. Local preview runs on frontend 3037/backend 8027 with QA settings.
 No finance changes pushed, merged or deployed. Next gate is Phase 2.4 acceptance;
 then Phase 3 import discovery under the agreed workflow.
+
+Phase 2.4 implementation checkpoints: backend `17e687a`, frontend `fe337a8`.

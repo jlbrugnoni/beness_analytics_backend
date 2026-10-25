@@ -202,3 +202,5 @@ Approximate Caixa fee and offer end year remain notes, not invented exact terms.
 Browser verified setup, estimates, overlap rejection and timing edit/restoration.
 Client acceptance pending. PHASE_2_4_DELIVERY.md records boundaries and legacy
 core_data.tests discovery failure. No financial processing or production changes.
+
+Phase 2.4 implementation checkpoints: backend `17e687a`, frontend `fe337a8`.
