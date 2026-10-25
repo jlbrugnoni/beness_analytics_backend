@@ -349,3 +349,17 @@ does not certify reconciliation. See PHASE_3_4_1_DELIVERY.md for aggregate evide
 190 finance tests discovered: 186 passed / four existing PG-only skips on SQLite;
 frontend lint/build and synthetic browser QA passed. No financial changes or
 push/merge/deployment. Client acceptance pending; next is existing-upload retest.
+
+
+## September invoice comparison and source selection
+
+2026-10-25: D-064 confirms original item-level Alegra as sales source of truth.
+Read-only comparison explains 611 invoices versus 615 administration payment
+entries: four split-payment pairs, plus one uncoded administration row against
+one unmatched Alegra code. Date/amount/studio match on the candidate, but customer
+names differ; no confirmed link. Two common invoices have amount differences,
+one also payment/invoice-date and outstanding-status evidence. No workbook or
+financial changes. See SEPTEMBER_ALEGRA_COMPARISON.md for exact codes and rows.
+This corrects the earlier “615 invoice numbers” wording. Historical mixed methods
+need review before reconciliation; current no-split assumption is not silently
+changed. Source-display acceptance and financial pilot validation remain pending.

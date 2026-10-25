@@ -144,8 +144,8 @@ Read-only inspection of the client's existing local uploads:
   internal movements and other classifications; they are not profit or proof
   that every expected transaction is present.
 - Workbook Alegra sheet: 654 September item rows, 611 distinct invoice codes;
-  653 item rows Cobrada and one Por cobrar. Alegra_adm: 615 distinct September
-  invoice numbers. Both sheets contain dated rows September 1–October 22.
+  653 item rows Cobrada and one Por cobrar. Alegra_adm: 615 September payment entries (614 populated
+  Numero values plus one blank); these are not 615 distinct invoice codes. Both sheets contain dated rows September 1–October 22.
   The count difference requires invoice-level review; no authoritative sale
   was created from these workbook sheets. The separate Alegra CSV previews
   still cover only September 1–15 (456 item rows / 438 invoices).
@@ -173,3 +173,8 @@ Client acceptance remains pending.
 Client retest: refresh the page, reopen existing preview #2 and Source cells on
 Debitos row 17; compare readable values/labels to Excel. Check an income formula
 row and verify errors remain visible. No file modification or re-upload needed.
+
+Detailed code-level comparison now available in SEPTEMBER_ALEGRA_COMPARISON.md.
+Four invoices have valid split payment entries, one administration entry has no
+NCF, and two common invoices differ in amount (one also date/status evidence).
+Earlier 611/615 shorthand is superseded by that comparison. No source edits made.

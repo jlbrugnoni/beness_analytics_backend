@@ -82,6 +82,8 @@ client-approved. Detailed behavior belongs in Business rules.
 | D-062 | 2026-10-25 | Accepted | Q-015: workbook has no marker distinguishing cash from bank-paid expenses. Preserve payment origin as unknown; later source matching/manual review must establish account provenance without fabricated bank/cash facts. |
 | D-063 | 2026-10-25 | Accepted | Q-015: one bank debit is not represented by multiple split rows in the existing workbook. Native migration does not infer allocation groups. Future manual split support and genuine duplicate occurrence preservation remain unchanged. |
 
+| D-064 | 2026-10-25 | Accepted | Client explicitly selected the original item-level Alegra report over Alegra_adm as sales source of truth. Group original items into invoices; retain administration corrections/payment allocations separately as historical evidence, not duplicate sales. September comparison found mixed-payment evidence despite earlier no-split assumption; preserve it and review allocation scope before migration/reconciliation. See SEPTEMBER_ALEGRA_COMPARISON.md. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |
