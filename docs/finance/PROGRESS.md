@@ -445,3 +445,6 @@ frontend lint/build and system/migration checks passed. See
 PHASE_3_3_3_2_DELIVERY.md for exact scope, native-format limitation and client tests.
 Client acceptance pending. Next: client receipt-processing test, then historical
 assignment/provenance decisions and actual native payment export acceptance.
+
+Phase 3.3.3.2 implementation checkpoints: backend `851418d`, frontend `7cfbebb`;
+both on `feature/finance-phase-2`. These are local commits only.
