@@ -1,6 +1,7 @@
 # Phase 3.2 bank transaction import, review and undo delivery
 
-Date: 2026-10-24. Implemented and validated; client acceptance pending.
+Date: 2026-10-24. Implemented and validated. Accepted by the client on
+2026-10-25 (D-051).
 Both repositories: feature/finance-phase-2. No production release authorized.
 
 ## What I did

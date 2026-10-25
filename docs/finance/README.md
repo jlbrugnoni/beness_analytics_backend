@@ -1,6 +1,6 @@
 # Finance module handover
 
-Status: Phase 0 accepted; Phase 1 accepted; Phase 2.1 accepted; Phase 2.2 accepted; Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 bank posting/review/undo implemented and validated; client acceptance pending. Updated: 2026-10-24.
+Status: Phase 0 accepted; Phase 1 accepted; Phase 2.1 accepted; Phase 2.2 accepted; Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 accepted (D-051); Phase 3.3 Alegra discovery in progress. Updated: 2026-10-25.
 
 The finance module will support bank imports, sales reconciliation, expense
 classification, historical migration, and monthly management results for the
@@ -23,6 +23,7 @@ implemented behavior, checks, setup, and acceptance steps.
 | [Consolidated questionnaire](QUESTIONNAIRE.md) | Current numbered list for the client to answer together |
 | [Progress](PROGRESS.md) | Actual delivery status, validation, branches, and next work |
 | [Initial configuration](INITIAL_CONFIGURATION.md) | Confirmed accounts, terminals, historical fee defaults and savings baseline |
+| [Phase 3.3 discovery](PHASE_3_3_DISCOVERY.md) | Alegra invoice/item scope and Q-013 correction, numbering and payment questions |
 | [Phase 3.2 delivery](PHASE_3_2_DELIVERY.md) | Bank transaction commit, correction review, overlap decisions and audited undo |
 | [Phase 3.2 discovery](PHASE_3_2_DISCOVERY.md) | Commit/review/undo design and remaining authority/correction decisions |
 | [Phase 3.1 delivery](PHASE_3_1_DELIVERY.md) | Bank CSV preview/history, guarded raw access, validation and client steps |

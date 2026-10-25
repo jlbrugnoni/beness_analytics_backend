@@ -1,10 +1,10 @@
 # Finance delivery progress
 
-Updated: 2026-10-24.
+Updated: 2026-10-25.
 
 ## Current checkpoint
 
-- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 bank posting/review/undo implemented; client acceptance pending.
+- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 accepted (D-051); Phase 3.3 Alegra discovery in progress.
 - Phase 0: accepted on 2026-10-24 with "perfect, we can continue" (D-026).
 - Subphase 0.2: main business discovery batch resolved; all 12 consolidated
   answers and three focused clarifications recorded. DR-first editable account
@@ -104,17 +104,18 @@ The frontend working tree was clean before the documentation pointer was added.
 
 ## What the client should review
 
-Phase 3.2 bank posting/review/undo is ready for client review. See PHASE_3_2_DELIVERY.md.
+Phase 3.2 accepted on 2026-10-25 (D-051). Q-013 asks the remaining Alegra
+business questions; see PHASE_3_3_DISCOVERY.md. No new application test is due.
 Dedicated Posting QA account contains synthetic posting/correction/undo examples;
 pre-existing user-uploaded QA previews are retained.
 
 ## Next work
 
-Client acceptance of Phase 3.2, then Phase 3.3 Alegra invoice/item import discovery.
+Record Q-013 answers, then implement Phase 3.3 Alegra invoice/item importing.
 Q-012 answered (D-049–050).
 Q-011 answered (D-043–046); exact completed-month pilot selection remains Phase 3.4.
 Exact Spain method aliases remain editable and unconfigured until supplied.
-Exact Caixa fee amount/frequency and offer dates remain optional setup follow-up. Imported movements, expected balances and sensitive payment
+Exact Caixa fee amount/frequency and offer dates remain optional setup follow-up. Calculated balances and category-aware sensitive payment
 redaction remain future processing work.
 
 ## Delivery history
@@ -259,3 +260,12 @@ Client acceptance pending. No real financial movements were created by the agent
 normal/production DB and real grants unchanged. Dedicated synthetic QA setup only.
 
 Phase 3.2 implementation checkpoints: backend `8de1698`, frontend `7a343fd`.
+
+## Phase 3.3 discovery checkpoint
+
+2026-10-25: recorded Phase 3.2 client acceptance (D-051). Prepared
+PHASE_3_3_DISCOVERY.md and Q-013 on numbering reuse, approval of changed invoice
+snapshots, split payments, and cancellation/credit-note export behavior. Settled
+source, payment-date, studio, tax and Spain decisions remain unchanged.
+Documentation only; no new runtime changes or application tests. Real uploaded
+QA files and financial postings were not changed. No push, merge or deployment.

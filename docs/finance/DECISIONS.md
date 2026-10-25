@@ -68,6 +68,7 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-049 | 2026-10-24 | Accepted | Client answered yes to Q-012. Operators may undo their own financial imports; users with Manage financial configuration may also undo others' imports. Relevant import/edit permissions and account scope are required for everyone, and managers do not bypass protected-record safeguards. Implementation treats ownership as the user who committed the financial posting, recorded separately from the raw file uploader. |
 | D-050 | 2026-10-24 | Accepted | Client answered yes to Q-012 correction policy. Keep the current transaction when later bank evidence proposes a changed amount/date; replacement requires explicit review/approval. Independent valid new rows continue importing. Preserve old source evidence, manual work and history. |
+| D-051 | 2026-10-25 | Accepted | Client said "we can continue" after Phase 3.2 delivery/testing. Bank transaction posting, correction review and audited undo accepted. Proceed to Phase 3.3 Alegra invoice/item discovery; no finance deployment authorized. |
 
 ## Open policy decisions
 

@@ -1,6 +1,6 @@
 # Finance discovery questions
 
-Updated: 2026-10-24. Ask focused batches and attach answers to stable question IDs.
+Updated: 2026-10-25. Ask focused batches and attach answers to stable question IDs.
 Do not turn a suggested answer, elapsed time, or lack of reply into a decision.
 
 Current response format: the client requested a single numbered list. See
@@ -329,6 +329,15 @@ approval path remains to be defined. See PHASE_3_2_DISCOVERY.md and QUESTIONNAIR
 Client answered yes to both recommendations on 2026-10-24 (D-049–050).
 Own/manager undo authority and explicit source-correction approval are accepted. These questions do not reopen
 permission inheritance, scope, missing-row deletion or valid-row continuation.
+
+## Q-013: Alegra invoice/item imports
+
+Sent 2026-10-25 after Phase 3.2 acceptance (D-051). See
+PHASE_3_3_DISCOVERY.md and QUESTIONNAIRE.md for the single numbered batch.
+Questions cover numbering reuse/series, approval of complete corrected invoices,
+split payment evidence, and cancellation/credit-note export behavior. Answers are
+pending. Do not reinterpret absent invoices as cancellations or automatically
+replace items while this correction policy is unconfirmed.
 
 ## Recording an answer
 

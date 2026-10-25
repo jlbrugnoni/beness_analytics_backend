@@ -248,3 +248,12 @@ Status: answered; both recommendations accepted (D-049–050).
    independent valid new rows import (D-050).
 
 No further business question blocks bank transaction posting/review/undo.
+
+## Q-013: Phase 3.3 Alegra questions — 2026-10-25
+
+Status: awaiting answers. Phase 3.2 accepted (D-051). See PHASE_3_3_DISCOVERY.md.
+
+1. Can an invoice number ever be reused in another year or numbering series, or is the full number unique within the company? If you use several series, does the exported number include the prefix?
+2. When a later export changes an existing invoice's date, amount or items, should the app keep the current invoice and ask you to approve the complete updated version? I recommend this, preserving its previous version and manual assignments, and flagging assignments affected by changed items.
+3. Can one invoice be paid using two methods, such as part cash and part card? If yes, does your Alegra export show the amounts for each method, or do you record that split elsewhere?
+4. When an invoice is cancelled or refunded, does it remain in this export with a status, disappear, or appear in a separate credit-note report? If you do not know, we can leave those cases for review until we have an example; a missing invoice will never be treated automatically as cancelled.
