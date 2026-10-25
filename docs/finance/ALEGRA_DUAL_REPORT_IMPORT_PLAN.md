@@ -111,3 +111,41 @@ present; cancellation/refund; source-version conflict; permission scopes; stale
 plans/concurrent imports and undo with dependencies. Four September split-payment
 examples in SEPTEMBER_ALEGRA_COMPARISON.md provide historical reference cases.
 No implementation or passing-test claim is made for this planned behavior.
+
+
+## Uploaded preview #3 inspection
+
+2026-10-25: client identified existing preview #3, Ingresos_Egresos_DO_BI2.xlsx.
+Verified same immutable SHA-256 as preview #2 and duplicate_of=2. No further upload
+of this workbook is needed. Read-only inspection of saved values and formula text:
+
+- Alegra_adm has 1,128 dated payment rows, Sep 1–Oct 22, 2026; 1,127 populated
+  Numero values, all distinct within this sample. Row 183 lacks Numero. This
+  supports a company/provider payment-number candidate, not proof of global
+  uniqueness or native receipt identity across years/accounts/other exports.
+- Every dated row has exactly one full B01/B02 invoice code in Asociaciones.
+  All 1,127 populated NCF formula caches agree with that explicit source reference.
+  NCF is a derived formula field (RIGHT of Asociaciones), not required linkage.
+- Row 183 explicitly says Facturas: B0200004842 in Asociaciones despite blank NCF.
+  Prior candidate-only conclusion based on blank cached NCF is superseded by this
+  explicit reference. Preserve customer-label discrepancy and missing payment
+  number as review evidence; do not invent a stable receipt ID or post it blindly.
+- Metodo_pago is original-method evidence; Metodo holds enriched Cierre, Link,
+  Recurrente, Transferencia or Efectivo assignments. Preserve both; explicit
+  enriched/manual choices are not replaced by defaults from invoices.
+- All rows have Tipo_nota Ingreso. Estado is blank throughout. Conciliada and
+  Conciliado are separate populated source fields and are not proof of a new
+  bank-to-sales reconciliation. No refund/void/multi-invoice receipt shape can be
+  established from this sample.
+- Enriched Metodo counts: Cierre 727, Link 134, Recurrente 165, Transferencia 69,
+  Efectivo 33. Source account, date, amount, invoice references, payment number,
+  original/enriched methods, manual studio and review flags are available to define
+  a workbook payment-preview preset. Do not use customer ID column ID as receipt ID.
+
+The workbook provides enough structure to design and build a bounded historical
+Alegra_adm preview preset, with source identity warnings. Its existing migration
+preview still only parses movement sheets into migration rows; other sheets are
+retained in original bytes. No payment importer is implemented by this inspection.
+A separate native standalone CSV importer must still validate an actual native
+export before claiming support for it. This is not a reason to request the same
+workbook again or block workbook-preset preview design.

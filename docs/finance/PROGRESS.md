@@ -377,3 +377,16 @@ historical posting. Native unmodified payment export is needed to define identit
 and layout safely; no report-menu name or stable ID is assumed. Source version
 explanation recorded without mutating September evidence. Documentation checks
 only; no implementation, workbook/financial mutation or deployment.
+
+
+## Preview #3 payment-structure inspection
+
+2026-10-25: found user upload #3; byte-identical duplicate of #2, not new source
+versions. No reupload needed. Alegra_adm has 1,128 dated payments, 1,127 distinct
+populated Numero values and one missing number. Every dated row carries exactly
+one invoice code in original Asociaciones, including row 183 → B0200004842;
+prior candidate-only conclusion based on derived NCF is superseded. No payment
+link posted; missing receipt ID/customer-label discrepancy remain review evidence.
+Recorded raw-versus-enriched method fields and source limitations in the dual
+report import plan. Enough structure for workbook-preset preview design; standalone
+native payment CSV support still unverified. Read-only analysis/documentation only.

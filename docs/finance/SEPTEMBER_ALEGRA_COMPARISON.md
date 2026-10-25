@@ -71,3 +71,15 @@ Generate invoice summaries from that report. Preserve administration manual
 corrections and payment allocations as separate evidence, not additional sales.
 Client should search the six listed invoice codes and the uncoded row 183.
 No deletions, edits, linking, migration posting or deployment performed.
+
+
+## Follow-up: explicit source reference found in preview #3
+
+2026-10-25: preview #3 is byte-identical to #2. Inspecting original Asociaciones
+rather than just derived NCF reveals Facturas: B0200004842 at Alegra_adm!I183.
+Thus this row does explicitly reference the unmatched invoice; the prior
+candidate-only inference above is superseded. Its payment Numero and NCF are blank,
+customer labels still differ, and it must remain reviewable for payment identity
+and evidence consistency. No workbook/source correction or financial link posted.
+All 1,128 dated payment rows contain one explicit invoice code in Asociaciones;
+all populated NCF caches agree. Source references should precede derived caches.
