@@ -56,6 +56,8 @@ client-approved. Detailed behavior belongs in Business rules.
 | D-040 | 2026-10-24 | Accepted | Caixa currently deposits the full card-sales amount. Its terminal-use fee is charged separately and later reimbursed. Client estimates around EUR 36 and says the offer ends in 2027; exact amount, frequency and dates remain unconfirmed, so do not create an exact recurring expense or offer expiry from these approximations. |
 | D-041 | 2026-10-24 | Accepted | DR deposits normally take 24–48 hours and may take longer over weekends. Use typical elapsed-hour timing for Cierre, recurring and Link suggestions, without silently changing operation dates or claiming holiday-aware due dates. |
 
+| D-042 | 2026-10-24 | Accepted | Client replied "we can continue" after the Phase 2.4 delivery and test checklist. Phase 2.4 accepted; proceed to Phase 3 import/migration discovery under the agreed phased workflow. No production push, merge or deployment authorized. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

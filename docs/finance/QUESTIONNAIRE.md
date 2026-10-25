@@ -195,3 +195,20 @@ Status: answered; exact Caixa terms remain unknown and editable.
 
 No further answer blocks Phase 2.4 configuration. Exact Caixa terms remain an
 optional configuration follow-up, not guessed defaults.
+
+## Phase 3 questions — Q-011, 2026-10-24
+
+Status: sent; awaiting answers. Undo is proposed, not accepted.
+
+1. For bank reports, do you usually download the whole month again, only new
+   dates, or overlapping periods? Does this differ between Popular and Caixa?
+2. For Alegra exports, do you always include every invoice item for the selected
+   dates, or sometimes filter by product/category/payment method? This affects
+   recognizing corrected invoices without removing valid items.
+3. Which period should be the first historical migration test? Recommend one
+   completed DR month with classified workbook entries and raw bank/Alegra reports
+   so totals can be compared. Existing September 1–15 samples still support
+   adapter validation; a full-month pilot is a separate choice.
+4. Should an upload made by mistake support audited undo? Proposal: undo untouched
+   records created by that upload; require review for later manually edited or
+   reconciled records; preserve existing records merely encountered again.

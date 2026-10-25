@@ -1,6 +1,6 @@
 # Phase 2.4 fees, timing and sales-tax delivery
 
-Date: 2026-10-24. Implemented and validated; client acceptance pending.
+Date: 2026-10-24. Implemented, validated and accepted by the client (D-042: "we can continue").
 Both repositories remain on feature/finance-phase-2. No production deployment.
 
 ## What I did
@@ -98,7 +98,7 @@ Normal production credentials are not used by this temporary database.
 Apply migration 0005 before serving the updated backend, even when finance is
 hidden. Compatible backend/frontend release order and earlier additive migrations
 still apply. Local preview runs on frontend 3037/backend 8027 with QA settings.
-No finance changes pushed, merged or deployed. Next gate is Phase 2.4 acceptance;
-then Phase 3 import discovery under the agreed workflow.
+No finance changes pushed, merged or deployed. Phase 2.4 accepted (D-042);
+next is Phase 3 import discovery under the agreed workflow.
 
 Phase 2.4 implementation checkpoints: backend `17e687a`, frontend `fe337a8`.

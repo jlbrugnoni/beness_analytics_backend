@@ -4,7 +4,7 @@ Updated: 2026-10-24.
 
 ## Current checkpoint
 
-- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 implemented and validated; client acceptance pending.
+- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3 discovery underway.
 - Phase 0: accepted on 2026-10-24 with "perfect, we can continue" (D-026).
 - Subphase 0.2: main business discovery batch resolved; all 12 consolidated
   answers and three focused clarifications recorded. DR-first editable account
@@ -104,12 +104,12 @@ The frontend working tree was clean before the documentation pointer was added.
 
 ## What the client should review
 
-Phase 2.4 is ready for client review. See PHASE_2_4_DELIVERY.md.
+Phase 2.4 accepted by the client (D-042). See PHASE_2_4_DELIVERY.md.
 The isolated local preview includes DO/ES fee, timing and tax settings and tests.
 
 ## Next work
 
-Client acceptance of Phase 2.4, then Phase 3 import discovery.
+Phase 3 import discovery (Q-011); see PHASE_3_DISCOVERY.md.
 Exact Spain method aliases remain editable and unconfigured until supplied.
 Exact Caixa fee amount/frequency and offer dates remain optional setup follow-up. Imported movements, expected balances and sensitive payment
 redaction remain future processing work.
@@ -204,3 +204,15 @@ Client acceptance pending. PHASE_2_4_DELIVERY.md records boundaries and legacy
 core_data.tests discovery failure. No financial processing or production changes.
 
 Phase 2.4 implementation checkpoints: backend `17e687a`, frontend `fe337a8`.
+
+## Phase 3 discovery checkpoint
+
+2026-10-24: client accepted Phase 2.4 with "we can continue" (D-042).
+Reviewed the import roadmap, provenance/manual-preservation rules and existing
+core_data import entry points. Existing operational imports are not the finance
+write path. Prepared Q-011 as one numbered batch: bank download coverage,
+Alegra item completeness, migration pilot period and proposed audited undo.
+Answers pending; no proposed undo policy is treated as accepted.
+First delivery target is bank previews/totals/history for Popular and Caixa,
+followed by financial commit/overlap handling, Alegra and enriched migration in
+separate reviewable steps. No new code/migration, reports or database changes.

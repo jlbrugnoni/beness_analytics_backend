@@ -1,6 +1,6 @@
 # Finance development roadmap
 
-Updated: 2026-10-24. Phase 0 accepted; Phase 1 implemented, validated, and accepted by the client. Phase 2.1 accepted; Phase 2.2 accepted; Phase 2.3 accepted (D-039); Phase 2.4 implemented and validated; client acceptance pending. Phases 3–7 not implemented. See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md and PHASE_2_3_DELIVERY.md and PHASE_2_4_DELIVERY.md for evidence.
+Updated: 2026-10-24. Phase 0 accepted; Phase 1 implemented, validated, and accepted by the client. Phase 2.1 accepted; Phase 2.2 accepted; Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3 discovery underway. Phases 3–7 not implemented. See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md and PHASE_2_3_DELIVERY.md and PHASE_2_4_DELIVERY.md for evidence.
 Each phase begins with targeted business discovery and ends with validation,
 documentation updates, and client acceptance. Acceptance is recorded in Progress.
 

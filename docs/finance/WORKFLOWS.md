@@ -2,8 +2,9 @@
 
 Status: Phase 0 accepted, 2026-10-24. These describe the target screen flows.
 Phase 1 implements finance landing, group capabilities and user grants/effective
-access. Phases 2.1–2.3 implement company/account/terminal/category/source-mapping configuration.
-Imports, transactions, remaining rule configuration and results remain future work.
+access. Phases 2.1–2.4 implement company/account/terminal/category/source-mapping and
+fee/timing/tax configuration with previews. Imports, transactions and results
+remain future work. Phase 3 discovery is recorded in PHASE_3_DISCOVERY.md.
 
 ## Entry and setup
 
