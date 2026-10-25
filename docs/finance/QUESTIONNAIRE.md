@@ -229,7 +229,7 @@ and source-update reversal cases remain phase-specific follow-up.
 
 ## Phase 3.2 questions — Q-012, 2026-10-24
 
-Status: sent; awaiting answers. Both recommendations remain proposals.
+Status: answered; both recommendations accepted (D-049–050).
 
 1. Who may undo another user's import? Recommend operators undo their own;
    users with Manage financial configuration can undo others' imports too.
@@ -239,3 +239,12 @@ Status: sent; awaiting answers. Both recommendations remain proposals.
    or date, should replacement require review? Recommend preserving the existing
    transaction and displaying the proposed correction for approval, while
    independent valid new rows can still import.
+
+### Q-012 answers received — 2026-10-24
+
+1. Yes: proposed own/other import undo authority accepted, with all existing
+   capability, account and protected-record safeguards (D-049).
+2. Yes: preserve existing amount/date until explicit correction review, while
+   independent valid new rows import (D-050).
+
+No further business question blocks bank transaction posting/review/undo.

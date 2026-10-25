@@ -6,7 +6,7 @@ from .views import AccountViewSet, CategoryViewSet, CompanyViewSet, Configuratio
 
 from .policy_views import FeePolicyViewSet, SettlementPolicyViewSet, TaxProfileViewSet, PolicyPreview, PolicySetup
 
-from .import_views import BankImportViewSet
+from .posting_views import BankPostingImportViewSet, BankMovementViewSet
 
 class FinanceAPIRoot(APIRootView):
     permission_classes = [IsAuthenticated, FinancePermission]
@@ -22,7 +22,8 @@ router.register("source-mappings", SourceMappingViewSet, basename="finance-sourc
 router.register("fee-policies", FeePolicyViewSet, basename="finance-fee-policy")
 router.register("settlement-policies", SettlementPolicyViewSet, basename="finance-settlement-policy")
 router.register("tax-profiles", TaxProfileViewSet, basename="finance-tax-profile")
-router.register("bank-imports", BankImportViewSet, basename="finance-bank-import")
+router.register("bank-imports", BankPostingImportViewSet, basename="finance-bank-import")
+router.register("bank-movements", BankMovementViewSet, basename="finance-bank-movement")
 urlpatterns = [path("policy-preview/", PolicyPreview.as_view(), name="finance-policy-preview"),
                path("policy-setup/", PolicySetup.as_view(), name="finance-policy-setup"),path("overview/", FinanceOverview.as_view(), name="finance-overview"),
                path("configuration-options/", ConfigurationOptions.as_view(), name="finance-configuration-options"),

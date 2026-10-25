@@ -1,10 +1,10 @@
 # Finance architecture
 
-Status: accepted target design; Phase 1 accepted, Phases 2.1–2.4 accepted; Phase 3.1 bank previews implemented, client acceptance pending.
+Status: accepted target design; Phase 1 accepted, Phases 2.1–2.4 accepted; Phase 3.1 accepted; Phase 3.2 bank posting/review/undo implemented, client acceptance pending.
 Updated: 2026-10-24. Implemented models are finance.Company, finance.Account,
-finance.AccessChange, finance.Terminal, finance.Category, finance.SourceMapping, finance.ConfigurationChange, finance.FeePolicy, finance.SettlementPolicy, finance.TaxProfile, finance.BankImportBatch, finance.BankImportRow and capability fields on existing access profiles. Financial
-transactions, financial import commit, reconciliation and results below remain future work.
-See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md and PHASE_2_3_DELIVERY.md and PHASE_2_4_DELIVERY.md and PHASE_3_1_DELIVERY.md for exact endpoints and limitations.
+finance.AccessChange, finance.Terminal, finance.Category, finance.SourceMapping, finance.ConfigurationChange, finance.FeePolicy, finance.SettlementPolicy, finance.TaxProfile, finance.BankImportBatch, finance.BankImportRow, finance.BankPosting, finance.BankMovement, finance.BankDecision, finance.BankEvent and capability fields on existing access profiles.
+Sales imports, classification, reconciliation and results below remain future work.
+See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md and PHASE_2_3_DELIVERY.md and PHASE_2_4_DELIVERY.md and PHASE_3_1_DELIVERY.md and PHASE_3_2_DELIVERY.md for exact endpoints and limitations.
 
 ## Existing integration points
 
@@ -349,3 +349,46 @@ Preview retries append upload history; only identical bytes under the same
 account/provider link to an earlier batch. Different-file overlap matching and
 financial undo remain next steps. A-01/other financial import scenarios are not
 considered implemented merely by passing reader controls.
+
+## Implemented bank financial posting (Phase 3.2)
+
+Raw batches keep their original parse status/summary. BankPosting is a separate
+one-to-one execution with actor/state/revision. BankDecision records each source
+occurrence's outcome/resolution and optional movement link; (posting,movement)
+is unique when assigned so repeated source occurrences cannot collapse together.
+BankMovement owns current bank source data, indexed non-unique fingerprint,
+creation row, active/reconciled flags and revision. BankEvent retains actor/time,
+reason and before/after snapshots. No financial model is registered for unaudited
+admin writes. Classification and sales records are separate future domain work.
+
+Account.ledger_revision is independent of configuration revision. Processing
+plans use a deterministic version token; all supported financial writes acquire
+Company then Account locks and advance the ledger revision. Review checks the
+plan, decision and target versions. Repeated same-batch commit is idempotent;
+undo requires a new source preview before that batch can post again. Account
+kind cannot change to cash once bank preview history exists.
+
+Automatic exact identity resolution is occurrence-aware and evidence-based, not
+a unique global hash. Same-file source links survive retries; changed current
+movement values trigger review rather than automatic reversion. Different-file
+repeated groups remain ambiguous. Missing identity evidence means detection has
+limits; never claim every amount/date change can be identified automatically.
+References, date/description and reported balance propose candidates only.
+Manual resolution requires a reason; bank correction preserves old source values
+in audit and changes no classification fields. Reconciled records cannot be
+corrected here. All targets are active, same-account and same-provider.
+
+Undo ownership is financial committer, not raw uploader. Import/edit capability
+is mandatory; settings capability additionally permits others' postings. Reused
+records are not reversed. Created records must be active/revision 1, unreconciled
+and unsupported by other active/partial-undo postings. Approved source corrections
+are protected. Undo marks eligible movements inactive, keeps audit/raw evidence,
+freezes pending decisions and records the request token/result for replay safety.
+Fresh previews can complete a partial undo after independent dependencies clear;
+no manager force path bypasses protection. Future financial edit/match APIs must
+use these locks and advance both relevant revisions, not mutate ORM rows directly.
+
+Bank batch APIs expose processing_status separately from parse status. Movement
+history exposes source batch IDs for consistent tracing. Ledger/candidates/events
+inherit full bank and sensitive-detail gates from 3.1. No result engine, verified
+balance, bank-number ownership detection or sales reconciliation is implemented.

@@ -66,6 +66,9 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-048 | 2026-10-24 | Accepted | Client confirmed "perfect. it worked well" after Phase 3.1 bank-preview testing. Phase 3.1 accepted; proceed to Phase 3.2 transaction commit/overlap/undo discovery. Production deployment remains unauthorized. |
 
+| D-049 | 2026-10-24 | Accepted | Client answered yes to Q-012. Operators may undo their own financial imports; users with Manage financial configuration may also undo others' imports. Relevant import/edit permissions and account scope are required for everyone, and managers do not bypass protected-record safeguards. Implementation treats ownership as the user who committed the financial posting, recorded separately from the raw file uploader. |
+| D-050 | 2026-10-24 | Accepted | Client answered yes to Q-012 correction policy. Keep the current transaction when later bank evidence proposes a changed amount/date; replacement requires explicit review/approval. Independent valid new rows continue importing. Preserve old source evidence, manual work and history. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

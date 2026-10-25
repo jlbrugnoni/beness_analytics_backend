@@ -45,6 +45,7 @@ class Company(models.Model):
 
 
 class Account(models.Model):
+    ledger_revision = models.PositiveIntegerField(default=1, editable=False)
     company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="accounts")
     name = models.CharField(max_length=180)
     kind = models.CharField(max_length=10, choices=[("bank", "Bank"), ("cash", "Cash")], default="bank")
@@ -72,6 +73,8 @@ class Account(models.Model):
             raise ValidationError({"opening_balance": "Provide both a reference balance and its date, or leave both empty."})
         if self.pk:
             previous = type(self).objects.get(pk=self.pk)
+            if previous.kind == "bank" and self.kind != "bank" and self.bank_previews.exists():
+                raise ValidationError({"kind": "An account with bank report history must remain a bank account."})
             if previous.company_id != self.company_id:
                 raise ValidationError({"company": "An account cannot be moved to another company."})
             if previous.currency != self.currency:
@@ -399,3 +402,55 @@ class BankImportRow(models.Model):
     class Meta:
         ordering = ['row_number']
         constraints = [models.UniqueConstraint(fields=['batch', 'row_number'], name='finance_preview_row_number')]
+
+
+class BankPosting(models.Model):
+    batch = models.OneToOneField(BankImportBatch, on_delete=models.PROTECT, related_name='posting')
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    status = models.CharField(max_length=20, default='active')
+    revision = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+    undone_at = models.DateTimeField(null=True, blank=True)
+
+
+class BankMovement(models.Model):
+    account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name='bank_movements')
+    provider = models.CharField(max_length=10)
+    source = models.JSONField(default=dict)
+    fingerprint = models.CharField(max_length=64, db_index=True)
+    created_from = models.ForeignKey(BankImportRow, on_delete=models.PROTECT)
+    revision = models.PositiveIntegerField(default=1)
+    active = models.BooleanField(default=True)
+    reconciled = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-pk']
+
+
+class BankDecision(models.Model):
+    posting = models.ForeignKey(BankPosting, on_delete=models.PROTECT, related_name='decisions')
+    row = models.OneToOneField(BankImportRow, on_delete=models.PROTECT, related_name='decision')
+    outcome = models.CharField(max_length=20)
+    resolution = models.CharField(max_length=20, default='pending')
+    movement = models.ForeignKey(BankMovement, null=True, blank=True, on_delete=models.PROTECT, related_name='decisions')
+    revision = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['posting', 'movement'], condition=models.Q(movement__isnull=False), name='finance_posting_occurrence')]
+
+
+class BankEvent(models.Model):
+    posting = models.ForeignKey(BankPosting, on_delete=models.PROTECT, related_name='events')
+    movement = models.ForeignKey(BankMovement, null=True, blank=True, on_delete=models.PROTECT, related_name='events')
+    row = models.ForeignKey(BankImportRow, null=True, blank=True, on_delete=models.PROTECT)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    action = models.CharField(max_length=30)
+    before = models.JSONField(default=dict)
+    after = models.JSONField(default=dict)
+    note = models.TextField(blank=True, max_length=2000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'pk']

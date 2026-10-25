@@ -3,8 +3,8 @@
 Status: Phase 0 accepted, 2026-10-24. These describe the target screen flows.
 Phase 1 implements finance landing, group capabilities and user grants/effective
 access. Phases 2.1–2.4 implement company/account/terminal/category/source-mapping and
-fee/timing/tax configuration with previews. Bank previews/history now exist (Phase 3.1); financial import commit, transactions
-and results remain future work. Phase 3 discovery is recorded in PHASE_3_DISCOVERY.md.
+fee/timing/tax configuration with previews. Bank previews/history now exist (Phase 3.1); bank transaction commit/review/undo now exist (Phase 3.2); sales imports,
+classification and results remain future work. Phase 3 discovery is recorded in PHASE_3_DISCOVERY.md.
 
 ## Entry and setup
 
@@ -151,3 +151,26 @@ settings permission is required for an appropriately scoped importer. Read-only
 users with the detail grants can inspect history without uploading/downloading.
 No Commit, Reconcile or Undo action is presented in this delivery. See
 PHASE_3_1_DELIVERY.md for boundaries and the next step.
+
+## Implemented transaction import/review/undo flow (Phase 3.2)
+
+Open a bank preview -> Transaction import and review -> inspect counts/decisions
+-> Import transactions -> confirm the concrete plan. New unambiguous movements
+post; recognized occurrences link; invalid and ambiguous/correction rows remain
+without fabricated transactions. The uploaded source and its original totals stay
+unchanged. Financial status appears separately in upload history.
+
+Review a pending row -> compare reported and existing source -> choose distinct
+new transaction, keep existing/link, approve bank correction, or ignore -> enter
+reason -> confirm. Scoped ID lookup can select a target beyond the first 50
+suggestions. Stale account/row/movement context requires reload. History retains
+old/new bank values. No expense/studio/date assignment is implied by posting.
+
+Preview undo -> inspect eligible/protected/reused counts -> enter reason and
+confirm -> eligible creations reverse, protected/reused records stay, source files
+and history remain. Partial undo ends pending resolution for that posting. A fresh
+undo preview may later reverse newly eligible records after dependencies clear;
+it cannot force edited/reconciled/corrected values back. Undo ownership follows
+the financial committer; managers require the same import/edit/detail/account
+permissions. Expand Account transactions and history for active/all/reversed
+records and readable before/after events. See PHASE_3_2_DELIVERY.md.

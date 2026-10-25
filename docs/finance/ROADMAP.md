@@ -1,6 +1,6 @@
 # Finance development roadmap
 
-Updated: 2026-10-24. Phase 0 accepted; Phase 1 implemented, validated, and accepted by the client. Phase 2.1 accepted; Phase 2.2 accepted; Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 bank previews/history and initial 3.2 readers accepted (D-048); transaction commit/overlap/undo discovery underway. Financial commit, remaining Phase 3 and Phases 4–7 not implemented. See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md and PHASE_2_3_DELIVERY.md and PHASE_2_4_DELIVERY.md and PHASE_3_1_DELIVERY.md for evidence.
+Updated: 2026-10-24. Phase 0 accepted; Phase 1 implemented, validated, and accepted by the client. Phase 2.1 accepted; Phase 2.2 accepted; Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 bank previews/history and initial 3.2 readers accepted (D-048); bank transaction commit/overlap/review/undo implemented and validated; client acceptance pending. Alegra, enriched migration and Phases 4–7 remain future work. See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md and PHASE_2_3_DELIVERY.md and PHASE_2_4_DELIVERY.md and PHASE_3_1_DELIVERY.md and PHASE_3_2_DELIVERY.md for evidence.
 Each phase begins with targeted business discovery and ends with validation,
 documentation updates, and client acceptance. Acceptance is recorded in Progress.
 

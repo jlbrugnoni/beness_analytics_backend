@@ -4,7 +4,7 @@ Updated: 2026-10-24.
 
 ## Current checkpoint
 
-- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 commit/overlap/undo discovery underway.
+- Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 bank posting/review/undo implemented; client acceptance pending.
 - Phase 0: accepted on 2026-10-24 with "perfect, we can continue" (D-026).
 - Subphase 0.2: main business discovery batch resolved; all 12 consolidated
   answers and three focused clarifications recorded. DR-first editable account
@@ -29,7 +29,7 @@ Updated: 2026-10-24.
   exists; transaction/category redaction awaits their later models.
 - Phase 1.4: group editor, user form switches and protected finance landing
   implemented in English/Spanish. Validation described in PHASE_1_DELIVERY.md.
-- Phase 1 acceptance: client confirmed "great, it works properly" (D-027). Phase 2 discovery answered (Q-007/D-028–030); Phase 2.1 accepted. Phase 2.2 accepted. Phase 2.3 Q-009 answered, implemented and accepted; Phase 2.4 accepted. Phase 3.1 bank preview/history implemented; financial commit, remaining Phase 3 and Phases 4–7 not implemented.
+- Phase 1 acceptance: client confirmed "great, it works properly" (D-027). Phase 2 discovery answered (Q-007/D-028–030); Phase 2.1 accepted. Phase 2.2 accepted. Phase 2.3 Q-009 answered, implemented and accepted; Phase 2.4 accepted. Phase 3.1 bank preview/history implemented; bank posting/review/undo now implemented; sales imports, historical migration and Phases 4–7 not implemented.
 
 ## Branches and working tree
 
@@ -104,12 +104,14 @@ The frontend working tree was clean before the documentation pointer was added.
 
 ## What the client should review
 
-Phase 3.1 bank preview/history accepted by the client (D-048). See PHASE_3_1_DELIVERY.md.
-The isolated local preview includes synthetic DO/ES bank uploads and configuration.
+Phase 3.2 bank posting/review/undo is ready for client review. See PHASE_3_2_DELIVERY.md.
+Dedicated Posting QA account contains synthetic posting/correction/undo examples;
+pre-existing user-uploaded QA previews are retained.
 
 ## Next work
 
-Phase 3.2 bank movement commit/overlap/undo discovery (Q-012).
+Client acceptance of Phase 3.2, then Phase 3.3 Alegra invoice/item import discovery.
+Q-012 answered (D-049–050).
 Q-011 answered (D-043–046); exact completed-month pilot selection remains Phase 3.4.
 Exact Spain method aliases remain editable and unconfigured until supplied.
 Exact Caixa fee amount/frequency and offer dates remain optional setup follow-up. Imported movements, expected balances and sensitive payment
@@ -242,3 +244,16 @@ of proposed bank amount/date corrections. Both recommendations remain proposals,
 not accepted business policy. Independent new rows must remain importable and
 raw history must be retained under already accepted rules.
 Documentation only; no financial posting, code, migrations or data changes.
+
+## Phase 3.2 implementation checkpoint
+
+2026-10-24: Q-012 yes/yes recorded (D-049–050). Implemented financial bank
+postings/movements, source occurrence links and decisions, ledger revision plans,
+audited explicit correction review, undo previews/reversals and ownership rules.
+Partial undo protects edited/reconciled/corrected or independently supported
+movements. Source batches/rows retained. No sales/results/classification claims.
+217 PostgreSQL tests pass, including two real concurrent-import cases. Focused
+SQLite tests, frontend lint/build and Django/migration checks documented in
+PHASE_3_2_DELIVERY.md. Browser verified synthetic commit/retry/review/history/undo.
+Client acceptance pending. No real financial movements were created by the agent;
+normal/production DB and real grants unchanged. Dedicated synthetic QA setup only.

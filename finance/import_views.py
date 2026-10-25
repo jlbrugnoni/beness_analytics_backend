@@ -23,6 +23,12 @@ class BankPreviewPermission(FinancePermission):
 
 
 class BankBatchSerializer(serializers.ModelSerializer):
+    processing_status = serializers.SerializerMethodField()
+
+    def get_processing_status(self, obj):
+        posting = getattr(obj, 'posting', None)
+        return posting.status if posting else 'not_imported'
+
     account_name = serializers.CharField(source='account.name', read_only=True)
     company_name = serializers.CharField(source='account.company.name', read_only=True)
     currency = serializers.CharField(source='account.currency', read_only=True)
@@ -30,7 +36,7 @@ class BankBatchSerializer(serializers.ModelSerializer):
     class Meta:
         model = BankImportBatch
         fields = ['id', 'account', 'account_name', 'company_name', 'currency', 'provider', 'file_name', 'byte_size',
-                  'encoding', 'parser_version', 'status', 'summary', 'file_issues', 'duplicate_of', 'uploaded_by', 'created_at']
+                  'encoding', 'parser_version', 'status', 'processing_status', 'summary', 'file_issues', 'duplicate_of', 'uploaded_by', 'created_at']
         read_only_fields = fields
 
 
@@ -75,7 +81,7 @@ class BankImportViewSet(viewsets.ReadOnlyModelViewSet):
         return response
 
     def get_queryset(self):
-        queryset = BankImportBatch.objects.filter(account__in=visible_accounts(self.request.user)).select_related('account__company').defer('original_file')
+        queryset = BankImportBatch.objects.filter(account__in=visible_accounts(self.request.user)).select_related('account__company', 'posting').defer('original_file')
         account = self.request.query_params.get('account')
         if account:
             if not account.isdecimal():

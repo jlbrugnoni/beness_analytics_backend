@@ -2,7 +2,8 @@
 
 Status: Phase 0 accepted, 2026-10-24. Names describe the target domain;
 exact Django field/API names are finalized during implementation. Phase 1 delivery
-and Phase 2.1–2.4 deliveries list the implemented configuration/access subset; other records remain planned.
+and Phase 2.1–2.4 deliveries list implemented configuration/access. Phase 3.1–3.2
+deliveries add bank previews/postings/review/undo; other domain records remain planned.
 
 ## Ownership and configuration
 
@@ -108,3 +109,23 @@ figure.
   movement, observed min/max dates, repeated occurrence count, header sections,
   financial_records_created=0. These are parsing controls, not result/balance
   values or proof of complete coverage. Exact decimal strings retain cents.
+
+## Implemented bank posting fields (Phase 3.2)
+
+- Account.ledger_revision: internal financial-plan version, separate from settings
+  revision. Supported financial writes advance it under the account lock.
+- BankPosting: one raw batch, financial actor, active/partial_undo/undone state,
+  revision, created/undone timestamps. Raw parse status is unchanged.
+- BankMovement: account/provider, current source dictionary (ISO bank date, signed
+  decimal strings, reported balance, original descriptions/reference/serial),
+  non-unique fingerprint, created_from row, active/reconciled, revision/timestamps.
+- BankDecision: posting and source-row identity, initial outcome, pending/created/
+  linked/corrected/ignored/invalid resolution, movement, revision. One posting
+  cannot assign two source occurrences to the same movement.
+- BankEvent: posting/movement/row/actor, action, previous/new snapshot, note/time.
+  Undo-import events also retain request token/result for safe retries.
+- Batch API processing_status: financial status separate from source parse status.
+  Candidate and movement IDs are scoped references, not transaction natural keys.
+- Undo eligibility: created/revision-1/unreconciled/no independent active source
+  dependencies. Old source corrections/manual changes remain review protected.
+  Reused existing movements are explicitly left unchanged.

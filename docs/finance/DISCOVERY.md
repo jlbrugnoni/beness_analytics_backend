@@ -326,7 +326,8 @@ Sent 2026-10-24 after Phase 3.1 acceptance (D-048). Existing D-046 sets undo
 record safeguards, but does not identify who may undo another user's upload.
 Source history/manual preservation is settled; the exact amount/date replacement
 approval path remains to be defined. See PHASE_3_2_DISCOVERY.md and QUESTIONNAIRE.md.
-Recommendations are pending, not assumed accepted. These questions do not reopen
+Client answered yes to both recommendations on 2026-10-24 (D-049–050).
+Own/manager undo authority and explicit source-correction approval are accepted. These questions do not reopen
 permission inheritance, scope, missing-row deletion or valid-row continuation.
 
 ## Recording an answer

@@ -353,6 +353,17 @@ and changes to closed periods still need their phase-specific definitions.
   also require finance import capability. Raw files must not be public media or
   bypass permissions through admin/download endpoints.
 
+- **BR-056:** Financial import undo requires import/edit capability and existing
+  account/privacy access. An operator can undo their own posting; financial
+  settings authority additionally permits others' postings. No role can bypass
+  protection for edits/reconciliation/approved source corrections or other active
+  source dependencies. Raw uploader and financial committer are recorded apart.
+- **BR-057:** Proposed source amount/date corrections retain the current bank
+  movement until explicit approval. The user can instead retain the current
+  values and link evidence, identify a distinct new occurrence, or ignore a row
+  with a reason. Preserve previous values and actor/history. Pending corrections
+  and identity issues do not block independent valid new movements.
+
 ## Reference reports
 
 These are source fixtures, not committed datasets. Keep originals outside Git and

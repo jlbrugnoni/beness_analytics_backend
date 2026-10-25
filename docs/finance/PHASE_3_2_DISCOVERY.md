@@ -1,7 +1,8 @@
 # Phase 3.2 bank transaction commit, overlaps and undo discovery
 
-Date: 2026-10-24. Phase 3.1 accepted (D-048). Q-012 sent; answers pending.
-This document is a proposed delivery design, not implemented financial posting.
+Date: 2026-10-24. Phase 3.1 accepted (D-048). Q-012 answered (D-049–050).
+This document preserves discovery/design. See PHASE_3_2_DELIVERY.md for
+implemented behavior, validation and remaining boundaries.
 
 ## Existing accepted boundaries
 
@@ -90,3 +91,12 @@ exact pilot month/cutoff is still selected during migration preparation.
 No code, migrations, reports, financial records or grants changed in this discovery
 checkpoint. Both repositories remain on feature/finance-phase-2; no production
 push, merge or deployment authorized.
+
+### Q-012 answers received — 2026-10-24
+
+1. Yes: proposed own/other import undo authority accepted, with all existing
+   capability, account and protected-record safeguards (D-049).
+2. Yes: preserve existing amount/date until explicit correction review, while
+   independent valid new rows import (D-050).
+
+No further business question blocks bank transaction posting/review/undo.
