@@ -419,3 +419,18 @@ BR-022–028/035 and the completed-month approach D-045 remain accepted.
 Keep the question, append the client's answer with its date, state the accepted
 interpretation, and link the resulting decision/rules. If an answer is partial,
 identify only the remaining ambiguity. Update dependent phase tasks and progress.
+
+
+## Q-016 — shared payment identity / cardinality
+
+Issued 2026-10-25 after client accepted the workbook payment preview (D-066).
+Client clarified migration is normally one initial operation and regular reports
+maintain the shared history thereafter (D-067). Two numbered questions asked:
+
+1. Does payment Numero stay permanent across downloads and remain unique across
+   all accounts in a company?
+2. Can one receipt pay several invoices, or always only one?
+
+Answers pending. Do not infer global identity from the current 1,127 distinct
+sample numbers. Native source contract and shared posting acceptance cases are
+specified in PHASE_3_3_3_2_DISCOVERY.md. No new runtime behavior claimed.

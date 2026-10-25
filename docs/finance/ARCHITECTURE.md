@@ -471,3 +471,13 @@ privacy reuses migration controls; source cells are paginated with payment rows.
 See PHASE_3_3_3_1_DELIVERY.md. Financial receipts/allocations, cross-file duplicate
 decisions, posting/linking and undo remain planned; preview does not alter the
 single source channel on existing FinancialSale records.
+
+
+## Migration versus routine operation (D-067)
+
+Historical migration is normally a one-time setup entry point; recurring bank,
+invoice and payment report uploads maintain the same financial records. Both
+adapters must share identities, assignments, matching/review and dependent-undo
+services. Never fork financial history by entry point or require a recurring
+manual workbook. See PHASE_3_3_3_2_DISCOVERY.md for the receipt structure and
+cross-entry overlap acceptance cases. Payment financial posting remains planned.

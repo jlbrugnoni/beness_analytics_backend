@@ -86,6 +86,9 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-065 | 2026-10-25 | Accepted source scope; workflow proposed | Client confirmed both Alegra invoice/item and payment/administration reports are needed: invoice details/studio from the former, fractional payments from the latter. This supersedes the no-mixed-payment assumption in D-054 for historical support. Client attributes observed September discrepancies to source-report versions; no mismatched records are automatically corrected. Recommended invoice → payment → bank sequence and order-independent pending links are documented in ALEGRA_DUAL_REPORT_IMPORT_PLAN.md; native payment export still needs inspection before implementation. |
 
+| D-066 | 2026-10-25 | Accepted | Client said “perfect. continue” after testing Phase 3.3.3.1 payment workbook preview. Payment preview accepted; proceed to shared receipt/routine import discovery. This is not acceptance of financial migration/posting or deployment. |
+| D-067 | 2026-10-25 | Accepted | Client clarified migration is a rarely used initial setup operation, normally once; subsequent history is maintained by regular report uploads. Use shared financial records/identities, assignments and import services across both paths; do not require recurring enriched workbooks or build a parallel migration ledger. See PHASE_3_3_3_2_DISCOVERY.md. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

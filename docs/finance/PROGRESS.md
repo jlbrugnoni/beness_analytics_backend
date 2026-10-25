@@ -408,3 +408,18 @@ focused PG payment tests passed. Frontend lint/build, migration checks and
 synthetic browser QA passed. See PHASE_3_3_3_1_DELIVERY.md for limits, evidence and
 client checklist. No deployment/push/merge. Acceptance pending for this preview
 and prior source display; next is receipt identity discovery and reviewed posting.
+
+
+## Phase 3.3.3.2 shared payment/routine upload discovery
+
+2026-10-25: client accepted payment preview (D-066), clarifying historical migration
+is occasional setup, normally once; ordinary reports maintain the same history
+thereafter (D-067). Recorded separate entry points feeding common financial records,
+source identities, manual assignments and overlap/review/undo services. No recurring
+enriched workbook requirement or separate migration ledger. Prepared
+PHASE_3_3_3_2_DISCOVERY.md with concrete acceptance cases for migration→native and
+native→migration overlap, pending links and manual preservation. Q-016 asks whether
+payment Numero is permanent/company-wide unique and whether one receipt can cover
+several invoices. Answers pending; no posting identity/cardinality assumption
+implemented. Documentation checks only; runtime/data/grants unchanged. No push,
+merge or deployment. Next: answer Q-016 and implement the shared payment structure.

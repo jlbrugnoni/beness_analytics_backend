@@ -158,3 +158,12 @@ existing migration uploads. See PHASE_3_3_3_1_DELIVERY.md for current behavior,
 validation, privacy and acceptance checklist. Earlier statements that no payment
 importer exists refer to financial posting and standalone native CSV support,
 which remain planned. This preview performs no financial receipt/allocation writes.
+
+
+## Scope clarification and next subphase (D-066–067)
+
+Payment workbook preview accepted. Initial migration is normally performed once;
+ongoing operation uses regular source reports. Shared financial receipt/invoice/
+bank records and identity/manual-preservation services are required across both
+entry points. Next is PHASE_3_3_3_2_DISCOVERY.md / Q-016, not further migration-only
+preview expansion. Existing preview implementation remains source inspection only.

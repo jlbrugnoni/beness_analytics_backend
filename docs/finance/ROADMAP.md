@@ -110,3 +110,10 @@ Phase 3.3.3.1 workbook payment source previews implemented and validated;
 client acceptance pending. Uses already-uploaded Alegra_adm sheets. Native payment
 CSV contract, receipt identity/posting, invoice links and dependent undo are later
 3.3.3 work before historical financial posting. See PHASE_3_3_3_1_DELIVERY.md.
+
+
+Phase 3.3.3.1 payment preview accepted (D-066). D-067 confirms migration as normally
+one-time setup; ongoing reports feed the same financial history. Next shared
+payment/routine import discovery is PHASE_3_3_3_2_DISCOVERY.md (Q-016 pending).
+Cross-entry deduplication and manual preservation take priority over additional
+migration-only screens. No financial payment-posting delivery is claimed.

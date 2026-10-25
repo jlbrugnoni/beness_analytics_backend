@@ -1,6 +1,6 @@
 # Phase 3.3.3.1 — workbook payment source preview
 
-Date: 2026-10-25. Implemented and validated; client acceptance pending.
+Date: 2026-10-25. Implemented, validated and accepted by client (D-066).
 Both repositories remain feature/finance-phase-2. No push/merge/deployment.
 
 ## What I did
