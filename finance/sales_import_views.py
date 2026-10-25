@@ -33,12 +33,18 @@ class SalesPreviewPermission(FinancePermission):
 
 
 class SalesBatchSerializer(serializers.ModelSerializer):
+    processing_status = serializers.SerializerMethodField()
+
+    def get_processing_status(self, obj):
+        posting = getattr(obj, 'posting', None)
+        return posting.status if posting else 'not_imported'
+
     company_name = serializers.CharField(source='company.name', read_only=True)
 
     class Meta:
         model = SalesImportBatch
         fields = ['id', 'company', 'company_name', 'provider', 'file_name', 'byte_size', 'encoding',
-                  'parser_version', 'status', 'summary', 'file_issues', 'duplicate_of', 'uploaded_by', 'created_at']
+                  'parser_version', 'status', 'processing_status', 'summary', 'file_issues', 'duplicate_of', 'uploaded_by', 'created_at']
         read_only_fields = fields
 
 
@@ -78,7 +84,7 @@ class SalesImportViewSet(viewsets.ReadOnlyModelViewSet):
         return response
 
     def get_queryset(self):
-        qs = SalesImportBatch.objects.filter(company__in=sales_preview_companies(self.request.user)).select_related('company').defer('original_file')
+        qs = SalesImportBatch.objects.filter(company__in=sales_preview_companies(self.request.user)).select_related('company', 'posting').defer('original_file')
         company = self.request.query_params.get('company')
         if company:
             if not company.isdecimal():

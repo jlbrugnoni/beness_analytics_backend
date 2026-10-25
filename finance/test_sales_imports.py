@@ -50,12 +50,13 @@ class AlegraReaderTests(SimpleTestCase):
         self.assertIn('invalid_date', result['invoices'][0]['issues'])
         self.assertIn('inconsistent_date', result['invoices'][0]['issues'])
 
-    def test_unknown_status_and_unverified_cancel_label_are_review_not_paid(self):
+    def test_confirmed_cancelled_and_unknown_status_are_not_paid(self):
         result = read_alegra_csv(report([{'status':'Anulada'}, {'code':'B0200000002','status':'Pendiente'}, {'code':'B0200000003'}]))
         self.assertEqual(result['summary']['paid_total'], '100.00')
-        self.assertEqual(result['summary']['review_invoices'], 2)
+        self.assertEqual(result['summary']['review_invoices'], 1)
+        self.assertEqual(result['summary']['cancelled_invoices'], 1)
         self.assertEqual(result['invoices'][0]['source']['status'], 'Anulada')
-        self.assertIn('status_requires_review', result['invoices'][0]['issues'])
+        self.assertEqual(result['invoices'][0]['issues'], [])
 
     def test_disagreeing_invoice_headers_are_not_silently_overwritten(self):
         for key, value in [('invoice_total','201.00'), ('status','Other'), ('payment_method','Efectivo'), ('cost_center','Other'), ('customer','Different synthetic client')]:

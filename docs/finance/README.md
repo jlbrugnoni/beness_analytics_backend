@@ -1,12 +1,12 @@
 # Finance module handover
 
-Status: Phase 0 accepted; Phase 1 accepted; Phase 2.1 accepted; Phase 2.2 accepted; Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 accepted (D-051); Phase 3.3.1 Alegra source previews accepted (D-056); Phase 3.3.2 discovery in progress. Updated: 2026-10-25.
+Status: Phase 0 accepted; Phase 1 accepted; Phase 2.1 accepted; Phase 2.2 accepted; Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 accepted (D-051); Phase 3.3.1 Alegra source previews accepted (D-056); Phase 3.3.2 sales posting/review/undo implemented; client acceptance pending. Updated: 2026-10-25.
 
 The finance module will support bank imports, sales reconciliation, expense
 classification, historical migration, and monthly management results for the
 Dominican Republic and Spain. The client has accepted the overall direction.
 The main discovery batch is answered. Finance foundation/access and account/terminal/category/source-mapping/fee/timing/tax configuration code and
-migrations now exist. Bank previews/history and bank transaction posting/review/undo are implemented; sales posting and results remain planned. Alegra source previews are implemented. See the delivery documents below for
+migrations now exist. Bank previews/history and bank transaction posting/review/undo are implemented; Alegra source previews and sales posting/review/undo are implemented; reconciliation and results remain planned. See the delivery documents below for
 implemented behavior, checks, setup, and acceptance steps.
 
 ## Documentation index
@@ -23,6 +23,7 @@ implemented behavior, checks, setup, and acceptance steps.
 | [Consolidated questionnaire](QUESTIONNAIRE.md) | Current numbered list for the client to answer together |
 | [Progress](PROGRESS.md) | Actual delivery status, validation, branches, and next work |
 | [Initial configuration](INITIAL_CONFIGURATION.md) | Confirmed accounts, terminals, historical fee defaults and savings baseline |
+| [Phase 3.3.2 delivery](PHASE_3_3_2_DELIVERY.md) | Sales posting, overlap, cancellation/replacement decisions and undo |
 | [Phase 3.3.2 discovery](PHASE_3_3_2_DISCOVERY.md) | Sales posting/overlap design and remaining cancellation questions |
 | [Phase 3.3.1 delivery](PHASE_3_3_1_DELIVERY.md) | Alegra source preview, invoice/item validation and client test steps |
 | [Phase 3.3 discovery](PHASE_3_3_DISCOVERY.md) | Alegra invoice/item scope and Q-013 correction, numbering and payment questions |

@@ -1,7 +1,8 @@
 # Phase 3.3.2 sales posting, overlap and cancellation review
 
 Date: 2026-10-25. Phase 3.3.1 source previews accepted (D-056).
-Q-014 pending. This document defines the next delivery; no posting code exists yet.
+Q-014 answered (D-057–058). Phase 3.3.2 implemented and validated; client
+acceptance pending. See PHASE_3_3_2_DELIVERY.md for delivered behavior and limits.
 
 ## Scope and accepted boundaries
 
@@ -78,3 +79,15 @@ unanswered question nor a synthetic Anulada test row confirms a source alias.
   or overwrite intervening decisions. All sensitive paths recheck access.
 - Undo only eligible new records; protect prior support, manual/reconciled changes
   and approved status decisions. No application test is due at this discovery step.
+
+
+## Q-014 answers received — 2026-10-25
+
+1. ESTADO uses **Anulada** (D-057). Recognize Cobrada as paid and Anulada as
+   cancelled, with normalization for case/whitespace. Do not guess other statuses.
+2. Yes, invoices may be cancelled/reissued without refunding the client (D-058).
+   Cancellation alone does not prove a refund is owed or paid. Keep settlement
+   pending until an operator records refund expected, no refund, or a replacement
+   invoice in the same company. A note is required. Do not create a bank movement
+   or second profit deduction from that choice. Original-period treatment remains
+   BR-038; refund-to-bank matching remains Phase 5.

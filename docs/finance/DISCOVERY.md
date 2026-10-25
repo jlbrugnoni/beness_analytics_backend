@@ -369,9 +369,21 @@ keeps unconfirmed cancellation labels from being guessed.
 Sent 2026-10-25 after source-preview acceptance (D-056). See
 PHASE_3_3_2_DISCOVERY.md and QUESTIONNAIRE.md. Two questions: exact cancellation
 ESTADO text (carried forward, still unanswered), and whether cancelled/reissued
-invoices can retain payment without a refund. Answers pending. Original-sale-month
+invoices can retain payment without a refund. Answered 2026-10-25 (D-057–058). Original-sale-month
 refund treatment and explicit approval of posted status changes are already
 settled; these questions do not reopen them.
+
+
+## Q-014 answers received — 2026-10-25
+
+1. ESTADO uses **Anulada** (D-057). Recognize Cobrada as paid and Anulada as
+   cancelled, with normalization for case/whitespace. Do not guess other statuses.
+2. Yes, invoices may be cancelled/reissued without refunding the client (D-058).
+   Cancellation alone does not prove a refund is owed or paid. Keep settlement
+   pending until an operator records refund expected, no refund, or a replacement
+   invoice in the same company. A note is required. Do not create a bank movement
+   or second profit deduction from that choice. Original-period treatment remains
+   BR-038; refund-to-bank matching remains Phase 5.
 
 ## Recording an answer
 

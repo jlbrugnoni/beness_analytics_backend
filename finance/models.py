@@ -18,6 +18,7 @@ def normalized_source_value(value):
 
 
 class Company(models.Model):
+    sales_revision = models.PositiveIntegerField(default=1, editable=False)
     name = models.CharField(max_length=180)
     site = models.ForeignKey("core_data.Site", on_delete=models.PROTECT, related_name="finance_companies")
     default_currency = models.CharField(max_length=3, validators=[currency_validator])
@@ -505,3 +506,59 @@ class SalesImportInvoice(models.Model):
     class Meta:
         ordering = ['occurrence']
         constraints = [models.UniqueConstraint(fields=['batch', 'occurrence'], name='finance_sales_preview_invoice')]
+
+
+class SalesPosting(models.Model):
+    batch = models.OneToOneField(SalesImportBatch, on_delete=models.PROTECT, related_name='posting')
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    status = models.CharField(max_length=20, default='active')
+    revision = models.PositiveIntegerField(default=1)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class FinancialSale(models.Model):
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name='financial_sales')
+    provider = models.CharField(max_length=16, default='alegra')
+    code = models.CharField(max_length=64)
+    source = models.JSONField(default=dict)
+    items = models.JSONField(default=list)
+    created_from = models.ForeignKey(SalesImportInvoice, on_delete=models.PROTECT)
+    studio = models.ForeignKey('core_data.Studio', null=True, blank=True, on_delete=models.PROTECT)
+    channel = models.CharField(max_length=24, blank=True)
+    assignments = models.JSONField(default=dict)
+    cancellation_treatment = models.CharField(max_length=20, default='pending')
+    replacement = models.ForeignKey('self', null=True, blank=True, on_delete=models.PROTECT, related_name='replaces')
+    cancellation_note = models.TextField(blank=True)
+    revision = models.PositiveIntegerField(default=1)
+    active = models.BooleanField(default=True)
+    reconciled = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-pk']
+        constraints = [models.UniqueConstraint(fields=['company', 'provider', 'code'], condition=models.Q(active=True), name='finance_active_sale_code')]
+
+
+class SalesDecision(models.Model):
+    posting = models.ForeignKey(SalesPosting, on_delete=models.PROTECT, related_name='decisions')
+    invoice = models.OneToOneField(SalesImportInvoice, on_delete=models.PROTECT)
+    sale = models.ForeignKey(FinancialSale, null=True, on_delete=models.PROTECT, related_name='decisions')
+    resolution = models.CharField(max_length=20)
+    revision = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        ordering = ['invoice__occurrence']
+
+
+class SalesEvent(models.Model):
+    posting = models.ForeignKey(SalesPosting, on_delete=models.PROTECT, related_name='events')
+    sale = models.ForeignKey(FinancialSale, null=True, on_delete=models.PROTECT, related_name='events')
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    action = models.CharField(max_length=30)
+    before = models.JSONField(default=dict)
+    after = models.JSONField(default=dict)
+    note = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['created_at', 'pk']

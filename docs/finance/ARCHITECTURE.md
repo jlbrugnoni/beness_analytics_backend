@@ -1,9 +1,9 @@
 # Finance architecture
 
-Status: accepted target design; Phase 1 accepted, Phases 2.1–2.4 accepted; Phase 3.1 accepted; Phase 3.2 accepted (D-051); Phase 3.3.1 source previews accepted (D-056); Phase 3.3.2 discovery in progress.
-Updated: 2026-10-24. Implemented models are finance.Company, finance.Account,
-finance.AccessChange, finance.Terminal, finance.Category, finance.SourceMapping, finance.ConfigurationChange, finance.FeePolicy, finance.SettlementPolicy, finance.TaxProfile, finance.BankImportBatch, finance.BankImportRow, finance.BankPosting, finance.BankMovement, finance.BankDecision, finance.BankEvent and capability fields on existing access profiles.
-Sales imports, classification, reconciliation and results below remain future work.
+Status: accepted target design; Phase 1 accepted, Phases 2.1–2.4 accepted; Phase 3.1 accepted; Phase 3.2 accepted (D-051); Phase 3.3.1 source previews accepted (D-056); Phase 3.3.2 sales posting/review/undo implemented; client acceptance pending.
+Updated: 2026-10-25. Implemented models are finance.Company, finance.Account,
+finance.AccessChange, finance.Terminal, finance.Category, finance.SourceMapping, finance.ConfigurationChange, finance.FeePolicy, finance.SettlementPolicy, finance.TaxProfile, finance.BankImportBatch, finance.BankImportRow, finance.BankPosting, finance.BankMovement, finance.BankDecision, finance.BankEvent, finance.SalesImportBatch, finance.SalesImportRow, finance.SalesImportInvoice, finance.SalesPosting, finance.FinancialSale, finance.SalesDecision, finance.SalesEvent and capability fields on existing access profiles.
+Sales posting is implemented; broader expense classification, bank reconciliation and results remain future work.
 See PHASE_1_DELIVERY.md, PHASE_2_1_DELIVERY.md and PHASE_2_2_DELIVERY.md and PHASE_2_3_DELIVERY.md and PHASE_2_4_DELIVERY.md and PHASE_3_1_DELIVERY.md and PHASE_3_2_DELIVERY.md for exact endpoints and limitations.
 
 ## Existing integration points
@@ -407,3 +407,26 @@ access cannot expose them. Upload/original retrieval also require import. There
 is no global cross-batch sales identity/posting/cancellation engine yet. Future
 posting must honor immutable invoice facts, explicit status approval, manual
 assignments and original-period refunds without double deductions.
+
+## Implemented sales financial posting (Phase 3.3.2)
+
+FinancialSale holds the original source/item snapshot and separate studio/channel/
+cancellation assignments. Only active company/provider/code is unique. SalesPosting
+owns decisions for one immutable source batch; SalesEvent preserves before/after
+history. Source rows and historical v1 summaries are never rewritten. Parser v2
+recognizes confirmed Anulada; posting interpretation v1 recognizes it from old
+stored previews while recording its version in audit.
+
+Compare invoice facts plus item evidence as a multiset. Unknown/incomplete source
+invoices do not post; independent valid invoices continue. Unexpected changed facts
+are anomalies, not editable source fields. A later cancellation requires approval;
+old paid evidence never restores status automatically. Cancelled sales contribute
+zero in the original invoice period. No bank debit or automatic refund deduction
+is created. Settlement treatment/replacement is operator evidence for Phase 5.
+
+All financial writers lock Company and advance sales_revision. Plan tokens include
+ledger/company/rule revisions; individual edits/decisions require current revisions.
+PostgreSQL assignment locking uses FOR UPDATE OF self to avoid nullable-studio
+outer-join locks. Undo only reverses eligible untouched creations; edits, linked
+replacement targets, reconciliation, other imports and approved cancellations are
+protected. All source/ledger/history paths retain full company/privacy gates.

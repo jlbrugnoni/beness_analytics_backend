@@ -174,3 +174,22 @@ it cannot force edited/reconciled/corrected values back. Undo ownership follows
 the financial committer; managers require the same import/edit/detail/account
 permissions. Expand Account transactions and history for active/all/reversed
 records and readable before/after events. See PHASE_3_2_DELIVERY.md.
+
+## Implemented Alegra sales posting — Phase 3.3.2
+
+Save source preview, review invoice/item validation, then explicitly Import sales.
+Complete independent new invoices post; unchanged invoices link to current sales.
+Unknown/invalid invoices require corrected source; unexpected changed facts stay
+pending for investigation and can be retained with a reason. No partial invoice
+item posting or missing-row deletion.
+
+Review a later Anulada status before approving cancellation. Keep original sale
+facts and choose separately refund expected/no refund/replacement with a note.
+A replacement must be another active paid invoice in the company. No bank debit
+or second profit deduction is generated. Manual studio/recurring corrections and
+all before/after evidence survive overlapping uploads. Refund-to-bank matching,
+expense classification and period results remain later deliveries.
+
+Undo previews eligible/protected/reused invoices. Only untouched creations reverse;
+manual/reconciled/dependent/approved-cancellation records remain protected. All and
+Reversed views retain history. Undo does not delete immutable source uploads.

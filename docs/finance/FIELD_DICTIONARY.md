@@ -129,3 +129,17 @@ figure.
 - Undo eligibility: created/revision-1/unreconciled/no independent active source
   dependencies. Old source corrections/manual changes remain review protected.
   Reused existing movements are explicitly left unchanged.
+
+## Implemented sales ledger fields — Phase 3.3.2
+
+| Field | Meaning and owner |
+| --- | --- |
+| Company/provider/full code | Active invoice identity; includes B01/B02 prefix |
+| source / items | Preserved source facts and each item occurrence; date/client/amount/items not editable here |
+| studio / channel / assignments | Separate decisions and mapping evidence/origins; manual choices survive reimport |
+| source.status_kind | Versioned paid/cancelled interpretation; later cancellation approved explicitly |
+| cancellation_treatment | Pending, refund expected, no refund or replacement; never a bank payment |
+| replacement / cancellation_note | Same-company active paid replacement and operator explanation |
+| contribution | Full original invoice total only while active and paid, otherwise zero; not profit |
+| revision / active / reconciled | Stale/undo guards; reversal preserves history; later bank matching must maintain guards |
+| SalesPosting/Decision/Event | Financial committer, source decisions and before/after audit, separate from raw uploader |

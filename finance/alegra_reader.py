@@ -7,7 +7,7 @@ from datetime import datetime
 from decimal import Decimal, InvalidOperation
 from .bank_readers import MAX_FILE_BYTES, MAX_ROWS, normalized, money
 
-PARSER_VERSION = 'alegra-items-v1'
+PARSER_VERSION = 'alegra-items-v2'
 FIELDS = {
     'date': 'FECHA DE EMISIÓN', 'code': 'CÓDIGO', 'status': 'ESTADO',
     'cost_center': 'CENTRO DE COSTO', 'payment_method': 'MÉTODO DE PAGO', 'price_list': 'LISTAS DE PRECIOS',
@@ -100,9 +100,8 @@ def read_alegra_csv(content):
                         row['issues'].append(str(error))
                 if not parsed['item_name']:
                     row['issues'].append('missing_item_name')
-                # Exact cancellation label is pending source evidence. Unknown
-                # states remain visible for review and never count as paid sales.
-                parsed['status_kind'] = 'paid' if normalized(parsed['status']) == 'cobrada' else 'review'
+                # Client-confirmed aliases; all other statuses stay unresolved.
+                parsed['status_kind'] = {'cobrada': 'paid', 'anulada': 'cancelled'}.get(normalized(parsed['status']), 'review')
                 if parsed['status_kind'] == 'review':
                     row['issues'].append('status_requires_review')
                 groups[parsed['code'] or f'@missing:{index}'].append(row)
@@ -129,16 +128,19 @@ def read_alegra_csv(content):
         result['invoices'].append(dict(occurrence=occurrence, code=source['code'], source=source,
             item_count=len(rows), row_numbers=[row['row_number'] for row in rows], issues=issues))
     eligible = [invoice for invoice in result['invoices'] if not invoice['issues']]
+    paid = [invoice for invoice in eligible if invoice['source']['status_kind'] == 'paid']
+    cancelled = [invoice for invoice in eligible if invoice['source']['status_kind'] == 'cancelled']
     dates = sorted(invoice['source']['date'] for invoice in eligible)
     result['summary'] = dict(currency='DOP', item_rows=sum(len(rows) for rows in groups.values()),
-        invoice_count=len(groups), valid_invoices=len(eligible), review_invoices=len(groups) - len(eligible),
-        paid_total=f"{sum((Decimal(invoice['source']['invoice_total']) for invoice in eligible), Decimal(0)):.2f}",
+        invoice_count=len(groups), valid_invoices=len(paid), cancelled_invoices=len(cancelled), review_invoices=len(groups) - len(eligible),
+        paid_total=f"{sum((Decimal(invoice['source']['invoice_total']) for invoice in paid), Decimal(0)):.2f}",
         first_date=dates[0] if dates else None, last_date=dates[-1] if dates else None,
         financial_records_created=0)
     # A malformed/truncated file can retain evidence, but its partial totals must
     # never be presented as an eligible import.
     if result['file_issues']:
         result['summary']['valid_invoices'] = 0
+        result['summary']['cancelled_invoices'] = 0
         result['summary']['review_invoices'] = len(groups)
         result['summary']['paid_total'] = None
     return result

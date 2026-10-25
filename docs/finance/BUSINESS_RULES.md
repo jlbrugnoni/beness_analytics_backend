@@ -384,6 +384,17 @@ and changes to closed periods still need their phase-specific definitions.
   require import capability. Bank-account capability is not required for sales.
   Studio-restricted users cannot read company-wide source files or preview items.
 
+- **BR-062:** Client-confirmed Alegra status Anulada means cancelled, Cobrada
+  means paid. Unknown statuses remain review-only. A later cancellation of a
+  posted invoice requires approval. Old paid evidence cannot silently restore it.
+  Version source interpretation; retain prior raw previews and summaries unchanged.
+- **BR-063:** Cancellation may retain the client's payment for a replacement.
+  Store settlement separately as pending, refund expected, no refund or linked
+  replacement. Require an explanation for changes and validate any replacement
+  as another active paid invoice in the same company. No cancellation choice
+  fabricates a bank debit, proves a refund occurred or deducts the sale twice.
+  Bank matching and monthly result calculation remain later phases.
+
 ## Reference reports
 
 These are source fixtures, not committed datasets. Keep originals outside Git and

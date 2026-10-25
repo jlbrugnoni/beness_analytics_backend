@@ -286,7 +286,19 @@ keeps unconfirmed cancellation labels from being guessed.
 
 ## Q-014: Phase 3.3.2 cancellation details — 2026-10-25
 
-Status: awaiting answers. Source previews accepted (D-056).
+Status: answered 2026-10-25 (D-057–058). Source previews accepted (D-056).
 
 1. What exact text appears in Alegra's ESTADO column for a cancelled invoice? The supplied sample contains only Cobrada; we still need the cancelled label rather than guessing it.
 2. Do you sometimes cancel an invoice and issue a replacement without returning money to the client, or does every cancellation require a refund? For example, correcting an invoice could leave the original payment in place. This determines whether a cancellation should show a refund pending or a replacement/no-refund explanation.
+
+
+## Q-014 answers received — 2026-10-25
+
+1. ESTADO uses **Anulada** (D-057). Recognize Cobrada as paid and Anulada as
+   cancelled, with normalization for case/whitespace. Do not guess other statuses.
+2. Yes, invoices may be cancelled/reissued without refunding the client (D-058).
+   Cancellation alone does not prove a refund is owed or paid. Keep settlement
+   pending until an operator records refund expected, no refund, or a replacement
+   invoice in the same company. A note is required. Do not create a bank movement
+   or second profit deduction from that choice. Original-period treatment remains
+   BR-038; refund-to-bank matching remains Phase 5.

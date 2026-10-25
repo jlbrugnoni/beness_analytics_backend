@@ -74,6 +74,8 @@ client-approved. Detailed behavior belongs in Business rules.
 | D-054 | 2026-10-25 | Accepted | Q-013: current invoices do not use mixed payment methods. A client may use one or two cards at the same moment; daily bank settlement aggregates them. V1 does not require per-card splits for an invoice. |
 | D-055 | 2026-10-25 | Accepted; exact label pending | Q-013: cancelled invoices remain in Alegra with cancelled status; later refund appears as a bank debit. Apply BR-038 once in the original sale month and link bank refund separately. Exact ESTADO cancellation text was not supplied; unknown statuses stay for review. |
 | D-056 | 2026-10-25 | Accepted | Client confirmed "it worked well" after Phase 3.3.1 Alegra source-preview testing. Preview accepted; proceed to Phase 3.3.2 sales-posting/overlap/cancellation discovery. Exact cancelled ESTADO text remains unconfirmed. No finance deployment authorized. |
+| D-057 | 2026-10-25 | Accepted | Q-014: exact Alegra cancellation status is Anulada. Cobrada is paid; unknown statuses stay for review. Resolves D-055/Q-013 exact-label dependency. |
+| D-058 | 2026-10-25 | Accepted | Q-014: cancellation/reissue without returning client money can happen. Do not infer refund obligation or payment from cancellation alone. Preserve original-period sale treatment and record separate settlement/replacement evidence without a fabricated bank debit or double deduction. |
 
 ## Open policy decisions
 
