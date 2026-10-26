@@ -573,3 +573,9 @@ reconciliation/results; no production schema migration, release, push or merge.
 
 Bank classification checkpoints: backend `11b81ab`, frontend `6566acd`; local
 `feature/finance-phase-2`. QA frontend3037/backend8027 restored after final checks.
+
+2026-10-26 follow-up: client found mandatory bank edit comments too burdensome.
+Made routine bank classification comments optional while preserving audit/revisions,
+permissions and source-correction/undo reason requirements. Added bilingual movement
+kind examples. Focused tests28 passed/2 PostgreSQL-only skips; frontend lint/build
+passed. See BANK_CLASSIFICATION_DELIVERY.md. Client acceptance pending.

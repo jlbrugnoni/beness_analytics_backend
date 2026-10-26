@@ -101,6 +101,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-073 | 2026-10-26 | Daily workspace accepted; bank edit delivery authorized | Client confirmed the first workspace worked, requested bank category/subcategory/method/date/concept/studio editing next, and authorized “continue.” Business assignments remain separate from protected bank facts; recognition is not reconciliation. Use existing edit permissions, account/studio scope, audit and overlap/undo safeguards. Shorten the advanced navigation label to Import details; opening it remains read-only navigation. BANK_CLASSIFICATION_DELIVERY.md records implemented scope and client tests; acceptance of the new editor is pending. |
 
+| D-074 | 2026-10-26 | Routine classification comments optional | Client reported mandatory comments obstructed completing bank data. Routine bank classification saves may omit a comment; actor/time/before-after audit and revisions remain mandatory. Source corrections and undo still require reasons; invoice/receipt correction requirements unchanged. Movement-type help explains existing management classifications without implementing result calculation. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

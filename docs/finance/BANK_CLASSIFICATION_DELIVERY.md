@@ -66,14 +66,14 @@ still guard data, filters, options, histories and aggregates.
 GET bank-movements/{id}/ returns source, classification, completeness and edit state.
 GET bank-movements/{id}/options/ provides scoped catalog/studio/terminal choices
 without requiring financial-settings permission. POST .../assign/ accepts only
-business assignments, expected revision and required reason. Unknown source-fact
+business assignments, expected revision and optional comment. Unknown source-fact
 keys (amount/source/date/reconciled etc.) are rejected explicitly.
 
 Reuse company → account locks plus movement row lock, scope/sensitive access and
 existing can_edit_finance capability. No new grants or parallel roles. Inactive
 company/account/record or reconciled movement cannot be edited; stale saves fail409.
 Classification updates advance movement revision and account ledger revision.
-BankEvent classify stores actor/reason and complete before/after assignment/source
+BankEvent classify stores actor/optional comment and complete before/after assignment/source
 snapshots. Existing source and fingerprint are not overwritten. Reupload/overlap
 links the same movement, retaining assignments; approved source correction also
 retains them. Existing undo protects revised/edited and reconciled records.
@@ -116,7 +116,7 @@ Receipt posting synthetic QA is test data; account Synthetic bank editing QA hol
 safe examples. Do not confuse it with the company holding real historical previews.
 
 1. Bank debits → Edit: inspect the classified20DOP example. Change manual concept,
-   category/subcategory, studio/method or expense month (YYYY-MM), enter reason,
+   category/subcategory, studio/method or expense month (YYYY-MM), optionally enter a comment,
    Save. Close/reopen and verify; bank date/amount/reference remain unchanged.
 2. Bank credits → Edit: operation date differs from deposit date. Select the
    synthetic terminal and verify studio/Cierre; inspect original report fields.
@@ -136,3 +136,30 @@ financial migration or production rollout is added. Those remain separate stages
 Existing real historical/raw source previews are unchanged. Future migration should
 write these same assignment structures with explicit provenance/conflict review,
 not a separate table of financial facts.
+
+## Follow-up: routine comments and movement type help (2026-10-26)
+
+Client reported the mandatory reason obstructed routine completion. Bank assignment
+comments are now optional in API and dialog; omitted/blank comments still produce
+actor/time/before/after audit events and revision increments. Empty-comment history
+shows a translated Classification updated label. Explicit source-review/undo reasons
+and invoice/receipt correction reasons remain required. No schema change.
+
+The movement selector now explains each kind in English and Spanish. Type answers
+why money moved; method answers how. Electricity paid by transfer is Expense +
+Transfer; own-account transfers and deposits of cash already recorded are Internal
+movement + Transfer. These descriptions reflect agreed management policy; actual
+reconciliation and monthly results remain future deliveries.
+
+Validation: focused bank classification/posting suite: 30 found, 28 passed, 2
+PostgreSQL-only race tests skipped on SQLite. Includes omitted/blank comments,
+audit/revisions and retained source-review/undo reason requirements. Changed-file
+frontend lint and production build passed.
+
+Client check: edit debit/credit classification with Comment left empty, save and
+reopen; inspect history and movement-type help. Source bank facts stay read-only.
+
+Browser QA: synthetic company6/debit355 saved an updated description with an empty
+comment. UI confirmed Changes saved and history showed Classification updated with
+before/after values. No real records changed. Screenshot:
+/private/tmp/finance-optional-comment.png. Local backend8027/frontend3037 restored.

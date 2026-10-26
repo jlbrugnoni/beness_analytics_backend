@@ -26,6 +26,36 @@ class BankClassificationTests(APITestCase):
         return self.client.post(f'/api/finance/bank-movements/{obj.pk}/assign/',
             {'expected_revision':obj.revision,'note':'Synthetic review',**values},format='json')
 
+    def test_optional_comment_preserves_classification_audit(self):
+        self.records()
+        for comment in ({}, {'note': ''}):
+            self.debit.refresh_from_db()
+            revision=self.debit.revision
+            response=self.client.post(f'/api/finance/bank-movements/{self.debit.pk}/assign/',
+                {'expected_revision':revision,'description':f'Revision {revision}',**comment},format='json')
+            self.assertEqual(response.status_code,200,response.data)
+            event=BankEvent.objects.filter(action='classify').latest('pk')
+            self.assertEqual(event.actor,self.user)
+            self.assertIsNotNone(event.created_at)
+            self.assertEqual(event.note,'')
+            self.assertEqual(event.after['classification']['description'],f'Revision {revision}')
+            if revision > 1:
+                self.assertEqual(event.before['classification']['description'],f'Revision {revision-1}')
+            self.debit.refresh_from_db()
+            self.assertEqual(self.debit.revision,revision+1)
+        response=self.client.post(f'/api/finance/bank-movements/{self.debit.pk}/assign/',
+            {'expected_revision':self.debit.revision},format='json')
+        self.assertEqual(response.status_code,400)
+
+    def test_source_review_and_undo_still_require_reason(self):
+        self.records()
+        for action,payload in [('resolve',{'decision_id':1,'expected_revision':1,'action':'ignore'}),('undo',{})]:
+            for comment in ({},{'note':''}):
+                response=self.client.post(f'/api/finance/bank-imports/{self.batch}/{action}/',
+                    {'expected_plan':'a'*64,**payload,**comment},format='json')
+                self.assertEqual(response.status_code,400)
+                self.assertIn('note',response.data)
+
     def test_expense_assignment_preserves_source_and_records_audit(self):
         self.records();source=dict(self.debit.source)
         response=self.assign(self.debit,description='August electricity',category=self.category.pk,subcategory=self.subcategory.pk,

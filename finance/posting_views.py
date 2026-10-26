@@ -179,7 +179,7 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
     def assign(self,request,pk=None):
         class Input(serializers.Serializer):
             expected_revision=serializers.IntegerField(min_value=1)
-            note=serializers.CharField(max_length=2000,allow_blank=False)
+            note=serializers.CharField(max_length=2000,allow_blank=True,required=False,default="")
             description=serializers.CharField(max_length=2000,allow_blank=True,required=False)
             operation_date=serializers.DateField(allow_null=True,required=False)
             expense_period=serializers.DateField(allow_null=True,required=False)
