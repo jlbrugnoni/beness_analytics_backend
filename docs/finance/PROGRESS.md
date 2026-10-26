@@ -604,3 +604,18 @@ Migration0013 choices metadata applied only isolated QA/tests. PG50 passed; lint
 migration-drift checks passed; browser lists verified. Invoice studio comes from
 invoice cost-center mappings; linked payments inherit it. Client asked about a reset:
 recommended an isolated clean dataset, no reset performed. See BANK_CLASSIFICATION_DELIVERY.md.
+
+2026-10-26: client accepted simplified types and requested grouped monetary displays
+(e.g.2,680,750.98). Added one decimal-string display formatter throughout finance
+records/dialogs/imports/source details/migration/config balances/fee previews, with
+2 decimals and comma grouping independent of UI language. No API/storage/calculation/
+identity changes; raw report evidence remains intact. Numeric setup inputs retain
+raw values with formatted helper previews. Client agrees to keep developing/tests
+before reset; ROADMAP.md now defines a clean-replay checkpoint after the first full
+imports→classification→reconciliation→monthly-result workflow and before migration
+certification/rollout. No reset performed. Validation details follow delivery checks.
+
+Monetary display checks completed: 14 formatter checks, lint (existing unrelated
+warnings) and production build passed; browser synthetic358 verified grouped amount/
+balance/total/header/source fields. No backend behavior/schema changes. Details in
+BANK_CLASSIFICATION_DELIVERY.md; reset checkpoint in ROADMAP.md. Local QA restored.

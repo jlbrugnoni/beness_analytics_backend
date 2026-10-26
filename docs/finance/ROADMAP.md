@@ -171,3 +171,33 @@ full UX-2–4 / September certification; no full phase completion or release cla
 UX-2 /Phase3.4.2–4 is now implemented and validated; client acceptance pending. See
 BANK_CLASSIFICATION_DELIVERY.md. Manual creation/cash, allocation, historical posting
 and reconciliation are not delivered by this step. No full Phase4 completion claimed.
+
+
+## Clean-replay checkpoint agreed 2026-10-26
+
+Client accepts continuing iterative development/tests with current data and postponing
+a reset until an appropriate checkpoint. Recommend a controlled clean replay AFTER
+the first usable full path exists and has passed incremental client checks: routine
+and historical imports, manual/cash classification, reconciliation and a monthly
+management result. Perform this before certifying historical migration/production
+rollout, so totals and classifications can be compared from a clean starting point.
+An earlier disposable clean dataset can be used if a specific defect needs it; a full
+reset is not required for ordinary UI tests or every delivery.
+
+At that checkpoint, notify the client and prepare the exact recoverable replay plan:
+- Preserve a database snapshot and all original reports; inventory affected imported
+  and manual test records, review decisions, links and expected totals.
+- Retain company/account/studio/terminal/category/source/fee configuration and access.
+  Prefer a fresh isolated validation database/dataset over deleting the working set.
+  Do not erase analytics/Mindbody data, users, configuration or stored originals.
+- Define cutoff/authoritative report versions and baseline expected September results.
+  Replay historical setup, routine reports, overlapping dates and both Alegra orders;
+  check split payments, cancellations/refunds, manual overrides, terminal recognition,
+  internal principal transfers, fees/reimbursements and operating/extraordinary totals.
+- Compare counts, invoice/payment/bank totals, pending queues and monthly results to
+  agreed Excel/source evidence before accepting migration. Keep the prior snapshot
+  recoverable until sign-off. Do not silently convert this agreement into a purge of
+  all companies or production data; exact scope is to be made concrete at checkpoint.
+
+No reset is performed now. Flag this checkpoint during phase handoffs; it is not a
+scheduled automation or a claim that reconciliation/results are already implemented.

@@ -319,3 +319,40 @@ movement/Refund or reimbursement/Extraordinary; older blank credit356 displays I
 without a data reset and still requires its operation date to enable review. No real
 source/record edits. Screenshot /private/tmp/finance-simplified-movement-types.png.
 Both repositories remain local feature/finance-phase-2; acceptance pending.
+
+## Follow-up: monetary separators and deferred reset (2026-10-26)
+
+Client accepts simplified types and requests money displayed as 2,680,750.98.
+Shared frontend utils/formatMoney.js now renders monetary amounts with comma grouping
+and 2 decimal places, independent of English/Spanish UI selection. Decimal strings
+are grouped/rounded for display using integer cents, avoiding binary-float loss for
+large API decimals. Signed/zero/missing/invalid source values are handled explicitly.
+No API/storage/math/source identities changed and raw downloadable report/JSON evidence
+is preserved. Readable source tables format only known monetary fields/columns;
+identifiers, dates, quantities, counts and percentages are not grouped as money.
+Unresolved readable source labels remain unresolved rather than exposing raw FK cells.
+
+Coverage: daily records totals/amounts/balances, bank dialog header, invoice/item/payment
+amounts, upload summaries/rows and source details, legacy bank/sales/payment posting/
+review screens, historical migration and workbook receipt tables, opening balances
+and fee-preview monetary outputs. Numeric setup input payloads remain unformatted;
+formatted helper previews show monetary input values without changing validation.
+
+Validation: 14 direct formatter checks passed (example, negatives, zero, rounding,
+large exact decimals, unknown/invalid/empty values, identifiers/dates and unresolved
+labels); frontend lint passed with existing unrelated repository warnings, production
+build passed. Browser synthetic company6 credit358 QA-FORMAT-903 displays amount
+2,680,750.98, balance3,680,750.98 and filtered total2,681,050.98 consistently in records,
+transaction header and source details. Date and serial remain unchanged. Synthetic
+fixture only; no real source/record edit, no backend business/schema change.
+Proof /private/tmp/finance-money-format-detail.png (also finance-money-separators.png).
+
+Client authorizes continued iterative development/testing before a later clean replay.
+ROADMAP.md records the recommended checkpoint: after the first complete import/manual
+classification/reconciliation/monthly-result path is usable and incrementally accepted,
+before historical certification and production rollout. At checkpoint notify client,
+prepare exact recoverable scope, preserve original files/configuration and comparison
+baseline, prefer an isolated validation dataset. No reset performed now.
+Client check: refresh and inspect large monetary amounts, balances, invoice/payment
+items and upload totals; verify serials/terminal IDs and percentages remain unchanged.
+Both repositories remain local feature/finance-phase-2, no push/deployment.

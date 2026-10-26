@@ -109,6 +109,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-077 | 2026-10-26 | Simplified direction-specific bank types | Client keeps debit Expense/Internal movement/Refund and credit Income/Internal movement/Refund-reimbursement/Extraordinary. Fees and extraordinary spending use expense categories/subcategories and their treatment. Default new debits to Expense and credits to Income, unreviewed. Preserve historical audit and normalize legacy labels on presentation/next audited edit. Refunds are not ordinary expenses but still affect their underlying sale/expense result. Client asked about clean testing; no reset authorized/performed, recommend an isolated test dataset preserving configuration and current records. |
 
+| D-078 | 2026-10-26 | Group finance money values; defer clean replay | Client requests monetary displays like 2,680,750.98 and agrees to continue phased development/testing before a later reset. Use comma grouping and two decimals for finance displays without changing stored decimal values, calculations, identifiers or raw report files. Recommend reset/clean replay after the first full import/classification/reconciliation/monthly-result workflow, before historical certification/rollout. Preserve configuration and original sources; prepare a recoverable isolated replay scope at that checkpoint, no reset now. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |
