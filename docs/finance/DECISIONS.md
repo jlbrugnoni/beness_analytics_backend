@@ -117,7 +117,10 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-081 | 2026-10-26 | Complete the Alegra workbook path and distinguish review from reconciliation | Client reports absent debit receipt fields, differing review flags and missing Alegra sheets after bank import. Add explicit preparation/import of Alegra items and Alegra_adm payments through existing ledgers, preserving split payments and all dates. Prioritize classification review in bank UI; preserve Conciliado as legacy recognition only and keep actual reconciliation separate. Debit source has no method/terminal: hide those receipt fields in debit UI as the recommended default pending optional client feedback, without deleting stored data. No auto-review of credits, duplicate money records or real automatic posting. |
 
+| D-082 | 2026-10-26 | Historical Alegra workflow and bank UI delivery accepted | Client confirms "i think all is correct" after testing D-081. Accept the delivered workbook invoice/payment path, debit field simplification and review-status presentation. This does not certify all historical amounts, authorize a reset/release or complete reconciliation/results. Next validate overlapping routine September reports and preservation of manual assignments in the same company/account. |
+
 ## Open policy decisions
+
 
 | Topic | Discovery reference | Dependency |
 | --- | --- | --- |

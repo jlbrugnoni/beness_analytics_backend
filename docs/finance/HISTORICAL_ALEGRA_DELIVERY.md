@@ -1,7 +1,9 @@
 # Historical Alegra sheets and bank-status clarification
 
 Delivered locally 2026-10-26 on feature/finance-phase-2 (backend and frontend).
-Client acceptance pending; no production release or automatic financial posting.
+Client accepted this delivery on 2026-10-26 ("i think all is correct"). No production
+release or automatic financial posting. This acceptance covers the tested migration
+workflow/UI; it does not certify the complete historical ledger or later report replay.
 
 ## Client report and findings
 

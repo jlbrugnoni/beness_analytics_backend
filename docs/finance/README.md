@@ -24,6 +24,10 @@ Follow-up: client posted the bank portion. Both Alegra workbook sheets now have 
 explicit migration path; bank review/reconciliation labels are clarified. See
 [Historical Alegra delivery](HISTORICAL_ALEGRA_DELIVERY.md) for current previews and tests.
 
+Client accepted the historical Alegra workflow and bank UI corrections on 2026-10-26
+(D-082). Next: client replay of overlapping routine September reports. Full historical
+certification, manual/cash ledger, reconciliation and monthly results remain pending.
+
 ## Documentation index
 
 | Document | Purpose |

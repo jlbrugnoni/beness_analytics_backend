@@ -656,3 +656,11 @@ Client had posted322 bank rows; browser prepared only invoice9/payment9 from wor
 preceded QA schema change.276 PostgreSQL finance tests, lint/build and drift checks
 passed. Browser verified counts, invoice plan and expense-focused editor. See
 HISTORICAL_ALEGRA_DELIVERY.md. No reset or production release; acceptance pending.
+
+2026-10-26: client confirms "i think all is correct" after testing the historical
+Alegra workflow and bank UI corrections. Mark this delivery accepted (D-082), including
+the simpler debit fields and review-status presentation. No additional financial
+posting, reset, production release or claim of fully certified history follows from
+this message. Next acceptance exercise: routine September bank/Alegra reports in the
+same company/account, checking overlapping September1 entries, duplicate prevention,
+preserved manual assignments, split payments and pending source-change reviews.
