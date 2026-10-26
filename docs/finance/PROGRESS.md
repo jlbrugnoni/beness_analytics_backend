@@ -481,3 +481,6 @@ SQLite301 passed/6 skips; frontend lint/build and synthetic browser re-read pass
 Synthetic QA failed preview #5 / new preview #6 are unposted. Local servers restored
 on 3037 / 8027. See PAYMENT_XLSX_CORRECTION.md for source observations, scope and
 client test. Real #4 remains unchanged, ready for client re-read; acceptance pending.
+
+Native-header correction checkpoints: backend `72ee773`, frontend `1de092f`,
+both local on `feature/finance-phase-2`.
