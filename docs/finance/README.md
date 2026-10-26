@@ -20,6 +20,10 @@ client acceptance pending. See [Historical bank posting delivery](HISTORICAL_BAN
 The client's new workbook remains unposted; account/company and bank-origin selection
 are explicit. Cash/manual ledger, reconciliation and results remain later work.
 
+Follow-up: client posted the bank portion. Both Alegra workbook sheets now have an
+explicit migration path; bank review/reconciliation labels are clarified. See
+[Historical Alegra delivery](HISTORICAL_ALEGRA_DELIVERY.md) for current previews and tests.
+
 ## Documentation index
 
 | Document | Purpose |

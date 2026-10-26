@@ -9,7 +9,7 @@ from .configuration import ConfigurationConflict
 from .mapping import resolve_source_values
 from .models import FinancialSale, SalesPosting, SalesDecision, SalesEvent
 
-VERSION = 'alegra-posting-v1'
+VERSION = 'alegra-posting-v2'
 
 
 def digest(value):
@@ -74,6 +74,19 @@ def snapshots(batch):
 
 
 def facts(source, items):
+    # XLSX numeric cells lose presentation zeroes (1 vs 1.00). Compare numerical
+    # item facts by value across workbook and CSV sources, retaining source evidence.
+    import re
+    from decimal import Decimal
+    def number(value):
+        text=str(value or '').strip()
+        return str(Decimal(text.replace(',','')).normalize()) if re.fullmatch(r'[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?',text) else value
+    numeric_evidence={'producto/servicio - cantidad','producto/servicio - precio unitario',
+        'producto/servicio - descuento','producto/servicio - impuesto (%)','producto/servicio - impuesto (valor)',
+        'producto/servicio - total','subtotal - productos/servicios'}
+    items=[{**item,**{key:number(item[key]) for key in ('quantity','unit_price','total') if key in item},
+        'evidence':[[name,occurrence,number(value) if name in numeric_evidence else value]
+            for name,occurrence,value in item.get('evidence',[])]} for item in items]
     header = {key: value for key, value in source.items() if key not in ('status', 'status_kind', 'item_sum')}
     return digest([header, sorted(items, key=lambda item: json.dumps(item, sort_keys=True))])
 

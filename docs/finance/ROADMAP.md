@@ -216,3 +216,11 @@ workflow. This advances the bank part of Phase3.4.2/3.4.3; it does not complete 
 manual ledger, migration certification, reconciliation or results. Client real workbook
 is still unposted pending company/account and bank-origin choices. See
 HISTORICAL_BANK_POSTING_DELIVERY.md for tests, safeguards and replay steps.
+
+2026-10-26 follow-up: the historical Alegra bank-to-invoice migration gap is addressed
+with an explicit invoice-sheet adapter plus the existing payment importer, all dates
+and split-payment preservation. Preview preparation and normal commit/review/undo are
+available; client still needs to confirm real invoice/payment imports and validate
+results. Bank recognition remains separate from reconciliation. This is additional
+Phase3.4 foundation, not cash/manual ledger or full migration/reconciliation completion.
+See HISTORICAL_ALEGRA_DELIVERY.md.

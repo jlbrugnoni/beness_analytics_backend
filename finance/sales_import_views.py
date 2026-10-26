@@ -43,7 +43,7 @@ class SalesBatchSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = SalesImportBatch
-        fields = ['id', 'company', 'company_name', 'provider', 'file_name', 'byte_size', 'encoding',
+        fields = ['id', 'company', 'company_name', 'provider', 'migration_batch', 'file_name', 'byte_size', 'encoding',
                   'parser_version', 'status', 'processing_status', 'summary', 'file_issues', 'duplicate_of', 'uploaded_by', 'created_at']
         read_only_fields = fields
 
@@ -153,6 +153,7 @@ class SalesImportViewSet(viewsets.ReadOnlyModelViewSet):
         if not can_use_finance(request.user, 'can_import_finance'):
             raise PermissionDenied('Import permission is required to retrieve source files.')
         batch = self.get_object()
-        response = FileResponse(io.BytesIO(bytes(batch.original_file)), as_attachment=True, filename=batch.file_name, content_type='text/csv')
+        response = FileResponse(io.BytesIO(bytes(batch.original_file)), as_attachment=True, filename=batch.file_name,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if batch.migration_batch_id else 'text/csv')
         response['X-Content-Type-Options'] = 'nosniff'
         return response

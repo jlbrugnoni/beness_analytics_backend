@@ -34,7 +34,11 @@ def header_names(key, native=False):
     return {normalized(label) for label in labels}
 
 
-def worksheet(content, report_sheet=False):
+def worksheet(content, report_sheet=False, sheet_name='alegra_adm', field_labels=None, required_fields=None):
+    fields=FIELDS if field_labels is None else field_labels
+    required_keys=REQUIRED if required_fields is None else required_fields
+    def names(key):
+        return {normalized(fields[key])} if field_labels is not None else header_names(key,native=report_sheet)
     if len(content)>MAX_BYTES: raise ValueError('file_too_large')
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
         infos=archive.infolist()
@@ -58,7 +62,7 @@ def worksheet(content, report_sheet=False):
         if report_sheet:
             if len(all_sheets)>100:raise ValueError('workbook_limit')
             candidates=[]
-            required={k:header_names(k, native=True) for k in REQUIRED}
+            required={k:names(k) for k in required_keys}
             for candidate in all_sheets:
                 data=load(candidate)
                 for node in data.findall('s:sheetData/s:row',NS):
@@ -75,7 +79,7 @@ def worksheet(content, report_sheet=False):
             if len(candidates)!=1:raise ValueError('ambiguous_payment_sheets')
             selected,sheet,header_number=candidates[0]
         else:
-            sheets=[s for s in all_sheets if normalized(s.get('name',''))=='alegra_adm']
+            sheets=[s for s in all_sheets if normalized(s.get('name',''))==sheet_name]
             if not sheets:raise ValueError('missing_payment_sheet')
             if len(sheets)!=1:raise ValueError('ambiguous_payment_sheets')
             selected=sheets[0];sheet=load(selected);header_number=1
@@ -94,11 +98,11 @@ def worksheet(content, report_sheet=False):
             elif number>header_number:rows.append((number,cells))
         if headers is None:raise ValueError('missing_payment_header')
         mapping={}
-        for key,label in FIELDS.items():
-            columns=[c for c,v in headers.items() if normalized(str(v['value'] or '')) in header_names(key, native=report_sheet)]
+        for key,label in fields.items():
+            columns=[c for c,v in headers.items() if normalized(str(v['value'] or '')) in names(key)]
             if len(columns)>1:raise ValueError('duplicate_header')
             if columns:mapping[key]=columns[0]
-        if not REQUIRED<=mapping.keys():raise ValueError('missing_payment_header')
+        if not required_keys<=mapping.keys():raise ValueError('missing_payment_header')
         return selected.get('name'),epoch,headers,mapping,rows
 
 

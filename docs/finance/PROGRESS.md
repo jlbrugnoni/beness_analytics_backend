@@ -644,3 +644,15 @@ client replay. Migrations0014/15 applied only local QA/tests after verified full
 Local8027/3037 restored. Cash/manual ledger, reconciliation/results/certification remain
 pending; client still selects correct company and confirms bank origin. See
 HISTORICAL_BANK_POSTING_DELIVERY.md. No production release; client acceptance pending.
+
+2026-10-26: client reports missing Alegra migration and confusing bank flags/fields.
+Added named Alegra worksheet adapter, explicit all-date invoice/payment preparation
+through existing posting services, workbook lineage migration0016 and numerical
+representation normalization for XLSX/CSV invoice overlap. Historical screen now has
+bank vs Alegra tabs; bank table prioritizes review, debit receipt fields hidden by
+recommended default pending optional feedback. No review/reconciliation flags changed.
+Client had posted322 bank rows; browser prepared only invoice9/payment9 from workbook8
+(company1),744 invoices/746 payments, no real sales/receipt posting. Full source backup
+preceded QA schema change.276 PostgreSQL finance tests, lint/build and drift checks
+passed. Browser verified counts, invoice plan and expense-focused editor. See
+HISTORICAL_ALEGRA_DELIVERY.md. No reset or production release; acceptance pending.

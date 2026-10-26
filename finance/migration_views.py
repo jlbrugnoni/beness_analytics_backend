@@ -168,6 +168,48 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
             derived=prepare(batch,account,request.user,data.validated_data['row_ids'])
         return Response(BankBatchSerializer(derived).data,status=201)
 
+    @action(detail=True,methods=['get'],url_path='alegra')
+    def alegra(self,request,pk=None):
+        from .migration_sales import read_workbook_sales
+        from .sales_import_views import SalesBatchSerializer
+        from .payment_views import PaymentBatchSerializer
+        from .models import PaymentImportBatch
+        batch=self.get_object()
+        invoices=read_workbook_sales(bytes(batch.original_file))
+        payments=read_payment_preview(bytes(batch.original_file))
+        sales_batch=batch.sales_imports.select_related('company','posting').order_by('-pk').first()
+        payment_batch=PaymentImportBatch.objects.filter(migration_batch=batch,selected_month__isnull=True).select_related('company','posting').order_by('-pk').first()
+        return Response({'invoices':{'summary':invoices['summary'],'file_issues':invoices['file_issues']},
+            'payments':{'summary':payments['summary'],'file_issues':payments['file_issues']},
+            'sales_batch':SalesBatchSerializer(sales_batch).data if sales_batch else None,
+            'payment_batch':PaymentBatchSerializer(payment_batch).data if payment_batch else None})
+
+    @action(detail=True,methods=['post'],url_path='prepare-alegra')
+    def prepare_alegra(self,request,pk=None):
+        from .sales_posting_views import locked_company
+        from .sales_import_views import SalesBatchSerializer
+        from .payment_views import store,PaymentBatchSerializer
+        from .migration_sales import read_workbook_sales
+        from .models import SalesImportBatch,SalesImportRow,SalesImportInvoice,PaymentImportBatch
+        source=self.get_object()
+        with locked_company(request.user,source.company_id,['can_import_finance']) as company:
+            if not migration_companies(request.user).filter(pk=company.pk).exists():raise PermissionDenied()
+            sales=source.sales_imports.select_related('company','posting').order_by('-pk').first()
+            payments=PaymentImportBatch.objects.filter(migration_batch=source,selected_month__isnull=True).select_related('company','posting').order_by('-pk').first()
+            if not sales:
+                content=bytes(source.original_file);parsed=read_workbook_sales(content)
+                prior=SalesImportBatch.objects.filter(company=company,file_hash=source.file_hash).order_by('pk').first()
+                sales=SalesImportBatch.objects.create(company=company,migration_batch=source,file_name=source.file_name,
+                    file_hash=source.file_hash,byte_size=source.byte_size,original_file=content,encoding='xlsx',
+                    parser_version=parsed['parser_version'],status='failed' if parsed['file_issues'] else 'preview',
+                    summary=parsed['summary'],file_issues=parsed['file_issues'],duplicate_of=prior,uploaded_by=request.user)
+                SalesImportRow.objects.bulk_create([SalesImportRow(batch=sales,**row) for row in parsed['rows']],batch_size=500)
+                SalesImportInvoice.objects.bulk_create([SalesImportInvoice(batch=sales,**row) for row in parsed['invoices']],batch_size=500)
+            if not payments:
+                content=bytes(source.original_file)
+                payments=store(company,request.user,content,read_payment_preview(content),source.file_name,source)
+        return Response({'sales_batch':SalesBatchSerializer(sales).data,'payment_batch':PaymentBatchSerializer(payments).data})
+
     @action(detail=True,methods=['get'])
     def rows(self,request,pk=None):
         batch=self.get_object();qs=batch.rows.all()

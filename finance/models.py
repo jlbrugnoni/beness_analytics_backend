@@ -483,6 +483,7 @@ class BankEvent(models.Model):
 class SalesImportBatch(models.Model):
     """Immutable source preview; does not represent posted financial sales."""
     company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name='sales_previews')
+    migration_batch = models.ForeignKey('MigrationImportBatch', null=True, blank=True, on_delete=models.PROTECT, related_name='sales_imports')
     provider = models.CharField(max_length=16, default='alegra')
     file_name = models.CharField(max_length=255)
     file_hash = models.CharField(max_length=64, db_index=True)

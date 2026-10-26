@@ -115,6 +115,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-080 | 2026-10-26 | Actionable historical bank import with explicit origin | Client cannot find an import action and finds pilot-month/entries/basis controls confusing. Deliver an all-date debit/credit view, optional date filters and explicit bank-row selection/account confirmation into the existing bank posting/review/undo flow. Preserve workbook manual assignments and original evidence; exclude explicit cash/invalid rows, leave unknown configuration reviewable and resolve ambiguous overlaps rather than duplicating money. Offer explicit preview copy when setup is under another authorized company; no silent reassignment or real posting. Client company/cash-origin clarification remains unanswered and can be resolved through those UI choices. Cash/manual ledger and full migration certification remain pending. |
 
+| D-081 | 2026-10-26 | Complete the Alegra workbook path and distinguish review from reconciliation | Client reports absent debit receipt fields, differing review flags and missing Alegra sheets after bank import. Add explicit preparation/import of Alegra items and Alegra_adm payments through existing ledgers, preserving split payments and all dates. Prioritize classification review in bank UI; preserve Conciliado as legacy recognition only and keep actual reconciliation separate. Debit source has no method/terminal: hide those receipt fields in debit UI as the recommended default pending optional client feedback, without deleting stored data. No auto-review of credits, duplicate money records or real automatic posting. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |
