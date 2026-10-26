@@ -552,3 +552,21 @@ remain next bounded deliveries; reconciliation/results/release are not delivered
 
 Daily workspace checkpoints: backend `77cba6a`, frontend `356cdbc`, local on
 `feature/finance-phase-2`. Local QA backend8027/frontend3037 restored after build.
+
+
+## Bank debit/credit classification and simpler import label
+
+2026-10-26: first workspace accepted by client (“perfect, it worked”). Client asked
+for bank editing and clearer meaning of the advanced link, then authorized continue.
+Implemented optional BankMovementClassification (migration0012) and audited scoped
+bank edit/options/detail services. Records now edits description, categories, studio/
+administration, method/terminal, movement kind, expense month or operation date and
+recognition separately from reconciliation. Source facts/identity protected; existing
+imports/review/undo reused and edited assignments survive overlap/source corrections.
+Import details replaces the verbose label. PostgreSQL322 passed; SQLite316/6 skips;
+lint/build/system/migration checks passed. Isolated QA0012 applied; synthetic company6
+account5 /movements354credit,355debit tested with no real posting/source/grant changes.
+Browser caught date/month-control persistence issue; replaced with validated explicit
+text fields and verified saved date/month via read-back. See BANK_CLASSIFICATION_DELIVERY.md.
+Client acceptance pending. Next remains manual/cash/provenance/migration and later
+reconciliation/results; no production schema migration, release, push or merge.

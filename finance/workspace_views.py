@@ -13,7 +13,8 @@ from core_data.models import Studio
 from .access import can_use_finance, scoped_companies
 from .sales_import_views import SalesPreviewPermission, sales_preview_companies
 from .views import visible_accounts
-from .models import Company, BankMovement, FinancialSale, FinancialReceipt
+from .bank_classification import presentation
+from .models import Category, Company, BankMovement, FinancialSale, FinancialReceipt
 from .sales_posting_views import FinancialSaleViewSet
 from .payment_views import FinancialReceiptViewSet
 
@@ -41,7 +42,8 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
         return Response({'companies':[{'id':c.pk,'name':c.name,'country':c.site.country_code,
             'currency':c.default_currency,'active':c.active,'site':c.site_id} for c in companies],
             'accounts':list(accounts.values('id','company_id','name','currency','active','kind')),
-            'studios':list(Studio.objects.filter(site_id__in=companies.values('site_id')).values('id','site_id','name'))})
+            'studios':list(Studio.objects.filter(site_id__in=companies.values('site_id')).values('id','site_id','name')),
+            'categories':[{'id':c.pk,'company':c.company_id,'parent':c.parent_id,'name':c.name,'active':c.effective_active} for c in Category.objects.filter(company__in=companies).select_related('parent')]})
 
     def list(self,request):
         class Filters(serializers.Serializer):
@@ -53,23 +55,39 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
             account=serializers.IntegerField(required=False,min_value=1)
             studio=serializers.IntegerField(required=False,min_value=1)
             channel=serializers.CharField(required=False,allow_blank=True,max_length=24)
-            status=serializers.ChoiceField(choices=['all','review','reconciled','unreconciled'],default='all')
+            category=serializers.IntegerField(required=False,min_value=1)
+            subcategory=serializers.IntegerField(required=False,min_value=1)
+            status=serializers.ChoiceField(choices=['all','review','missing_category','method_review','reviewed','unreviewed','reconciled','unreconciled'],default='all')
             sort=serializers.ChoiceField(choices=['date','-date','amount','-amount','number','-number'],default='-date')
         data=Filters(data=request.query_params);data.is_valid(raise_exception=True);f=data.validated_data
         company=get_object_or_404(companies_for(request.user),pk=f['company'])
         if f.get('start') and f.get('end') and f['start']>f['end']:
             raise serializers.ValidationError('Start must precede end.')
         kind=f['kind'];bank=kind in ('debit','credit')
+        if not bank and f['status'] in ('missing_category','method_review','reviewed','unreviewed'):raise serializers.ValidationError('Choose a supported invoice status.')
         if bank:
             if not can_use_finance(request.user,'can_view_finance_bank_accounts'):
                 from rest_framework.exceptions import PermissionDenied
                 raise PermissionDenied()
-            qs=BankMovement.objects.filter(account__in=visible_accounts(request.user).filter(company=company),active=True,source__direction=kind).select_related('account','created_from__batch')
+            qs=BankMovement.objects.filter(account__in=visible_accounts(request.user).filter(company=company),active=True,source__direction=kind).select_related('account','created_from__batch','classification__category','classification__subcategory','classification__studio','classification__terminal').prefetch_related('classification__category__children')
             if f.get('account'):qs=qs.filter(account_id=f['account'])
             date_key='bank_date';amount_key='amount';number_key='reference'
-            if f.get('search'):qs=qs.filter(Q(source__description__icontains=f['search'])|Q(source__reference__icontains=f['search'])|Q(source__serial__icontains=f['search']))
-            if f.get('studio') or f.get('channel') or f['status']=='review':
-                raise serializers.ValidationError('Bank classification filters are not available yet.')
+            if f.get('search'):qs=qs.filter(Q(source__description__icontains=f['search'])|Q(source__reference__icontains=f['search'])|Q(source__serial__icontains=f['search'])|Q(classification__description__icontains=f['search']))
+            for field in ('studio','channel','category','subcategory'):
+                if f.get(field):qs=qs.filter(**{f'classification__{field}':f[field]})
+            if f['status']=='review':
+                children=Category.objects.filter(parent_id=OuterRef('classification__category_id'),active=True)
+                qs=qs.annotate(has_subcategories=Exists(children))
+                review=Q(classification__isnull=True)|Q(classification__movement_kind='')|Q(classification__reviewed=False)
+                review|=(~Q(classification__movement_kind='internal_transfer')&Q(classification__studio__isnull=True,classification__administration=False))
+                if kind=='debit':
+                    review|=Q(classification__movement_kind__in=['expense','fee','extraordinary'])&(Q(classification__category__isnull=True)|Q(classification__expense_period__isnull=True)|Q(has_subcategories=True,classification__subcategory__isnull=True))
+                else:review|=Q(classification__movement_kind='customer_receipt')&(Q(classification__channel='')|Q(classification__operation_date__isnull=True))
+                qs=qs.filter(review)
+            elif f['status']=='missing_category':qs=qs.filter(classification__category__isnull=True).exclude(classification__movement_kind='internal_transfer')
+            elif f['status']=='method_review':qs=qs.filter(Q(classification__isnull=True)|Q(classification__channel=''))
+            elif f['status']=='reviewed':qs=qs.filter(classification__reviewed=True)
+            elif f['status']=='unreviewed':qs=qs.filter(Q(classification__isnull=True)|Q(classification__reviewed=False))
         elif kind=='invoices':
             get_object_or_404(sales_preview_companies(request.user),pk=company.pk)
             trouble=FinancialReceipt.objects.filter(sale_id=OuterRef('pk'),active=True).filter(~Q(link_issue='')|Q(assignments__channel_review=True)|Q(assignments__studio_origin='manual_pending'))
@@ -114,7 +132,7 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
             if bank:
                 rows.append({'id':obj.pk,'source':obj.source,'account':obj.account_id,'account_name':obj.account.name,
                     'reconciled':obj.reconciled,'file_name':obj.created_from.batch.file_name,'batch':obj.created_from.batch_id,
-                    'source_row':obj.created_from.row_number})
+                    'source_row':obj.created_from.row_number,'revision':obj.revision,**presentation(obj)})
             elif kind=='invoices':
                 item=FinancialSaleViewSet.serialize(obj)
                 # Receipt detail requires the same bank/sensitive gate as before.

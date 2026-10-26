@@ -165,3 +165,9 @@ one Upload page, invoice/payment dialog, filters and audited receipt studio edit
 reuse existing services. See DAILY_WORKSPACE_DELIVERY.md. Bank assignment/manual
 entry/create-void services, unified pending work and fixture isolation remain before
 full UX-2–4 / September certification; no full phase completion or release claimed.
+
+
+2026-10-26: first daily workspace accepted. Bank assignment/edit foundation from
+UX-2 /Phase3.4.2–4 is now implemented and validated; client acceptance pending. See
+BANK_CLASSIFICATION_DELIVERY.md. Manual creation/cash, allocation, historical posting
+and reconciliation are not delivered by this step. No full Phase4 completion claimed.

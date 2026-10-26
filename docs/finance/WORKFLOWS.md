@@ -281,3 +281,15 @@ remain; an audited receipt studio override/inheritance complements the method
 editor. DAILY_WORKSPACE_DELIVERY.md is authoritative for delivered scope and client
 tests. Broader bank classification/manual creation and later workflow UI remain
 unfinished; source recognition does not imply bank reconciliation.
+
+
+## Implemented bank assignment dialog — 2026-10-26
+
+Records → bank debit/credit → Edit now supports manual classifications, business
+concept, company-scoped category/subcategory, studio/administration, method/terminal,
+kind, separate expense month/operation date and recognition flag. Source facts stay
+locked. Incomplete work can save, with separate completeness/review/reconciliation
+states; reasons and before/after actor audit remain. The existing overlap and source
+correction services preserve assignments; undo protects revised records. Import
+details is the shortened label for the unchanged source review/undo/history screen.
+BANK_CLASSIFICATION_DELIVERY.md is authoritative for delivered scope and client tests.

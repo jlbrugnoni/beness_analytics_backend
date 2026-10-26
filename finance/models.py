@@ -431,6 +431,23 @@ class BankMovement(models.Model):
         ordering = ['-pk']
 
 
+class BankMovementClassification(models.Model):
+    KINDS=[('customer_receipt','Customer receipt'),('expense','Expense'),('internal_transfer','Internal movement'),
+        ('fee','Bank/processing fee'),('fee_reimbursement','Fee reimbursement'),('refund','Refund'),('extraordinary','Extraordinary')]
+    movement=models.OneToOneField(BankMovement,on_delete=models.PROTECT,related_name='classification')
+    description=models.TextField(blank=True,max_length=2000)
+    operation_date=models.DateField(null=True,blank=True)
+    expense_period=models.DateField(null=True,blank=True)
+    category=models.ForeignKey(Category,null=True,blank=True,on_delete=models.PROTECT,related_name='+')
+    subcategory=models.ForeignKey(Category,null=True,blank=True,on_delete=models.PROTECT,related_name='+')
+    studio=models.ForeignKey('core_data.Studio',null=True,blank=True,on_delete=models.PROTECT,related_name='+')
+    administration=models.BooleanField(default=False)
+    channel=models.CharField(max_length=24,blank=True,choices=SourceMapping.CHANNELS)
+    terminal=models.ForeignKey(Terminal,null=True,blank=True,on_delete=models.PROTECT,related_name='+')
+    movement_kind=models.CharField(max_length=24,blank=True,choices=KINDS)
+    reviewed=models.BooleanField(default=False)
+
+
 class BankDecision(models.Model):
     posting = models.ForeignKey(BankPosting, on_delete=models.PROTECT, related_name='decisions')
     row = models.OneToOneField(BankImportRow, on_delete=models.PROTECT, related_name='decision')

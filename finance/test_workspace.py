@@ -59,7 +59,8 @@ class WorkspaceTests(APITestCase):
         result=self.client.get(url,{'company':self.company.pk,'kind':'debit','search':'nothing'})
         self.assertEqual(result.data['count'],0);self.assertEqual(result.data['total'],'0.00')
         result=self.client.get(url,{'company':self.company.pk,'kind':'debit','studio':1})
-        self.assertEqual(result.status_code,400)
+        self.assertEqual(result.status_code,200)
+        self.assertEqual(result.data['count'],0)
 
     def test_options_and_all_queries_respect_scope_and_detail_permissions(self):
         response=self.client.get('/api/finance/workspace/options/')

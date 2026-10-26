@@ -12,7 +12,7 @@ implemented behavior, checks, setup, and acceptance steps.
 Latest client priority: simpler daily Upload and all-records workspace (D-071).
 See [Daily workspace plan](DAILY_WORKSPACE_PLAN.md); first UI delivery implemented in
 [Daily workspace delivery](DAILY_WORKSPACE_DELIVERY.md), client acceptance pending.
-Bank classifications/manual creation and later workflow stages remain unfinished.
+Bank classification is now delivered in [Bank classification delivery](BANK_CLASSIFICATION_DELIVERY.md), client acceptance pending. Manual creation and later workflow stages remain unfinished.
 Existing phase acceptance is unchanged.
 
 ## Documentation index

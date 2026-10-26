@@ -99,6 +99,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-072 | 2026-10-25 | Accepted invoice-centered UI and protected source facts | Client simplifies D-071: Records has Bank debits, Bank credits and one Invoices table enriched by both Alegra sources. Open an invoice to inspect items and edit its linked payment(s) within the dialog; normally one payment, but multiple payments remain individually editable for method/studio corrections. Q-018 explicitly confirms amounts, numbers and client details are read-only, with changes through newer reports and source-change review. Unlinked payments must remain accessible as secondary review work without placeholder invoices. Detailed assignment inheritance/override design is in DAILY_WORKSPACE_PLAN.md; implementation pending. |
 
+| D-073 | 2026-10-26 | Daily workspace accepted; bank edit delivery authorized | Client confirmed the first workspace worked, requested bank category/subcategory/method/date/concept/studio editing next, and authorized “continue.” Business assignments remain separate from protected bank facts; recognition is not reconciliation. Use existing edit permissions, account/studio scope, audit and overlap/undo safeguards. Shorten the advanced navigation label to Import details; opening it remains read-only navigation. BANK_CLASSIFICATION_DELIVERY.md records implemented scope and client tests; acceptance of the new editor is pending. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

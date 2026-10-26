@@ -185,3 +185,14 @@ outside this import's scope, not malformed purchases. Current previews retain th
 as ineligible (`unsupported_payment_kind`, currently displayed under invalid source)
 and exclude them from incoming totals and receipt posting. They do not create
 expenses or bank debits. Preserve the original type and source cells for later use.
+
+
+## Implemented bank business assignments — migration0012
+
+BankMovementClassification is optional one-to-one with an existing BankMovement.
+Fields: description, operation_date, expense_period (month normalized to day1),
+category/subcategory/studio/terminal protected FKs, administration flag, channel,
+movement_kind and reviewed. BankMovement.source/fingerprint retain bank facts;
+classification never sets reconciled. Parent movement revision/account ledger
+revision and BankEvent classify snapshots audit changes. Completeness and recognized
+review are distinct from bank matching. See BANK_CLASSIFICATION_DELIVERY.md.

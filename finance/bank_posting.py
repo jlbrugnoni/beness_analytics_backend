@@ -13,8 +13,9 @@ def fingerprint(source):
 
 
 def movement_data(movement):
+    from .bank_classification import snapshot
     return {'id': movement.pk, 'revision': movement.revision, 'active': movement.active,
-            'reconciled': movement.reconciled, 'source': movement.source}
+            'reconciled': movement.reconciled, 'source': movement.source, 'classification': snapshot(movement)}
 
 
 def token(account, batch, purpose='commit', revision=0):
@@ -33,7 +34,7 @@ def event(posting, actor, action, movement=None, row=None, before=None, note='')
 
 def plan(batch, account):
     rows = list(batch.rows.filter(kind='data'))
-    movements = list(BankMovement.objects.filter(account=account, provider=batch.provider, active=True))
+    movements = list(BankMovement.objects.filter(account=account, provider=batch.provider, active=True).select_related('classification'))
     exact = defaultdict(list); identifiers = defaultdict(set); balances = defaultdict(set); weak = defaultdict(set); day_description = defaultdict(set); balance_description = defaultdict(set)
     by_id = {m.pk: m for m in movements}
     for m in movements:
