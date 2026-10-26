@@ -264,3 +264,58 @@ Client tests: refresh; open an unfinished credit/debit and inspect direct field 
 verify info icon; save partial work; complete marked fields and check Reviewed; remove
 a required value and verify review clears; use Status → Not reviewed → Apply filters
 as the daily queue. Completion does not mean bank reconciliation.
+
+## Follow-up: simplified movement types and clean-import testing (2026-10-26)
+
+Client requested debit types Expense/Internal movement/Refund only; bank fees and
+extraordinary spending are distinguished through expense categories/subcategories,
+including their configured operational/extraordinary treatment. Credit types are
+Income/Internal movement/Refund or reimbursement/Extraordinary. Income retains the
+existing customer_receipt internal key; no payment/invoice identities are renamed.
+
+New posted movements receive a classification default (debit Expense, credit Income)
+as part of the audited create snapshot, always unreviewed. Ambiguous explicit creates
+follow the same defaults. Menus and API direction validation expose only the agreed
+3/4 types and no unassigned type option. No auto-review or source-fact changes.
+Completion rules retain category/child/month for debit Expense and method/operation
+date for credit Income. Debit refunds do not require expense categories/month and
+are excluded from Missing category. Internal principal remains excluded from ordinary
+income/expense; customer refunds still reduce the original sale result, rather than
+being ignored. Supplier/fee reimbursements offset their underlying expense under
+future result logic; this change does not implement financial result calculations.
+
+Compatibility: raw old snapshots remain unchanged on GET. Display/validation interprets
+debit fee/extraordinary as Expense and credit fee_reimbursement as Refund; blank/absent
+classifications show their direction default. First ordinary edit persists the new
+type in the normal before/after audit. Legacy history entries retain their original
+values. Workspace review filters include legacy/blank Expense/Income requirements.
+Migration0013 changes choices metadata only; no destructive data migration/reset.
+Applied only to isolated QA/test databases, not normal/production databases.
+
+Invoice studio investigation: sales_posting resolves configured Alegra cost_center
+mapping as authoritative studio; price_list supplies secondary conflict evidence.
+Transactions supply receipt/payment facts linked by invoice reference. Receipt studio
+normally inherits its invoice, with explicit manual/source overrides retained. An
+invoice can therefore have its studio before transactions are uploaded. Refresh-links
+runs on sales/payment imports; reverse upload order is supported without fake invoices.
+
+Client asked whether a reset would help testing, not to erase data. Recommended an
+isolated clean test company/dataset retaining equivalent company/account/studio/mapping/
+terminal/category configuration, keeping existing records and original uploads. No
+reset or fixture company creation performed this turn. Proposed acceptance sequence:
+invoice/items import → inspect studio/cost-center mapping → transaction import → inspect
+linked/split payments and inherited studio → bank import → overlap → test reverse report
+order in a clean dataset. Preserve raw files and audit; undo is available only for
+eligible records and is not a universal destructive reset. Future reset requires a
+concrete agreed scope and recoverable test setup.
+
+Validation: PostgreSQL50 focused bank/classification/workspace tests passed; includes
+defaults, exact per-direction lists, rejected old/invalid choices, legacy normalization
+with preserved audit, absent classification read-without-writes, refund category
+exemption, review guards and existing terminal/import protections. Changed-file lint,
+production frontend build and migration-drift check passed. Browser synthetic company6:
+debit menu exactly Expense/Internal movement/Refund; credit menu exactly Income/Internal
+movement/Refund or reimbursement/Extraordinary; older blank credit356 displays Income
+without a data reset and still requires its operation date to enable review. No real
+source/record edits. Screenshot /private/tmp/finance-simplified-movement-types.png.
+Both repositories remain local feature/finance-phase-2; acceptance pending.

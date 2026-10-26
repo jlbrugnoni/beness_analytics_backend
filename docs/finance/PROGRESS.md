@@ -596,3 +596,11 @@ Legacy incomplete flags appear in Not reviewed queue. PostgreSQL46 passed; SQLit
 2 skips; lint/build passed. Synthetic browser verified source icon, partial/complete
 saves, automatic uncheck and queue exclusion. See BANK_CLASSIFICATION_DELIVERY.md.
 Client acceptance pending; no production release or real-data changes.
+
+2026-10-26: client simplified movement kinds to debit Expense/Internal/Refund and
+credit Income/Internal/Refund-reimbursement/Extraordinary. Added unreviewed direction
+defaults on posting, API/menu restrictions and legacy-compatible presentation/audit.
+Migration0013 choices metadata applied only isolated QA/tests. PG50 passed; lint/build/
+migration-drift checks passed; browser lists verified. Invoice studio comes from
+invoice cost-center mappings; linked payments inherit it. Client asked about a reset:
+recommended an isolated clean dataset, no reset performed. See BANK_CLASSIFICATION_DELIVERY.md.

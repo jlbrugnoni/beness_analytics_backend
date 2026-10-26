@@ -67,7 +67,7 @@ class BankClassificationTests(APITestCase):
         self.assertEqual(review.data['count'],0)
         self.debit.refresh_from_db();self.assertEqual(self.debit.source,source);self.assertEqual(self.debit.revision,2)
         event=BankEvent.objects.get(action='classify');self.assertEqual(event.actor,self.user)
-        self.assertEqual(event.before['classification'],{});self.assertEqual(event.after['classification']['expense_period'],'2026-08-01')
+        self.assertEqual(event.before['classification']['movement_kind'],'expense');self.assertEqual(event.after['classification']['expense_period'],'2026-08-01')
         self.assertEqual(self.client.get(f'/api/finance/bank-movements/{self.debit.pk}/').data['classification']['description'],'August electricity')
 
     def test_overlap_and_explicit_source_correction_keep_assignments_and_protect_undo(self):
@@ -90,8 +90,8 @@ class BankClassificationTests(APITestCase):
     def test_incomplete_work_can_save_but_cannot_be_reviewed(self):
         self.records();response=self.assign(self.debit,reviewed=True)
         self.assertEqual(response.status_code,400)
-        self.assertIn('movement_kind',response.data);self.assertIn('studio',response.data)
-        self.assertFalse(BankMovementClassification.objects.exists())
+        self.assertIn('category',response.data);self.assertIn('studio',response.data)
+        self.assertFalse(BankMovementClassification.objects.filter(terminal__isnull=False).exists())
         response=self.assign(self.debit,movement_kind='expense')
         self.assertEqual(response.status_code,200);self.assertTrue(response.data['needs_review'])
         self.assertFalse(response.data['classification']['reviewed'])
@@ -114,7 +114,7 @@ class BankClassificationTests(APITestCase):
 
     def test_legacy_incomplete_review_flag_is_presented_and_filtered_as_pending(self):
         self.records()
-        BankMovementClassification.objects.create(movement=self.debit,reviewed=True)
+        BankMovementClassification.objects.update_or_create(movement=self.debit,defaults={'movement_kind':'','reviewed':True})
         response=self.client.get(f'/api/finance/bank-movements/{self.debit.pk}/')
         self.assertFalse(response.data['classification']['reviewed'])
         for status,count in [('reviewed',0),('unreviewed',1),('review',1)]:
@@ -145,7 +145,11 @@ class BankClassificationTests(APITestCase):
         foreign=Studio.objects.create(site=self.es,name='Other')
         self.assertEqual(self.assign(self.debit,studio=foreign.pk).status_code,400)
         self.assertEqual(self.assign(self.debit,studio=self.studio.pk,administration=True).status_code,400)
-        self.assertFalse(BankMovementClassification.objects.exists())
+        self.debit.refresh_from_db()
+        self.assertEqual(self.debit.revision,1)
+        self.assertFalse(BankEvent.objects.filter(action='classify').exists())
+        self.assertIsNone(self.debit.classification.category_id)
+        self.assertFalse(BankMovementClassification.objects.filter(terminal__isnull=False).exists())
 
     def test_permissions_stale_and_reconciled_guard(self):
         self.records();self.profile.can_edit_finance=False;self.profile.save()
@@ -211,12 +215,12 @@ class BankTerminalRecognitionTests(APITestCase):
         self.assertEqual(values['studio'],terminal.studio_id)
         self.assertEqual(values['channel'],'card_terminal')
         self.assertFalse(values['reviewed']);self.assertFalse(response.data['reconciled'])
-        self.assertIsNone(values['operation_date']);self.assertEqual(values['movement_kind'],'')
+        self.assertIsNone(values['operation_date']);self.assertEqual(values['movement_kind'],'customer_receipt')
         self.assertEqual(movement.revision,1)
         event=movement.events.get(action='create')
         self.assertEqual(event.after['classification']['terminal'],terminal.pk)
         self.assertIn(terminal.identifier,movement.source['description'])
-        self.assertFalse(BankMovementClassification.objects.filter(movement__source__direction='debit').exists())
+        self.assertEqual(BankMovementClassification.objects.get(movement__source__direction='debit').movement_kind,'expense')
         # Repeated overlapping imports keep one movement and the classification.
         self.post(fixtures.BASE.replace('Card deposit',terminal.identifier+' - AZUL CR RD$ .00'))
         self.assertEqual(BankMovement.objects.count(),2)
@@ -234,7 +238,7 @@ class BankTerminalRecognitionTests(APITestCase):
         terminal.active=False;terminal.save()
         self.credit.source['description']=terminal.identifier
         self.assertFalse(recognize_terminal(self.credit,self.user))
-        self.assertFalse(BankMovementClassification.objects.exists())
+        self.assertFalse(BankMovementClassification.objects.filter(terminal__isnull=False).exists())
 
     def test_existing_credits_can_be_recognized_with_audit_and_are_idempotent(self):
         self.post(fixtures.BASE.replace('Card deposit','39618800002 - AZUL CR RD$ .00'))
@@ -245,7 +249,7 @@ class BankTerminalRecognitionTests(APITestCase):
         movement=BankMovement.objects.get(source__direction='credit')
         self.assertEqual(movement.revision,2)
         audit=movement.events.get(action='classify')
-        self.assertEqual(audit.before['classification'],{})
+        self.assertEqual(audit.before['classification']['movement_kind'],'customer_receipt')
         self.assertEqual(audit.actor,self.user)
         self.assertEqual(audit.after['classification']['terminal'],terminal.pk)
         self.assertEqual(self.client.post(url,{'company':self.company.pk},format='json').data['updated'],0)
@@ -271,11 +275,11 @@ class BankTerminalRecognitionTests(APITestCase):
         url='/api/finance/workspace/recognize-terminals/'
         response=self.client.post(url,{'company':self.company.pk},format='json')
         self.assertEqual(response.status_code,403)
-        self.assertFalse(BankMovementClassification.objects.exists())
+        self.assertFalse(BankMovementClassification.objects.filter(terminal__isnull=False).exists())
         self.profile.can_edit_finance=True;self.profile.save()
         self.profile.can_view_sensitive_finance=False;self.profile.save()
         self.assertEqual(self.client.post(url,{'company':self.company.pk},format='json').status_code,403)
-        self.assertFalse(BankMovementClassification.objects.exists())
+        self.assertFalse(BankMovementClassification.objects.filter(terminal__isnull=False).exists())
 
     def test_credit_categories_rejected_and_options_are_debit_only(self):
         self.records()
@@ -300,4 +304,46 @@ class BankTerminalRecognitionTests(APITestCase):
         studio=Studio.objects.create(site=self.es,name='Other company studio')
         Terminal.objects.create(account=self.foreign,identifier='39618800002',studio=studio,channel='card_terminal')
         self.post(fixtures.BASE.replace('Card deposit','39618800002 - AZUL CR RD$ .00'))
-        self.assertFalse(BankMovementClassification.objects.exists())
+        self.assertFalse(BankMovementClassification.objects.filter(terminal__isnull=False).exists())
+
+    def test_direction_specific_types_and_defaults(self):
+        self.records()
+        for movement,expected,default in [(self.debit,['expense','internal_transfer','refund'],'expense'),
+                (self.credit,['customer_receipt','internal_transfer','refund','extraordinary'],'customer_receipt')]:
+            response=self.client.get(f'/api/finance/bank-movements/{movement.pk}/options/')
+            self.assertEqual([kind['value'] for kind in response.data['kinds']],expected)
+            self.assertEqual(movement.classification.movement_kind,default)
+        self.assertEqual(self.assign(self.debit,movement_kind='extraordinary').status_code,400)
+        self.assertEqual(self.assign(self.debit,movement_kind='fee').status_code,400)
+        self.assertEqual(self.assign(self.credit,movement_kind='fee_reimbursement').status_code,400)
+
+    def test_legacy_kinds_are_normalized_without_rewriting_history(self):
+        self.records()
+        for movement,legacy,current in [(self.debit,'fee','expense'),(self.debit,'extraordinary','expense'),
+                (self.credit,'fee_reimbursement','refund')]:
+            BankMovementClassification.objects.filter(movement=movement).update(movement_kind=legacy)
+            response=self.client.get(f'/api/finance/bank-movements/{movement.pk}/')
+            self.assertEqual(response.data['classification']['movement_kind'],current)
+            movement.refresh_from_db()
+            self.assertEqual(movement.classification.movement_kind,legacy)
+            result=self.assign(movement,description='Keep legacy history')
+            self.assertEqual(result.status_code,200,result.data)
+            event=BankEvent.objects.filter(movement=movement,action='classify').latest('pk')
+            self.assertEqual(event.before['classification']['movement_kind'],legacy)
+            self.assertEqual(event.after['classification']['movement_kind'],current)
+
+    def test_missing_classification_uses_direction_default_without_get_writes(self):
+        self.records()
+        self.credit.classification.delete()
+        response=self.client.get(f'/api/finance/bank-movements/{self.credit.pk}/')
+        self.assertEqual(response.status_code,200,response.data)
+        self.assertEqual(response.data['classification']['movement_kind'],'customer_receipt')
+        self.assertFalse(BankMovementClassification.objects.filter(movement=self.credit).exists())
+
+    def test_debit_refund_needs_no_expense_category_or_expense_month(self):
+        self.records()
+        result=self.assign(self.debit,movement_kind='refund',studio=self.studio.pk,reviewed=True)
+        self.assertEqual(result.status_code,200,result.data)
+        self.assertFalse(result.data['needs_review'])
+        query=self.client.get('/api/finance/workspace/',{'company':self.company.pk,'kind':'debit','status':'missing_category'})
+        self.assertEqual(query.data['count'],0)

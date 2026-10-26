@@ -107,6 +107,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-076 | 2026-10-26 | Compact bank dialog; reviewed means required information is complete | Client requested field-level missing-data marks, removal of bulky source/missing-data alerts, a source info icon next to the transaction header, and disabling Recognized/reviewed until complete. Keep partial saves available; reject incomplete explicit review in API and clear review if required fields are removed. Not reviewed includes legacy incomplete review flags and serves as the daily work queue. Optional comments/descriptions/terminals stay optional and type-specific required fields/exemptions remain. Recognition is still separate from reconciliation. |
 
+| D-077 | 2026-10-26 | Simplified direction-specific bank types | Client keeps debit Expense/Internal movement/Refund and credit Income/Internal movement/Refund-reimbursement/Extraordinary. Fees and extraordinary spending use expense categories/subcategories and their treatment. Default new debits to Expense and credits to Income, unreviewed. Preserve historical audit and normalize legacy labels on presentation/next audited edit. Refunds are not ordinary expenses but still affect their underlying sale/expense result. Client asked about clean testing; no reset authorized/performed, recommend an isolated test dataset preserving configuration and current records. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

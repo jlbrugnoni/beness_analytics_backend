@@ -13,7 +13,7 @@ from .configuration import ConfigurationConflict
 from .import_views import BankImportViewSet, BankPreviewPermission
 from core_data.access import get_or_create_user_access_profile, user_has_global_access
 from core_data.models import Studio
-from .bank_classification import snapshot, presentation, missing_fields
+from .bank_classification import snapshot, presentation, missing_fields, effective_kind
 from .models import BankMovementClassification, Category, Terminal, SourceMapping, Account, BankDecision, BankEvent, BankMovement, BankPosting, Company
 from .views import visible_accounts, visible_studios
 
@@ -173,7 +173,7 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
             'studios':list(studios.values('id','name')),
             'terminals':list(Terminal.objects.filter(account=obj.account,studio__in=visible_studios(request.user)).filter(Q(active=True)|Q(pk=snapshot(obj).get('terminal'))).values('id','identifier','channel','studio_id')),
             'channels':[{'value':v,'label':label} for v,label in SourceMapping.CHANNELS],
-            'kinds':[{'value':v,'label':label} for v,label in BankMovementClassification.KINDS]})
+            'kinds':[{'value':v,'label':label} for v,label in BankMovementClassification.KINDS if v in (BankMovementClassification.DEBIT_KINDS if obj.source.get('direction')=='debit' else BankMovementClassification.CREDIT_KINDS)]})
 
     @action(detail=True,methods=['post'])
     def assign(self,request,pk=None):
@@ -201,6 +201,11 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
             if obj.revision!=revision:raise ConfigurationConflict('The bank record changed. Reload before saving.')
             if obj.reconciled:raise serializers.ValidationError('Review bank reconciliation before editing this movement.')
             before=operations.movement_data(obj);merged={**snapshot(obj),**values};direction=obj.source['direction']
+            allowed_kinds=BankMovementClassification.DEBIT_KINDS if direction=='debit' else BankMovementClassification.CREDIT_KINDS
+            if values.get('movement_kind') and values['movement_kind'] not in allowed_kinds:
+                raise serializers.ValidationError({'movement_kind':'Choose a supported type for this direction.'})
+            values['movement_kind']=effective_kind(direction,merged.get('movement_kind'))
+            merged['movement_kind']=values['movement_kind']
             if isinstance(merged.get('expense_period'),str):
                 from datetime import date
                 merged['expense_period']=date.fromisoformat(merged['expense_period'])
@@ -224,8 +229,7 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
                 terminal=get_object_or_404(Terminal,pk=merged['terminal'],account=account)
                 if not terminal.active and terminal.pk!=before['classification'].get('terminal'):raise serializers.ValidationError({'terminal':'Choose an active terminal.'})
                 if terminal.studio_id!=merged.get('studio') or terminal.channel!=merged.get('channel'):raise serializers.ValidationError({'terminal':'Terminal, studio and payment method must agree.'})
-            if direction=='debit' and merged.get('movement_kind') in ('customer_receipt','fee_reimbursement'):raise serializers.ValidationError({'movement_kind':'This kind belongs to bank credits.'})
-            if direction=='credit' and merged.get('movement_kind') in ('expense','fee'):raise serializers.ValidationError({'movement_kind':'This kind belongs to bank debits.'})
+            if merged['movement_kind'] not in allowed_kinds:raise serializers.ValidationError({'movement_kind':'Choose a supported type for this direction.'})
             missing=missing_fields(direction,merged,Category.objects.filter(parent_id=merged.get('category'),active=True).exists() if merged.get('category') else False)
             if missing and values.get('reviewed'):
                 raise serializers.ValidationError({field:'Complete this field before marking the movement reviewed.' for field in missing})

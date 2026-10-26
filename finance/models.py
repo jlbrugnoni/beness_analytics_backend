@@ -432,8 +432,10 @@ class BankMovement(models.Model):
 
 
 class BankMovementClassification(models.Model):
-    KINDS=[('customer_receipt','Customer receipt'),('expense','Expense'),('internal_transfer','Internal movement'),
-        ('fee','Bank/processing fee'),('fee_reimbursement','Fee reimbursement'),('refund','Refund'),('extraordinary','Extraordinary')]
+    KINDS=[('customer_receipt','Income'),('expense','Expense'),('internal_transfer','Internal movement'),
+        ('refund','Refund/reimbursement'),('extraordinary','Extraordinary')]
+    DEBIT_KINDS=('expense','internal_transfer','refund')
+    CREDIT_KINDS=('customer_receipt','internal_transfer','refund','extraordinary')
     movement=models.OneToOneField(BankMovement,on_delete=models.PROTECT,related_name='classification')
     description=models.TextField(blank=True,max_length=2000)
     operation_date=models.DateField(null=True,blank=True)

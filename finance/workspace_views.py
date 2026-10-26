@@ -108,13 +108,13 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
             if f['status'] in ('review','reviewed','unreviewed'):
                 children=Category.objects.filter(parent_id=OuterRef('classification__category_id'),active=True)
                 qs=qs.annotate(has_subcategories=Exists(children))
-                review=Q(classification__isnull=True)|Q(classification__movement_kind='')|Q(classification__reviewed=False)
+                review=Q(classification__isnull=True)|Q(classification__reviewed=False)
                 review|=(~Q(classification__movement_kind='internal_transfer')&Q(classification__studio__isnull=True,classification__administration=False))
                 if kind=='debit':
-                    review|=Q(classification__movement_kind__in=['expense','fee','extraordinary'])&(Q(classification__category__isnull=True)|Q(classification__expense_period__isnull=True)|Q(has_subcategories=True,classification__subcategory__isnull=True))
-                else:review|=Q(classification__movement_kind='customer_receipt')&(Q(classification__channel='')|Q(classification__operation_date__isnull=True))
+                    review|=Q(classification__movement_kind__in=['','expense','fee','extraordinary'])&(Q(classification__category__isnull=True)|Q(classification__expense_period__isnull=True)|Q(has_subcategories=True,classification__subcategory__isnull=True))
+                else:review|=Q(classification__movement_kind__in=['','customer_receipt'])&(Q(classification__channel='')|Q(classification__operation_date__isnull=True))
                 qs=qs.exclude(review) if f['status']=='reviewed' else qs.filter(review)
-            elif f['status']=='missing_category':qs=qs.filter(classification__category__isnull=True).exclude(classification__movement_kind='internal_transfer')
+            elif f['status']=='missing_category':qs=qs.filter(Q(classification__isnull=True)|Q(classification__movement_kind__in=['','expense','fee','extraordinary'],classification__category__isnull=True))
             elif f['status']=='method_review':qs=qs.filter(Q(classification__isnull=True)|Q(classification__channel=''))
         elif kind=='invoices':
             get_object_or_404(sales_preview_companies(request.user),pk=company.pk)

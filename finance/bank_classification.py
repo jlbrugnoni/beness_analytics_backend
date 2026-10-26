@@ -11,13 +11,21 @@ def snapshot(movement):
         'terminal':item.terminal_id,'movement_kind':item.movement_kind,'reviewed':item.reviewed}
 
 
+def effective_kind(direction,kind):
+    """Compatibility for older classifications; preserve the raw audit snapshot."""
+    if not kind:return 'expense' if direction=='debit' else 'customer_receipt'
+    if direction=='debit' and kind in ('fee','extraordinary'):return 'expense'
+    if direction=='credit' and kind=='fee_reimbursement':return 'refund'
+    return kind
+
+
 def missing_fields(direction,values,has_subcategories=False):
     """Applicable completion requirements; optional notes/terminals are not gates."""
-    fields=[];kind=values.get('movement_kind') or ''
+    fields=[];kind=effective_kind(direction,values.get('movement_kind'))
     if not kind:fields.append('movement_kind')
     if kind!='internal_transfer' and not values.get('studio') and not values.get('administration'):
         fields.append('studio')
-    if direction=='debit' and kind in ('expense','fee','extraordinary'):
+    if direction=='debit' and kind=='expense':
         if not values.get('category'):fields.append('category')
         elif has_subcategories and not values.get('subcategory'):fields.append('subcategory')
         if not values.get('expense_period'):fields.append('expense_period')
@@ -28,7 +36,9 @@ def missing_fields(direction,values,has_subcategories=False):
 
 
 def presentation(movement):
-    values=snapshot(movement)
+    values=snapshot(movement);has_classification=bool(values)
+    if not values:values={'movement_kind':effective_kind(movement.source.get('direction'),None),'reviewed':False}
+    else:values['movement_kind']=effective_kind(movement.source.get('direction'),values.get('movement_kind'))
     children=bool(values.get('category') and any(child.active for child in movement.classification.category.children.all()))
     missing=missing_fields(movement.source.get('direction'),values,children)
     reason_codes={'movement_kind':'missing_kind','studio':'missing_studio','category':'missing_category',
@@ -38,11 +48,17 @@ def presentation(movement):
     if values:values['reviewed']=bool(values.get('reviewed') and not missing)
     if not values.get('reviewed'):reasons.append('not_reviewed')
     labels={}
-    if values:
+    if has_classification:
         item=movement.classification
         labels={key+'_name':getattr(item,key).name if getattr(item,key+'_id') else None for key in ('category','subcategory','studio')}
         labels['terminal_name']=item.terminal.identifier if item.terminal_id else None
     return {'classification':values,'classification_labels':labels,'review_reasons':reasons,'needs_review':bool(reasons),'missing_fields':missing}
+
+
+def initialize_classification(movement):
+    item=BankMovementClassification.objects.create(movement=movement,
+        movement_kind=effective_kind(movement.source.get('direction'),None))
+    movement.classification=item
 
 
 def terminal_patterns(account,actor):
