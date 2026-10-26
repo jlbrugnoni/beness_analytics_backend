@@ -5,6 +5,7 @@ from collections import Counter, defaultdict
 from django.utils import timezone
 from rest_framework import serializers
 from .configuration import ConfigurationConflict
+from .bank_classification import recognize_terminal, terminal_patterns
 from .models import BankDecision, BankEvent, BankMovement, BankPosting
 
 
@@ -109,6 +110,7 @@ def commit(batch, account, actor, expected):
     current = plan(batch, account)
     if current['token'] != expected: raise ConfigurationConflict('The account ledger changed. Reload the import plan.')
     posting = BankPosting.objects.create(batch=batch, actor=actor)
+    patterns=terminal_patterns(account,actor)
     used = set()
     rows = {r.pk: r for r in batch.rows.filter(kind='data')}
     for item in current['rows']:
@@ -117,6 +119,7 @@ def commit(batch, account, actor, expected):
         if item['outcome'] == 'new':
             movement = BankMovement.objects.create(account=account, provider=batch.provider, source=row.parsed,
                 fingerprint=fingerprint(row.parsed), created_from=row)
+            recognize_terminal(movement,actor,patterns=patterns)
             decision.movement = movement; decision.resolution = 'created'
             event(posting, actor, 'create', movement, row)
         elif item['outcome'] == 'unchanged' and item['target'] not in used:
@@ -153,6 +156,7 @@ def resolve(decision, account, actor, action, expected_revision, note, target=No
     elif action == 'create':
         movement = BankMovement.objects.create(account=account, provider=posting.batch.provider,
             source=decision.row.parsed, fingerprint=fingerprint(decision.row.parsed), created_from=decision.row)
+        recognize_terminal(movement,actor)
         decision.movement = movement; decision.resolution = 'created'
         event(posting, actor, 'create', movement, decision.row, note=note)
     elif action == 'ignore':

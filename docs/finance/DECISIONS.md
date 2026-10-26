@@ -103,6 +103,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-074 | 2026-10-26 | Routine classification comments optional | Client reported mandatory comments obstructed completing bank data. Routine bank classification saves may omit a comment; actor/time/before-after audit and revisions remain mandatory. Source corrections and undo still require reasons; invoice/receipt correction requirements unchanged. Movement-type help explains existing management classifications without implementing result calculation. |
 
+| D-075 | 2026-10-26 | Expense categories belong only to debits; recognize configured terminals | Client clarified credits need studio/payment assignments without expense categories and reported terminal recognition missing. Remove credit categories throughout ordinary editing/filtering; do not delete prior data silently. New credit posting matches a single active exact-account terminal identifier to studio/channel; existing records use an explicit audited catch-up action. Preserve manual conflicts, reviewed/reconciled rows and unknown/ambiguous matches. No automatic sale/date/reconciliation inference. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

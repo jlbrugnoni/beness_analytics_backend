@@ -1,4 +1,4 @@
-"""Read-only daily workspace over the existing ledgers; no import interpretation."""
+"""Daily ledger queries and explicitly requested, audited terminal recognition."""
 from decimal import Decimal
 from django.db.models import Q, Count, Sum, DecimalField, Exists, OuterRef, Subquery, IntegerField, Prefetch
 from django.db.models.fields.json import KeyTextTransform
@@ -28,7 +28,7 @@ def companies_for(user):
 
 class WorkspaceViewSet(viewsets.GenericViewSet):
     permission_classes=[IsAuthenticated,SalesPreviewPermission]
-    http_method_names=['get','head','options']
+    http_method_names=['get','post','head','options']
 
     def finalize_response(self,request,response,*args,**kwargs):
         response=super().finalize_response(request,response,*args,**kwargs)
@@ -44,6 +44,34 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
             'accounts':list(accounts.values('id','company_id','name','currency','active','kind')),
             'studios':list(Studio.objects.filter(site_id__in=companies.values('site_id')).values('id','site_id','name')),
             'categories':[{'id':c.pk,'company':c.company_id,'parent':c.parent_id,'name':c.name,'active':c.effective_active} for c in Category.objects.filter(company__in=companies).select_related('parent')]})
+
+    @action(detail=False,methods=['post'],url_path='recognize-terminals')
+    def recognize_terminals(self,request):
+        from .posting_views import locked_account
+        from .bank_classification import recognize_terminal, terminal_patterns
+        from . import bank_posting as operations
+        from django.db import transaction
+        class Input(serializers.Serializer):
+            company=serializers.IntegerField(min_value=1)
+        data=Input(data=request.data);data.is_valid(raise_exception=True)
+        from .access import can_view_sensitive_detail
+        if not can_use_finance(request.user,'can_edit_finance') or not can_view_sensitive_detail(request.user):
+            from rest_framework.exceptions import PermissionDenied
+            raise PermissionDenied('Bank edit and sensitive-detail access are required.')
+        company=get_object_or_404(companies_for(request.user),pk=data.validated_data['company'])
+        # One transaction and the same lock order as import/manual edits.
+        updated=0
+        with transaction.atomic():
+            for account_id in visible_accounts(request.user).filter(company=company,active=True,kind='bank').order_by('pk').values_list('pk',flat=True):
+                with locked_account(request.user,account_id,['can_edit_finance']) as account:
+                    count=0;patterns=terminal_patterns(account,request.user)
+                    movements=BankMovement.objects.filter(account=account,active=True,reconciled=False,source__direction='credit').select_for_update(of=('self',)).select_related('classification','created_from__batch')
+                    for movement in movements:
+                        movement.account=account
+                        count+=bool(recognize_terminal(movement,request.user,existing=True,patterns=patterns))
+                    if count:operations.advance(account)
+                    updated+=count
+        return Response({'updated':updated})
 
     def list(self,request):
         class Filters(serializers.Serializer):
@@ -65,6 +93,8 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
             raise serializers.ValidationError('Start must precede end.')
         kind=f['kind'];bank=kind in ('debit','credit')
         if not bank and f['status'] in ('missing_category','method_review','reviewed','unreviewed'):raise serializers.ValidationError('Choose a supported invoice status.')
+        if kind=='credit' and (f.get('category') or f.get('subcategory') or f['status']=='missing_category'):
+            raise serializers.ValidationError('Categories apply only to bank debits.')
         if bank:
             if not can_use_finance(request.user,'can_view_finance_bank_accounts'):
                 from rest_framework.exceptions import PermissionDenied

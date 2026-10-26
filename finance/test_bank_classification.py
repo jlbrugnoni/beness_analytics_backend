@@ -159,3 +159,121 @@ class BankClassificationTests(APITestCase):
         self.assertEqual(self.assign(self.debit,studio=outside.pk).status_code,400)
         self.assertEqual(self.assign(self.debit,administration=True).status_code,403)
         self.assertEqual(self.assign(self.debit,studio=self.studio.pk).status_code,200)
+
+
+@override_settings(FINANCE_ENABLED=True)
+class BankTerminalRecognitionTests(APITestCase):
+    setUp=BankClassificationTests.setUp
+    upload=BankClassificationTests.upload
+    preview=BankClassificationTests.preview
+    processing=BankClassificationTests.processing
+    commit=BankClassificationTests.commit
+    post=BankClassificationTests.post
+    records=BankClassificationTests.records
+    assign=BankClassificationTests.assign
+
+    def terminal_setup(self,identifier='39618800002',**fields):
+        self.studio=Studio.objects.create(site=self.site,name='Recognized studio')
+        return Terminal.objects.create(account=self.account,identifier=identifier,studio=self.studio,
+            channel=fields.pop('channel','card_terminal'),**fields)
+
+    def test_new_import_recognizes_exact_terminal_without_changing_source_or_review(self):
+        terminal=self.terminal_setup()
+        self.post(fixtures.BASE.replace('Card deposit',terminal.identifier+' - AZUL CR RD$ .00'))
+        movement=BankMovement.objects.get(source__direction='credit')
+        response=self.client.get(f'/api/finance/bank-movements/{movement.pk}/')
+        values=response.data['classification']
+        self.assertEqual(values['terminal'],terminal.pk)
+        self.assertEqual(values['studio'],terminal.studio_id)
+        self.assertEqual(values['channel'],'card_terminal')
+        self.assertFalse(values['reviewed']);self.assertFalse(response.data['reconciled'])
+        self.assertIsNone(values['operation_date']);self.assertEqual(values['movement_kind'],'')
+        self.assertEqual(movement.revision,1)
+        event=movement.events.get(action='create')
+        self.assertEqual(event.after['classification']['terminal'],terminal.pk)
+        self.assertIn(terminal.identifier,movement.source['description'])
+        self.assertFalse(BankMovementClassification.objects.filter(movement__source__direction='debit').exists())
+        # Repeated overlapping imports keep one movement and the classification.
+        self.post(fixtures.BASE.replace('Card deposit',terminal.identifier+' - AZUL CR RD$ .00'))
+        self.assertEqual(BankMovement.objects.count(),2)
+
+    def test_unknown_partial_inactive_and_ambiguous_matches_stay_unassigned(self):
+        terminal=self.terminal_setup()
+        from .bank_classification import recognize_terminal
+        self.records()
+        for description in ['X'+terminal.identifier,terminal.identifier+'9','Unknown terminal']:
+            self.credit.source['description']=description
+            self.assertFalse(recognize_terminal(self.credit,self.user))
+        second=Terminal.objects.create(account=self.account,identifier='39618800004',studio=terminal.studio,channel='recurring')
+        self.credit.source['description']=terminal.identifier+' '+second.identifier
+        self.assertFalse(recognize_terminal(self.credit,self.user))
+        terminal.active=False;terminal.save()
+        self.credit.source['description']=terminal.identifier
+        self.assertFalse(recognize_terminal(self.credit,self.user))
+        self.assertFalse(BankMovementClassification.objects.exists())
+
+    def test_existing_credits_can_be_recognized_with_audit_and_are_idempotent(self):
+        self.post(fixtures.BASE.replace('Card deposit','39618800002 - AZUL CR RD$ .00'))
+        terminal=self.terminal_setup()
+        url='/api/finance/workspace/recognize-terminals/'
+        response=self.client.post(url,{'company':self.company.pk},format='json')
+        self.assertEqual(response.status_code,200,response.data);self.assertEqual(response.data['updated'],1)
+        movement=BankMovement.objects.get(source__direction='credit')
+        self.assertEqual(movement.revision,2)
+        audit=movement.events.get(action='classify')
+        self.assertEqual(audit.before['classification'],{})
+        self.assertEqual(audit.actor,self.user)
+        self.assertEqual(audit.after['classification']['terminal'],terminal.pk)
+        self.assertEqual(self.client.post(url,{'company':self.company.pk},format='json').data['updated'],0)
+        filtered=self.client.get('/api/finance/workspace/',{'company':self.company.pk,'kind':'credit','studio':terminal.studio_id,'channel':'card_terminal'})
+        self.assertEqual(filtered.data['count'],1)
+
+    def test_preserves_manual_conflicts_reviewed_reconciled_and_nonreceipt_kinds(self):
+        from .bank_classification import recognize_terminal
+        self.records();terminal=self.terminal_setup()
+        self.credit.source['description']=terminal.identifier
+        for values in [{'channel':'cash'},{'reviewed':True},{'administration':True},{'movement_kind':'internal_transfer'}]:
+            BankMovementClassification.objects.update_or_create(movement=self.credit,defaults={
+                'channel':'','reviewed':False,'administration':False,'movement_kind':'',**values})
+            self.credit=BankMovement.objects.get(pk=self.credit.pk)
+            self.assertFalse(recognize_terminal(self.credit,self.user))
+        self.credit.reconciled=True
+        self.assertFalse(recognize_terminal(self.credit,self.user))
+
+    def test_recognition_scopes_account_and_user_permissions(self):
+        self.post(fixtures.BASE.replace('Card deposit','39618800002'))
+        terminal=self.terminal_setup()
+        self.profile.can_edit_finance=False;self.profile.save()
+        url='/api/finance/workspace/recognize-terminals/'
+        response=self.client.post(url,{'company':self.company.pk},format='json')
+        self.assertEqual(response.status_code,403)
+        self.assertFalse(BankMovementClassification.objects.exists())
+        self.profile.can_edit_finance=True;self.profile.save()
+        self.profile.can_view_sensitive_finance=False;self.profile.save()
+        self.assertEqual(self.client.post(url,{'company':self.company.pk},format='json').status_code,403)
+        self.assertFalse(BankMovementClassification.objects.exists())
+
+    def test_credit_categories_rejected_and_options_are_debit_only(self):
+        self.records()
+        self.assertEqual(self.assign(self.credit,category=self.category.pk).status_code,400)
+        self.assertEqual(self.assign(self.credit,subcategory=self.subcategory.pk).status_code,400)
+        self.assertEqual(self.client.get(f'/api/finance/bank-movements/{self.credit.pk}/options/').data['categories'],[])
+        self.assertEqual(self.client.get('/api/finance/workspace/',{'company':self.company.pk,'kind':'credit','status':'missing_category'}).status_code,400)
+        self.assertEqual(self.client.get('/api/finance/workspace/',{'company':self.company.pk,'kind':'credit','category':self.category.pk}).status_code,400)
+
+    def test_caixa_recognition_uses_account_mapping_and_keeps_operation_date_pending(self):
+        from .test_bank_imports import CAIXA
+        studio=Studio.objects.create(site=self.es,name='Estepona fixture')
+        terminal=Terminal.objects.create(account=self.foreign,identifier='369092994',studio=studio,channel='card_terminal')
+        self.profile.allowed_sites.add(self.es)
+        self.post(CAIXA,account=self.foreign.pk,provider='caixa')
+        movement=BankMovement.objects.get(account=self.foreign,source__direction='credit')
+        self.assertEqual(movement.classification.terminal_id,terminal.pk)
+        self.assertEqual(movement.classification.studio_id,studio.pk)
+        self.assertIsNone(movement.classification.operation_date)
+
+    def test_terminal_from_another_account_is_never_used(self):
+        studio=Studio.objects.create(site=self.es,name='Other company studio')
+        Terminal.objects.create(account=self.foreign,identifier='39618800002',studio=studio,channel='card_terminal')
+        self.post(fixtures.BASE.replace('Card deposit','39618800002 - AZUL CR RD$ .00'))
+        self.assertFalse(BankMovementClassification.objects.exists())

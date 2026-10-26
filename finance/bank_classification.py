@@ -31,3 +31,55 @@ def presentation(movement):
         labels={key+'_name':getattr(item,key).name if getattr(item,key+'_id') else None for key in ('category','subcategory','studio')}
         labels['terminal_name']=item.terminal.identifier if item.terminal_id else None
     return {'classification':values,'classification_labels':labels,'review_reasons':reasons,'needs_review':bool(reasons)}
+
+
+def terminal_patterns(account,actor):
+    """Load eligible account mappings once per operation, including actor scope."""
+    import re
+    from .models import Terminal
+    from .views import visible_studios
+    studios=set(account.studios.values_list('pk',flat=True))
+    terminals=Terminal.objects.filter(account=account,active=True,studio__site_id=account.company.site_id,
+        studio__in=visible_studios(actor)).select_related('studio')
+    if studios:terminals=terminals.filter(studio_id__in=studios)
+    return [(terminal,re.compile(r'(?<!\w)'+re.escape(terminal.identifier.strip())+r'(?!\w)',re.IGNORECASE))
+        for terminal in terminals if terminal.identifier.strip()]
+
+
+def recognize_terminal(movement, actor, existing=False, patterns=None):
+    """Apply one exact account terminal match; caller holds company/account locks.
+
+    Only fill compatible, unreviewed credit assignments. Never change source facts,
+    infer a sale/date, overwrite manual choices, or mark recognition/reconciliation.
+    New movements include this snapshot in their create event; existing ones get
+    a separate audited revision so undo and stale-edit protection remain effective.
+    """
+    from .models import BankPosting
+    from . import bank_posting as operations
+    if not movement.active or movement.reconciled or movement.source.get('direction') != 'credit':
+        return False
+    values=snapshot(movement)
+    if values.get('reviewed') or values.get('administration') or values.get('terminal'):
+        return False
+    if values.get('movement_kind') not in (None,'','customer_receipt'):
+        return False
+    account=movement.account
+    if not account.active or not account.company.active:
+        return False
+    text=' '.join(str(movement.source.get(field) or '') for field in ('description','short_description'))
+    if patterns is None:patterns=terminal_patterns(account,actor)
+    matches=[terminal for terminal,pattern in patterns if pattern.search(text)]
+    if len(matches)!=1:
+        return False
+    terminal=matches[0]
+    if values.get('studio') not in (None,terminal.studio_id) or values.get('channel') not in (None,'',terminal.channel):
+        return False
+    before=operations.movement_data(movement) if existing else None
+    item,_=BankMovementClassification.objects.get_or_create(movement=movement)
+    item.terminal=terminal;item.studio_id=terminal.studio_id;item.channel=terminal.channel
+    item.save();movement.classification=item
+    if existing:
+        movement.revision+=1;movement.save(update_fields=['revision','updated_at'])
+        operations.event(BankPosting.objects.get(batch=movement.created_from.batch),actor,'classify',movement,
+            before=before,note='Automatic terminal recognition: '+terminal.identifier)
+    return True

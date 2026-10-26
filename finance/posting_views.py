@@ -169,7 +169,7 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
         studios=visible_studios(request.user).filter(site_id=company.site_id)
         if obj.account.studios.exists():studios=studios.filter(pk__in=obj.account.studios.values('pk'))
         return Response({'categories':[{'id':c.pk,'name':c.name,'parent':c.parent_id,'active':c.effective_active}
-            for c in Category.objects.filter(company=company).select_related('parent')],
+            for c in Category.objects.filter(company=company).select_related('parent')] if obj.source.get('direction')=='debit' else [],
             'studios':list(studios.values('id','name')),
             'terminals':list(Terminal.objects.filter(account=obj.account,studio__in=visible_studios(request.user)).filter(Q(active=True)|Q(pk=snapshot(obj).get('terminal'))).values('id','identifier','channel','studio_id')),
             'channels':[{'value':v,'label':label} for v,label in SourceMapping.CHANNELS],
@@ -206,6 +206,8 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
                 merged['expense_period']=date.fromisoformat(merged['expense_period'])
             if merged.get('expense_period') and merged['expense_period'].day!=1:raise serializers.ValidationError({'expense_period':'Use the first day of the expense month.'})
             if direction=='debit' and merged.get('operation_date'):raise serializers.ValidationError({'operation_date':'Operation date is assigned to bank credits.'})
+            if direction=='credit' and any(values.get(field) is not None for field in ('category','subcategory')):
+                raise serializers.ValidationError({'category':'Categories apply only to bank debits.'})
             if direction=='credit' and merged.get('expense_period'):raise serializers.ValidationError({'expense_period':'Expense month is assigned to bank debits.'})
             for field in ('category','subcategory'):
                 if merged.get(field):

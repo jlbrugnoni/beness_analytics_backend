@@ -13,9 +13,9 @@ Migration0012 creates this structure; no source backfill or automatic guesses.
 Applied only to isolated QA/tests; the normal/production database was not migrated.
 
 Records → Bank debits / Bank credits → Edit opens the new dialog. Both directions
-allow manual description/concept, category/subcategory, studio or company-wide
+allow manual description/concept, studio or company-wide
 Administration, payment method, terminal, movement kind and recognition/review flag.
-Debits additionally allow expense month; credits allow operation date. Source bank
+Debits additionally allow category/subcategory and expense month; credits allow operation date. Source bank
 date, amount/currency, reported balance, original description/references and account
 are protected. Bank source corrections still use the existing explicit review flow.
 The two dates/months are independent. YYYY-MM expense month saves as its first day;
@@ -163,3 +163,58 @@ Browser QA: synthetic company6/debit355 saved an updated description with an emp
 comment. UI confirmed Changes saved and history showed Classification updated with
 before/after values. No real records changed. Screenshot:
 /private/tmp/finance-optional-comment.png. Local backend8027/frontend3037 restored.
+
+## Follow-up: debit-only categories and terminal recognition (2026-10-26)
+
+Client clarified expense categories/subcategories do not belong on bank credits.
+Credits now omit category columns, filters, missing-category status and dialog fields.
+The API returns no credit category options and rejects new credit category assignments
+and category filters. Existing legacy assignments are not silently deleted. Expense
+classification remains available on debits; credit studio/method/operation date and
+manual concept remain editable. Protected source facts and optional comments remain.
+
+Root cause: terminal selection populated studio/method only after manual selection;
+posting never interpreted the configured terminal identifier in bank descriptions.
+New posted credits (including explicit reviewed creates) now match complete terminal
+identifiers in description/short_description to active mappings for that exact bank
+account, company/site, account participants and importing user's studio scope. Exactly
+one eligible match fills terminal, studio and channel. Patterns are loaded once per
+import/account operation. No substring/prefix guesses, source rewrites, fees, sale
+classification, operation-date inference, recognition flag or reconciliation inferred.
+Caixa terminal plus DDMM is recognized as a terminal; date inference remains separate.
+
+For existing records: Records → Bank credits → Apply terminal mappings to existing
+credits, POST workspace/recognize-terminals/ {company}. The UI explicitly states this
+checks ALL company credits, independent of table filters. Whole-company workspace,
+full-account, money, bank, edit and sensitive-detail access remain enforced. The action
+uses company→account→movement locks within a transaction, fills only compatible
+unreviewed credits, records before/after + actor/time + automatic-match note, increases
+movement/account revisions, and is idempotent. Reviewed/reconciled/inactive rows,
+existing terminal assignments, administration, non-receipt kinds, conflicting studio/
+method and unknown/multiple matches are preserved. Correcting a source does not erase
+manual classification; older overlapping rows are recognized using this explicit
+catch-up action rather than covert writes during GET. No new schema migration.
+
+Validation: PostgreSQL44 focused classification/posting/workspace tests passed;
+SQLite42 passed/2 PostgreSQL-only skips. New cases cover Popular, Caixa, exact token
+boundaries, unknown/inactive/multiple/foreign-account terminals, manual conflicts,
+review protection, permissions, audit/idempotence, overlap and debit-only categories.
+Changed-file frontend lint and production build passed. Browser synthetic company6:
+movement356 QA-AUTO-901 recognized SYNTHETIC-EDITOR/Cierre on posting; movement357
+QA-RETRO-902 imported before mapping existed, then catch-up updated exactly1 credit
+to SYNTHETIC-RETRO/Recurrente/studio7. The existing reviewed credit stayed unchanged.
+Dialog and table contain no expense categories. Screenshot:
+/private/tmp/finance-credit-terminal-recognition.png. No real source/record/grant edits.
+
+Client checks:
+1. Refresh Records; credits have no category/subcategory fields, columns or filters;
+   debits retain them.
+2. In the intended company, apply terminal mappings once for older credits. Open a
+   recognized AZUL record and compare its terminal, studio and method with Settings.
+3. Upload a new bank report: a known account terminal should fill automatically.
+   Unknown/multiple identifiers and conflicting prior assignments stay for review.
+4. Repeat catch-up: already assigned credits remain unchanged. History records the
+   automated assignment. Dates, amounts and bank references remain protected.
+
+Both repositories remain local feature/finance-phase-2; client acceptance pending.
+No production migration, merge, push or deployment.

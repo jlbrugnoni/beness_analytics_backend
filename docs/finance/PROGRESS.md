@@ -579,3 +579,11 @@ Made routine bank classification comments optional while preserving audit/revisi
 permissions and source-correction/undo reason requirements. Added bilingual movement
 kind examples. Focused tests28 passed/2 PostgreSQL-only skips; frontend lint/build
 passed. See BANK_CLASSIFICATION_DELIVERY.md. Client acceptance pending.
+
+2026-10-26: client corrected concept: categories/subcategories belong only to debit
+expenses. Removed credit category UI/filter/options; reject credit assignments in API.
+Added missing terminal recognition to new posting plus explicit audited catch-up for
+existing credits, respecting account/studio scope, manual conflicts and review locks.
+PostgreSQL44 passed; SQLite42/2 skips; lint/build passed. Synthetic browser verified
+new automatic mapping and catch-up of1 older credit. No real financial records changed.
+See BANK_CLASSIFICATION_DELIVERY.md. Client acceptance pending; branches remain local.
