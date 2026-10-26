@@ -14,7 +14,7 @@ from core_data.models import Studio
 from .access import can_use_finance
 from .configuration import ConfigurationConflict
 from .migration_views import MigrationPermission, migration_companies
-from .payment_preview import read_payment_preview, read_payment_csv, payment_totals
+from .payment_preview import read_payment_preview, read_payment_csv, read_payment_xlsx, payment_totals
 from .migration_reader import MAX_BYTES
 from .models import Company, MigrationImportBatch, PaymentImportBatch, PaymentImportRow, PaymentPosting, PaymentDecision, FinancialReceipt, SourceMapping
 from .posting_views import may_undo
@@ -84,8 +84,11 @@ class PaymentImportViewSet(PrivatePayments):
             file=serializers.FileField(max_length=255,allow_empty_file=False)
         data=Input(data=request.data);data.fields['company'].queryset=migration_companies(request.user);data.is_valid(raise_exception=True)
         file=data.validated_data['file']
-        if not file.name.lower().endswith('.csv') or file.size>MAX_BYTES:raise serializers.ValidationError('Choose a payment CSV up to 5 MiB.')
-        content=file.read(MAX_BYTES+1);parsed=read_payment_csv(content)
+        extension=file.name.lower().rsplit('.',1)[-1]
+        if extension not in ('xlsx','csv') or file.size>MAX_BYTES:raise serializers.ValidationError('Choose an Alegra payment XLSX or CSV up to 5 MiB.')
+        content=file.read(MAX_BYTES+1)
+        if len(content)>MAX_BYTES:raise serializers.ValidationError('The file exceeds 5 MiB.')
+        parsed=read_payment_xlsx(content) if extension=='xlsx' else read_payment_csv(content)
         name=''.join(c for c in file.name.replace('\\','/').split('/')[-1] if ord(c)>=32)[:255]
         with locked(request.user,data.validated_data['company'].pk,['can_import_finance']) as company:
             batch=store(company,request.user,content,parsed,name)

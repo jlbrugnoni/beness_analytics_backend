@@ -3,6 +3,9 @@
 Date: 2026-10-25. Implemented and validated; client acceptance pending.
 Both repositories: feature/finance-phase-2. No push/merge/deployment.
 
+Format correction: routine XLSX upload is now supported directly; the earlier
+CSV-only assumption below is superseded by PAYMENT_XLSX_CORRECTION.md (D-069).
+
 ## What I did
 
 Q-016 answered: client says payment Numero normally remains stable/company-wide

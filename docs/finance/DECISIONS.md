@@ -91,6 +91,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-068 | 2026-10-25 | Accepted normal-case contract, guarded exceptions | Q-016: client says payment Numero normally stays stable/company-wide unique and, as far as known, one receipt refers to one invoice. V1 uses company/provider/payment-number identity with unchanged-fact verification; reused/conflicting numbers, missing identities and unsupported multiple-invoice references remain for review, never silent merging. Several receipts can pay one invoice. |
 
+| D-069 | 2026-10-25 | Client source-format correction | Client clarified the Alegra_adm payment report comes as XLSX. Routine payment upload must accept original XLSX directly, independently of historical migration. Prior CSV-only restriction was a developer assumption. Preserve the shared receipt identity/manual work rules; see PAYMENT_XLSX_CORRECTION.md. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

@@ -497,3 +497,9 @@ mapping revisions guard commit and linking; linked active receipts protect sale
 undo. Payments do not add revenue or bank movements. See
 PHASE_3_3_3_2_DELIVERY.md for implemented behavior and outstanding native-format,
 missing identity, source-replacement and historical migration limitations.
+
+
+Routine payment input correction D-069: original XLSX is supported through
+alegra-payment-xlsx-v1 using name-independent table/header detection. Historical
+preview remains strict to the known Alegra_adm worksheet; neither mode rewrites
+original evidence. Both feed the same receipts. See PAYMENT_XLSX_CORRECTION.md.

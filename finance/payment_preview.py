@@ -21,7 +21,7 @@ CODE = re.compile(r'(?<![A-Za-z0-9])B0[12]\d{8}(?![A-Za-z0-9])', re.I)
 METHODS = {'cierre','link','recurrente','transferencia','efectivo'}
 
 
-def worksheet(content):
+def worksheet(content, report_sheet=False):
     if len(content)>MAX_BYTES: raise ValueError('file_too_large')
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
         infos=archive.infolist()
@@ -30,18 +30,43 @@ def worksheet(content):
         if any('vbaproject' in i.filename.casefold() for i in infos):raise ValueError('unsupported_macros')
         book=safe_xml(archive,'xl/workbook.xml');props=book.find('s:workbookPr',NS)
         epoch=props is not None and props.get('date1904') in ('1','true')
-        sheets=[s for s in book.findall('s:sheets/s:sheet',NS) if normalized(s.get('name',''))=='alegra_adm']
-        if not sheets:raise ValueError('missing_payment_sheet')
-        if len(sheets)!=1:raise ValueError('ambiguous_payment_sheets')
+        all_sheets=book.findall('s:sheets/s:sheet',NS)
         relations=safe_xml(archive,'xl/_rels/workbook.xml.rels')
-        targets=[r.get('Target','') for r in relations if r.get('Id')==sheets[0].get(REL) and r.get('TargetMode')!='External']
-        if len(targets)!=1:raise ValueError('invalid_workbook_path')
-        target=targets[0];path=posixpath.normpath(target.lstrip('/') if target.startswith('/') else posixpath.join('xl',target))
-        if not path.startswith('xl/') or '..' in path.split('/'):raise ValueError('invalid_workbook_path')
         strings=[]
         if 'xl/sharedStrings.xml' in archive.namelist():
             strings=[''.join(t.text or '' for t in s.findall('.//s:t',NS)) for s in safe_xml(archive,'xl/sharedStrings.xml')]
-        sheet=safe_xml(archive,path);rows=[];previous=0;count=0;headers=None
+        def load(sheet):
+            targets=[r.get('Target','') for r in relations if r.get('Id')==sheet.get(REL) and r.get('TargetMode')!='External']
+            if len(targets)!=1:raise ValueError('invalid_workbook_path')
+            target=targets[0];path=posixpath.normpath(target.lstrip('/') if target.startswith('/') else posixpath.join('xl',target))
+            if not path.startswith('xl/') or '..' in path.split('/'):raise ValueError('invalid_workbook_path')
+            return safe_xml(archive,path)
+        scanned=0
+        if report_sheet:
+            if len(all_sheets)>100:raise ValueError('workbook_limit')
+            candidates=[]
+            required={normalized(FIELDS[k]) for k in REQUIRED}
+            for candidate in all_sheets:
+                data=load(candidate)
+                for node in data.findall('s:sheetData/s:row',NS):
+                    number=int(node.get('r','0'))
+                    if number>25:break
+                    values=[]
+                    for item in node.findall('s:c',NS):
+                        scanned+=1
+                        if scanned>MAX_CELLS:raise ValueError('workbook_limit')
+                        value=cell_value(item,strings)['value']
+                        values.append(normalized(str(value or '')))
+                    if required<=set(values):candidates.append((candidate,data,number))
+            if not candidates:raise ValueError('missing_payment_header')
+            if len(candidates)!=1:raise ValueError('ambiguous_payment_sheets')
+            selected,sheet,header_number=candidates[0]
+        else:
+            sheets=[s for s in all_sheets if normalized(s.get('name',''))=='alegra_adm']
+            if not sheets:raise ValueError('missing_payment_sheet')
+            if len(sheets)!=1:raise ValueError('ambiguous_payment_sheets')
+            selected=sheets[0];sheet=load(selected);header_number=1
+        rows=[];previous=0;count=scanned;headers=None
         for node in sheet.findall('s:sheetData/s:row',NS):
             number=int(node.get('r','0'))
             if number<=previous or number>MAX_SCAN_ROWS:raise ValueError('workbook_limit')
@@ -52,16 +77,16 @@ def worksheet(content):
                 count+=1
                 if count>MAX_CELLS:raise ValueError('workbook_limit')
                 cells[column]=cell_value(item,strings)
-            if number==1:headers=cells
-            else:rows.append((number,cells))
+            if number==header_number:headers=cells
+            elif number>header_number:rows.append((number,cells))
         if headers is None:raise ValueError('missing_payment_header')
         mapping={}
         for key,label in FIELDS.items():
-            columns=[c for c,v in headers.items() if normalized(str(v['value'] or ''))==normalized(label)]
+            columns=[c for c,v in headers.items() if normalized(str(v['value'] or '')) in ({'moneda','currency'} if key=='currency' else {normalized(label)})]
             if len(columns)>1:raise ValueError('duplicate_header')
             if columns:mapping[key]=columns[0]
         if not REQUIRED<=mapping.keys():raise ValueError('missing_payment_header')
-        return sheets[0].get('name'),epoch,headers,mapping,rows
+        return selected.get('name'),epoch,headers,mapping,rows
 
 
 def text(cell):
@@ -78,10 +103,10 @@ def payment_totals(rows):
         'split_invoice_groups':sum(n>1 for n in Counter(r['invoice_code'] for r in rows if r['invoice_code']).values())}
 
 
-def read_payment_preview(content, prepared=None):
+def read_payment_preview(content, prepared=None, report_sheet=False):
     result={'parser_version':VERSION,'rows':[],'file_issues':[],'summary':{}}
     try:
-        name,epoch,headers,mapping,source=prepared if prepared is not None else worksheet(content)
+        name,epoch,headers,mapping,source=prepared if prepared is not None else worksheet(content, report_sheet=report_sheet)
         ignored=0
         for number,cells in source:
             mapped={key:cells.get(column) for key,column in mapping.items()}
@@ -200,4 +225,11 @@ def read_payment_csv(content):
     except (UnicodeError,ValueError,csv.Error) as error:
         result['file_issues']=[str(error) if str(error) in {'file_too_large','missing_payment_header','duplicate_header','workbook_limit'} else 'invalid_payment_csv']
         result['summary']=payment_totals([])
+    return result
+
+
+def read_payment_xlsx(content):
+    """Routine XLSX export: identify one payment table without a sheet-name requirement."""
+    result=read_payment_preview(content,report_sheet=True)
+    result['parser_version']='alegra-payment-xlsx-v1'
     return result

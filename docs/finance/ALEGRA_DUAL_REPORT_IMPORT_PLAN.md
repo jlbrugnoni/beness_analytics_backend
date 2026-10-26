@@ -176,3 +176,12 @@ receipts (D-068). Shared financial payment processing now implemented; see
 PHASE_3_3_3_2_DELIVERY.md. The strict CSV preset implements observed workbook column
 names and synthetic export fixtures; actual native-file compatibility still needs
 verification. Previous planning-only/no-payment-posting statements are historical.
+
+
+## Routine XLSX source-format correction (D-069)
+
+Client confirms payment report is XLSX. Direct routine XLSX upload is now
+implemented using the observed payment columns, with automatic worksheet/header
+location and existing shared receipt services. Do not require CSV conversion or
+migration setup. PAYMENT_XLSX_CORRECTION.md supersedes earlier CSV-only guidance.
+Other unobserved vendor header variations still require verification, not guessing.

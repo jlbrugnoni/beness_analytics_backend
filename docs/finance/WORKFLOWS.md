@@ -243,3 +243,12 @@ payment; replacements are not silently approved. Current payment methods can be
 edited with a reason; later raw sources cannot erase them. Undo preview preserves
 edited/reconciled/reused/supported receipts; sale undo protects active receipt links.
 No bank settlement or extra revenue is created by receipt posting.
+
+
+## Corrected routine payment format (D-069)
+
+Finance → Payment imports → original Alegra payment XLSX → source preview →
+review/confirm valid payments. XLSX is the normal format; optional CSV support
+remains. The worksheet is detected from the observed payment columns, with title
+rows allowed. No enriched master, migration page, manual columns or conversion is
+required. See PAYMENT_XLSX_CORRECTION.md for verification and limits.

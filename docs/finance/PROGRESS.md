@@ -4,6 +4,8 @@ Updated: 2026-10-25.
 
 ## Current checkpoint
 
+- Format correction D-069: normal Alegra payment uploads support original XLSX directly. See PAYMENT_XLSX_CORRECTION.md; client retest pending.
+
 - Latest: Phase 3.3.3.1 payment preview accepted (D-066); Phase 3.3.3.2 shared receipt/routine import processing implemented and validated, client acceptance pending. Historical financial migration is not complete. See PHASE_3_3_3_2_DELIVERY.md.
 
 - Phase 1 foundation/access accepted on 2026-10-24; Phase 2.1 accepted (D-031); Phase 2.2 accepted (D-036); Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 accepted (D-051); Phase 3.3.1 Alegra previews accepted (D-056); Phase 3.3.2 sales posting/review/undo accepted (D-059); Phase 3.4.1 migration source previews implemented; client acceptance pending.
@@ -448,3 +450,16 @@ assignment/provenance decisions and actual native payment export acceptance.
 
 Phase 3.3.3.2 implementation checkpoints: backend `851418d`, frontend `7cfbebb`;
 both on `feature/finance-phase-2`. These are local commits only.
+
+
+## Routine payment XLSX correction
+
+2026-10-25: D-069 corrects developer CSV-only assumption: Alegra_adm arrives as XLSX.
+Routine Payment imports now accepts original XLSX directly, detecting one payment
+table by observed columns across worksheet names/title rows. No enriched workbook,
+Debitos/Ingresos sheets, CSV conversion or manual columns required. Shared receipt
+identity/overlap/manual preservation remains intact; no financial source rewrites.
+PostgreSQL 305 tests passed; SQLite299/6 skips; six new direct XLSX tests; frontend
+lint/build and browser chooser/guidance check passed. Actual #3 read-only reader
+check retains 1,128 payments without file errors. No real posting, schema/grant
+change, push/merge/deployment. Client retest pending. See PAYMENT_XLSX_CORRECTION.md.
