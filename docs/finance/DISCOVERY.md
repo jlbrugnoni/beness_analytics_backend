@@ -447,3 +447,16 @@ specified in PHASE_3_3_3_2_DISCOVERY.md. No new runtime behavior claimed.
 D-068 records the interpretation. Shared import processing implemented and validated
 in PHASE_3_3_3_2_DELIVERY.md; client acceptance pending. No native CSV layout is
 inferred as verified merely from these business answers.
+
+
+## Q-017: daily upload inventory / usability correction — 2026-10-25
+
+Client requests an Excel-like daily workspace and one upload page (D-071), using
+one or two initial migrations then frequent reports for two companies. Existing
+bank reports can contain both debit/credit sections. Spain's authoritative sales
+source remains Mindbody. Asked one consolidated question asynchronously: list the
+four expected reports for each country, clarifying whether debit/credit are separate
+files or tables in one bank file. Answer pending; do not invent four mandatory
+uploads or switch Spain to Alegra. Independent workspace/field/permission design
+is documented in DAILY_WORKSPACE_PLAN.md. Create/void permission and audited-void
+recommendations remain proposed; no user grants or records changed.

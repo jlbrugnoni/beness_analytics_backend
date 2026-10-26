@@ -252,3 +252,15 @@ review/confirm valid payments. XLSX is the normal format; optional CSV support
 remains. The worksheet is detected from the observed payment columns, with title
 rows allowed. No enriched master, migration page, manual columns or conversion is
 required. See PAYMENT_XLSX_CORRECTION.md for verification and limits.
+
+
+## Client workflow correction: daily tables (D-071)
+
+The client finds the separate import-centered screens too complex for daily work.
+Target one Upload page and a separate cross-import Records workspace with bank
+debit/credit, invoice/item and customer-payment tables, filters and Edit dialogs.
+Manual assignments are follow-up work, not an import prerequisite. Keep original
+facts separate and locked, preserve source evidence, and move migration/setup out
+of routine navigation. DAILY_WORKSPACE_PLAN.md supersedes the proposed navigation
+above where they conflict; older implemented-flow descriptions remain delivery
+history, not evidence that the new workspace has been built.

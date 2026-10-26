@@ -139,3 +139,14 @@ how to match existing imported bank expenses without counting an expense twice.
 This is recorded future scope, not implemented matching or authorization to post
 these purchases now. A later UI refinement should distinguish out-of-scope entries
 from malformed source data; current previews label both as invalid source.
+
+
+## Priority correction: daily workspace before migration certification (D-071)
+
+Client requests a simpler Upload flow and all-records operational tables with
+filters/edit dialogs. DAILY_WORKSPACE_PLAN.md defines proposed UX-1–UX-4 deliveries:
+shared navigation/browsing, necessary Phase 3.4.2/4 assignment/manual-entry foundation,
+pending-work filters, then September migration/routine-overlap rehearsal. This
+reorders the next work around daily usability; reconciliation, results and release
+remain later phases. Scope is documented, not a delivered table/editor or completed
+migration. Daily file inventory by country is Q-017, pending.

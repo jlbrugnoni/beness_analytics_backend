@@ -9,6 +9,10 @@ The main discovery batch is answered. Finance foundation/access and account/term
 migrations now exist. Bank previews/history and bank transaction posting/review/undo are implemented; Alegra source previews and sales posting/review/undo are implemented; reconciliation and results remain planned. See the delivery documents below for
 implemented behavior, checks, setup, and acceptance steps.
 
+Latest client priority: simpler daily Upload and all-records workspace (D-071).
+See [Daily workspace plan](DAILY_WORKSPACE_PLAN.md); design recorded, implementation
+pending. Existing phase acceptance is unchanged.
+
 ## Documentation index
 
 | Document | Purpose |

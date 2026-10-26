@@ -493,3 +493,19 @@ blocks it from creating receipts. Retained source evidence remains available.
 Recorded future purchase-to-bank-debit matching and expense deduplication discovery
 in ROADMAP; no new posting, matching, UI or data changes. Documentation-only update;
 validated against reader/posting paths and existing native-kind regression test.
+
+
+## Client daily workflow correction: D-071
+
+2026-10-25: Client finds import-centered navigation and visible synthetic companies
+confusing; requests one simple company/report upload page and separate Excel-like
+all-record tables with filters, status indicators and edit dialogs. Reviewed current
+Finance/Analytics screens and bank/sale/receipt API boundaries. Confirmed absence
+of a complete operational bank-classification editor and cross-import workspace;
+this requires bringing forward Phase 3.4.2/4 foundation, not cosmetic relabelling.
+Added DAILY_WORKSPACE_PLAN.md with proposed UX-1–4 sequence, field editability,
+manual-create/void permission recommendations and fixture-isolation safeguards.
+Q-017 daily file inventory asked, pending. No UI, database, grant or real-record
+changes. Documentation checked; no application tests warranted. Next: record file
+inventory and implement workspace in bounded deliveries before September migration
+certification, reusing existing import/identity/audit protections.
