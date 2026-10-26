@@ -619,3 +619,15 @@ Monetary display checks completed: 14 formatter checks, lint (existing unrelated
 warnings) and production build passed; browser synthetic358 verified grouped amount/
 balance/total/header/source fields. No backend behavior/schema changes. Details in
 BANK_CLASSIFICATION_DELIVERY.md; reset checkpoint in ROADMAP.md. Local QA restored.
+
+2026-10-26: client explicitly requested immediate reset for an August2026-only replay,
+overriding D-078 timing. Completed all finance transactional/import data reset in
+isolated local QA, after verified full DB/source-blob backup at .local-backups/
+finance-reset-20261026T113558 (outside Git).358 bank movements/443 invoices/619 receipts
+and all preview/history rows removed; all22 scoped tables empty.56 other/configuration
+models verified unchanged by hashes, foreign keys valid,12 empty-workspace API checks
+passed and browser confirmed. Companies/accounts/terminals/categories/mappings/policies/
+users/permissions/non-finance data retained; sequences retained, ledger tokens advanced.
+Backend8027 restored, frontend3037 running. No reset of production or analytics. Next:
+client August workbook preview then routine report replay in same company. Historical
+bank migration posting remains pending. See BANK_CLASSIFICATION_DELIVERY.md.

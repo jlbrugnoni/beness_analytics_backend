@@ -201,3 +201,10 @@ At that checkpoint, notify the client and prepare the exact recoverable replay p
 
 No reset is performed now. Flag this checkpoint during phase handoffs; it is not a
 scheduled automation or a claim that reconciliation/results are already implemented.
+
+2026-10-26 override (D-079): client requested the early reset immediately for an
+August2026 test. Completed a recoverable reset of isolated local finance transactional
+and preview data while retaining all configuration/access and other apps. Current
+baseline is now empty, ready for client August uploads. The later full end-to-end
+clean-replay checkpoint remains useful before certification; do not repeat a reset
+without an explicit request. See BANK_CLASSIFICATION_DELIVERY.md for scope/backup.

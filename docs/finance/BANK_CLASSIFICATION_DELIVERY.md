@@ -356,3 +356,44 @@ baseline, prefer an isolated validation dataset. No reset performed now.
 Client check: refresh and inspect large monetary amounts, balances, invoice/payment
 items and upload totals; verify serials/terminal IDs and percentages remain unchanged.
 Both repositories remain local feature/finance-phase-2, no push/deployment.
+
+## User-authorized immediate reset for August replay (2026-10-26)
+
+Client explicitly overrides deferred-reset timing: “i want to reset the information
+now … add only08/2026 … make a reset now.” Reset was performed against the CURRENT
+local isolated QA database /private/tmp/finance-phase1-qa.sqlite3, not normal/production
+settings. Stopped backend during backup/reset, then restored backend8027; frontend3037
+continues running. No application code changes or production operations in this step.
+
+Scope: all22 finance transactional/import tables across local companies, including
+bank movements/classifications, invoices, receipts, raw previews, import rows, posting
+links/decisions and their history. Removed358 bank movements,443 invoices,619 receipts,
+17 bank previews,8 sales previews,7 payment previews,5 migration previews and dependent
+rows. Retained6 companies,5 accounts,10 terminals,112 categories/subcategories,17 source
+mappings,4 fee policies,3 settlement policies,2 tax profiles and configuration/access
+audit. All users, group/studio/site permissions, analytics/Mindbody and other apps were
+preserved. Did not reset primary-key sequences. Advanced company sales/payment and
+account ledger revisions to invalidate old plans. No changes to opening balances.
+
+Recovery: verified full SQLite backup (includes all uploaded original-file blobs),
+integrity_check=ok and pre-reset model count comparison. Saved outside both Git repos:
+/Users/joseluisbrugnoni/Beness_analytics/.local-backups/finance-reset-20261026T113558/before-reset.sqlite3
+Companion manifest.json contains backup SHA256, before/after counts, scope and hashes.
+Backup directory0700/files0600. Do not commit backup/source data to Git.
+
+Reset used a single database transaction, leaf-first protected-FK deletion with only
+internal duplicate/replacement references cleared first. Asserted every scoped table
+empty, compared counts+content hashes for56 preserved models (including M2M/access;
+only ledger revision tokens excluded), and foreign_key_check clean before commit.
+All checks passed.12 read-only workspace API checks over company1/5/6 × debit/credit/
+invoices/unlinked returned0. Browser reloaded and confirmed empty Records in primary
+Dominican company1. Screenshot /private/tmp/finance-reset-empty-workspace.png. Old browser
+tabs may show stale in-memory rows until refreshed; no new uploads made by agent.
+
+Next client test: upload workbook containing August2026 through Initial setup, select
+2026-08 and use one consistent intended Dominican company (company1 QA financial
+company has the operative/savings accounts and configured DR terminals) for subsequent
+Alegra invoice/items, transactions and bank reports. Existing migration workbook bank
+rows are still a preview-only stage, not operational bank posting; routine reports
+continue using normal posting. Validate preview first; historical bank posting remains
+an outstanding delivery. No claim of full migration/reconciliation/result completion.

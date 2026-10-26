@@ -111,6 +111,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-078 | 2026-10-26 | Group finance money values; defer clean replay | Client requests monetary displays like 2,680,750.98 and agrees to continue phased development/testing before a later reset. Use comma grouping and two decimals for finance displays without changing stored decimal values, calculations, identifiers or raw report files. Recommend reset/clean replay after the first full import/classification/reconciliation/monthly-result workflow, before historical certification/rollout. Preserve configuration and original sources; prepare a recoverable isolated replay scope at that checkpoint, no reset now. |
 
+| D-079 | 2026-10-26 | Immediate recoverable finance reset for August replay | Client explicitly requests reset now to start with August2026 workbook and then Alegra/bank reports, superseding D-078 deferred timing for this local test run. Clear finance transactions/previews/processing history in isolated current QA; retain configuration, users/access, other apps and original-file evidence in a verified full backup. Completed with empty-table/API/browser verification and preserved-model hashes. No production reset; historical bank workbook posting still pending. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |
