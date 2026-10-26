@@ -30,6 +30,9 @@ certification, manual/cash ledger, reconciliation and monthly results remain pen
 
 ## Documentation index
 
+For local startup after restarting the Mac, see [Persistent local test runtime](LOCAL_TEST_RUNTIME.md).
+The working finance database now lives in the project .local-finance folder, not /private/tmp.
+
 | Document | Purpose |
 | --- | --- |
 | [Business rules](BUSINESS_RULES.md) | Accepted behavior, source facts, and outstanding definitions |

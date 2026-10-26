@@ -664,3 +664,12 @@ posting, reset, production release or claim of fully certified history follows f
 this message. Next acceptance exercise: routine September bank/Alegra reports in the
 same company/account, checking overlapping September1 entries, duplicate prevention,
 preserved manual assignments, split payments and pending source-change reviews.
+
+2026-10-26: Mac restart removed the temporary working QA database/settings. Restored
+the latest saved backup into a new persistent .local-finance working database, verified
+integrity, applied0016 and restarted8027/3037. Login, finance API and frontend HTTP200
+verified; same QA password verified/upgraded from legacy test hash without access
+changes.322 bank movements and workbook previews restored; later Alegra test postings
+were absent from that snapshot and must be repeated before September overlap tests.
+Prepared Alegra previews only, no financial posting/reset. Added a persistent startup
+launcher and LOCAL_TEST_RUNTIME.md; normal database/env and saved backup unchanged.
