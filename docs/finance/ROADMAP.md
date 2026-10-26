@@ -126,3 +126,16 @@ commit/retain/assignment and protected undo implemented/validated; client accept
 pending. Q-016 resolved (D-068). Native export acceptance, historical assignment/
 provenance posting and completed September comparison remain dependencies; do not
 claim this as a completed financial migration. See PHASE_3_3_3_2_DELIVERY.md.
+
+
+## Future candidate: Alegra purchases and bank debits (D-070)
+
+Client suggests linking native Alegra `Egreso` transactions (organizational purchases)
+to bank debit movements in a later phase. Keep those entries outside the current
+`Ingreso` customer-payment flow. Existing retained original reports/source cells
+provide evidence for future discovery. Before implementation, define purchase
+identity, payment/expense recognition, partial/combined settlements, refunds and
+how to match existing imported bank expenses without counting an expense twice.
+This is recorded future scope, not implemented matching or authorization to post
+these purchases now. A later UI refinement should distinguish out-of-scope entries
+from malformed source data; current previews label both as invalid source.

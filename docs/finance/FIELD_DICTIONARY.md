@@ -171,3 +171,17 @@ figure.
 | edited / reconciled / revision | Manual-change and reconciliation protections, optimistic action revision |
 | PaymentDecision.resolution | Created/reused/pending/invalid/retained outcome for one source occurrence |
 | PaymentEvent | Immutable action, actor/time, before/after and reason evidence |
+
+
+## Alegra native transaction type (D-070)
+
+`Tipo de nota débito` is the transaction-type column, despite its vendor label.
+The prepared historical workbook calls this `Tipo_nota`; both map to source `kind`
+in their respective reader presets. `Ingreso` means organizational sales/customer
+collections and is the only type considered by the current receipt import flow.
+Receipts complement invoices; importing them does not add sales revenue again.
+`Egreso` means organizational purchases. Those are legitimate source transactions
+outside this import's scope, not malformed purchases. Current previews retain them
+as ineligible (`unsupported_payment_kind`, currently displayed under invalid source)
+and exclude them from incoming totals and receipt posting. They do not create
+expenses or bank debits. Preserve the original type and source cells for later use.

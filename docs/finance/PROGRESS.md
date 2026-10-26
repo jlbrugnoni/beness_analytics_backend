@@ -484,3 +484,12 @@ client test. Real #4 remains unchanged, ready for client re-read; acceptance pen
 
 Native-header correction checkpoints: backend `72ee773`, frontend `1de092f`,
 both local on `feature/finance-phase-2`.
+
+
+2026-10-25: D-070 records client clarification that native `Tipo de nota débito`
+is transaction type: Ingreso = sales/collections, Egreso = organizational purchases.
+Confirmed current reader excludes Egreso from incoming totals and posting guard
+blocks it from creating receipts. Retained source evidence remains available.
+Recorded future purchase-to-bank-debit matching and expense deduplication discovery
+in ROADMAP; no new posting, matching, UI or data changes. Documentation-only update;
+validated against reader/posting paths and existing native-kind regression test.

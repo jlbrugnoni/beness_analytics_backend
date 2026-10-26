@@ -93,6 +93,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-069 | 2026-10-25 | Client source-format correction | Client clarified the Alegra_adm payment report comes as XLSX. Routine payment upload must accept original XLSX directly, independently of historical migration. Prior CSV-only restriction was a developer assumption. Preserve the shared receipt identity/manual work rules; see PAYMENT_XLSX_CORRECTION.md. |
 
+| D-070 | 2026-10-25 | Accepted transaction-kind semantics and current scope | Client clarified native `Tipo de nota débito` means transaction type: `Ingreso` represents organizational sales/customer collections; `Egreso` represents organizational purchases. The current Alegra payment flow considers only `Ingreso`, complementing existing invoices rather than creating additional sales revenue. `Egreso` source rows are outside this flow, not inherently bad transactions. Preserve evidence; future purchase-to-bank-debit matching is a roadmap candidate, not authorization to post expenses or perform matching now. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |
