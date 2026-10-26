@@ -218,3 +218,49 @@ Client checks:
 
 Both repositories remain local feature/finance-phase-2; client acceptance pending.
 No production migration, merge, push or deployment.
+
+## Follow-up: compact dialog and completion-based review (2026-10-26)
+
+Client requested removal of the persistent source-read-only banner and missing-data
+summary alert. Removed both; source fields remain protected. Original report details
+now open from an accessible, tooltip-labelled info icon beside the transaction header.
+Required empty fields are marked directly with a red border, asterisk and local helper
+text, updated as the user changes movement kind, category or assignments.
+
+Reviewed is now a completion gate for the daily unprocessed queue. Applicable rules
+remain: movement kind; studio or administration except internal principal transfers;
+debit Expense/Fee/Extraordinary needs category, an active child subcategory if the
+parent has children, and expense month; customer receipts need method and operation
+date. Optional descriptions, comments and terminals are not required just to complete
+a row. Terminal is optional for cash/transfers. Existing type-specific exemptions are
+preserved; internal movement does not require a fictitious expense category/studio.
+
+The checkbox is disabled while required data is missing or date/month input is invalid.
+Incomplete work can still be saved without checking it. Removing required information
+clears the review flag in the dialog and on the server. API attempts to explicitly set
+reviewed=True while incomplete are rejected before writing. Updates that leave required
+data missing store reviewed=False, with the normal revision/audit. Recognition remains
+separate from reconciliation. No source edits, schema changes or automatic review.
+
+Shared backend missing_fields rules drive detail completeness; reviewed/unreviewed
+workspace SQL uses matching requirements. Legacy incomplete reviewed flags are shown
+and filtered as unreviewed without silently updating rows on GET. No data migration.
+Not reviewed is the existing Status filter for daily unfinished bank records; the
+filter default remains All until the user selects their work queue.
+
+Validation: PostgreSQL46 focused classification/workspace/posting tests passed;
+SQLite44 passed/2 PostgreSQL-only skips. Tests cover rejected incomplete review,
+partial saves, clearing review when required data is removed, legacy pending flags,
+complete recognition and existing import/terminal/permission/audit protections.
+Changed-file frontend lint and production build passed. Browser company6 synthetic
+credit357: saved customer-receipt kind without date/comment (still pending), filled
+operation date to enable checkbox, checked then cleared date to verify automatic
+uncheck/disable, restored date2026-09-02 and saved reviewed. Not reviewed queue now
+contains only unfinished credit356; completed357/354 excluded. Info icon opened the
+original source table. Real records and permissions unchanged. Screenshot:
+/private/tmp/finance-review-required-fields.png. Local backend8027/frontend3037 running.
+
+Client tests: refresh; open an unfinished credit/debit and inspect direct field marks;
+verify info icon; save partial work; complete marked fields and check Reviewed; remove
+a required value and verify review clears; use Status → Not reviewed → Apply filters
+as the daily queue. Completion does not mean bank reconciliation.

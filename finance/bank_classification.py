@@ -11,26 +11,38 @@ def snapshot(movement):
         'terminal':item.terminal_id,'movement_kind':item.movement_kind,'reviewed':item.reviewed}
 
 
+def missing_fields(direction,values,has_subcategories=False):
+    """Applicable completion requirements; optional notes/terminals are not gates."""
+    fields=[];kind=values.get('movement_kind') or ''
+    if not kind:fields.append('movement_kind')
+    if kind!='internal_transfer' and not values.get('studio') and not values.get('administration'):
+        fields.append('studio')
+    if direction=='debit' and kind in ('expense','fee','extraordinary'):
+        if not values.get('category'):fields.append('category')
+        elif has_subcategories and not values.get('subcategory'):fields.append('subcategory')
+        if not values.get('expense_period'):fields.append('expense_period')
+    if direction=='credit' and kind=='customer_receipt':
+        if not values.get('channel'):fields.append('channel')
+        if not values.get('operation_date'):fields.append('operation_date')
+    return fields
+
+
 def presentation(movement):
-    values=snapshot(movement);reasons=[]
-    kind=values.get('movement_kind') or ''
-    if not kind: reasons.append('missing_kind')
-    if kind not in ('internal_transfer',):
-        if not values.get('studio') and not values.get('administration'):reasons.append('missing_studio')
-    if movement.source.get('direction')=='debit' and kind in ('expense','fee','extraordinary'):
-        if not values.get('category'):reasons.append('missing_category')
-        elif any(child.active for child in movement.classification.category.children.all()) and not values.get('subcategory'):reasons.append('missing_subcategory')
-        if not values.get('expense_period'):reasons.append('missing_period')
-    if movement.source.get('direction')=='credit' and kind=='customer_receipt':
-        if not values.get('channel'):reasons.append('missing_method')
-        if not values.get('operation_date'):reasons.append('missing_operation_date')
+    values=snapshot(movement)
+    children=bool(values.get('category') and any(child.active for child in movement.classification.category.children.all()))
+    missing=missing_fields(movement.source.get('direction'),values,children)
+    reason_codes={'movement_kind':'missing_kind','studio':'missing_studio','category':'missing_category',
+        'subcategory':'missing_subcategory','expense_period':'missing_period','channel':'missing_method','operation_date':'missing_operation_date'}
+    reasons=[reason_codes[field] for field in missing]
+    # Old incomplete review flags are pending until their required data is completed.
+    if values:values['reviewed']=bool(values.get('reviewed') and not missing)
     if not values.get('reviewed'):reasons.append('not_reviewed')
     labels={}
     if values:
         item=movement.classification
         labels={key+'_name':getattr(item,key).name if getattr(item,key+'_id') else None for key in ('category','subcategory','studio')}
         labels['terminal_name']=item.terminal.identifier if item.terminal_id else None
-    return {'classification':values,'classification_labels':labels,'review_reasons':reasons,'needs_review':bool(reasons)}
+    return {'classification':values,'classification_labels':labels,'review_reasons':reasons,'needs_review':bool(reasons),'missing_fields':missing}
 
 
 def terminal_patterns(account,actor):

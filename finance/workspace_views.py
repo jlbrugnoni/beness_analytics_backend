@@ -105,7 +105,7 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
             if f.get('search'):qs=qs.filter(Q(source__description__icontains=f['search'])|Q(source__reference__icontains=f['search'])|Q(source__serial__icontains=f['search'])|Q(classification__description__icontains=f['search']))
             for field in ('studio','channel','category','subcategory'):
                 if f.get(field):qs=qs.filter(**{f'classification__{field}':f[field]})
-            if f['status']=='review':
+            if f['status'] in ('review','reviewed','unreviewed'):
                 children=Category.objects.filter(parent_id=OuterRef('classification__category_id'),active=True)
                 qs=qs.annotate(has_subcategories=Exists(children))
                 review=Q(classification__isnull=True)|Q(classification__movement_kind='')|Q(classification__reviewed=False)
@@ -113,11 +113,9 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
                 if kind=='debit':
                     review|=Q(classification__movement_kind__in=['expense','fee','extraordinary'])&(Q(classification__category__isnull=True)|Q(classification__expense_period__isnull=True)|Q(has_subcategories=True,classification__subcategory__isnull=True))
                 else:review|=Q(classification__movement_kind='customer_receipt')&(Q(classification__channel='')|Q(classification__operation_date__isnull=True))
-                qs=qs.filter(review)
+                qs=qs.exclude(review) if f['status']=='reviewed' else qs.filter(review)
             elif f['status']=='missing_category':qs=qs.filter(classification__category__isnull=True).exclude(classification__movement_kind='internal_transfer')
             elif f['status']=='method_review':qs=qs.filter(Q(classification__isnull=True)|Q(classification__channel=''))
-            elif f['status']=='reviewed':qs=qs.filter(classification__reviewed=True)
-            elif f['status']=='unreviewed':qs=qs.filter(Q(classification__isnull=True)|Q(classification__reviewed=False))
         elif kind=='invoices':
             get_object_or_404(sales_preview_companies(request.user),pk=company.pk)
             trouble=FinancialReceipt.objects.filter(sale_id=OuterRef('pk'),active=True).filter(~Q(link_issue='')|Q(assignments__channel_review=True)|Q(assignments__studio_origin='manual_pending'))

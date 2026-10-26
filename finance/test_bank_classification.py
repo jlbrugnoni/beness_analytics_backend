@@ -87,15 +87,39 @@ class BankClassificationTests(APITestCase):
         undo=self.client.get(f'/api/finance/bank-imports/{self.batch}/undo-preview/')
         self.assertTrue(any(r['movement_id']==self.debit.pk for r in undo.data['protected']))
 
-    def test_incomplete_review_is_saved_but_not_falsely_complete_or_reconciled(self):
+    def test_incomplete_work_can_save_but_cannot_be_reviewed(self):
         self.records();response=self.assign(self.debit,reviewed=True)
-        self.assertEqual(response.status_code,200);self.assertTrue(response.data['needs_review']);self.assertFalse(response.data['reconciled'])
+        self.assertEqual(response.status_code,400)
+        self.assertIn('movement_kind',response.data);self.assertIn('studio',response.data)
+        self.assertFalse(BankMovementClassification.objects.exists())
+        response=self.assign(self.debit,movement_kind='expense')
+        self.assertEqual(response.status_code,200);self.assertTrue(response.data['needs_review'])
+        self.assertFalse(response.data['classification']['reviewed'])
+        self.assertIn('category',response.data['missing_fields'])
         url='/api/finance/workspace/'
-        result=self.client.get(url,{'company':self.company.pk,'kind':'debit','status':'reviewed'})
-        self.assertEqual(result.data['count'],1)
-        self.assertEqual(self.client.get(url,{'company':self.company.pk,'kind':'debit','status':'review'}).data['count'],1)
-        self.assertEqual(self.client.get(url,{'company':self.company.pk,'kind':'debit','status':'reconciled'}).data['count'],0)
-        self.assertEqual(self.client.get(url,{'company':self.company.pk,'kind':'debit','status':'missing_category'}).data['count'],1)
+        self.assertEqual(self.client.get(url,{'company':self.company.pk,'kind':'debit','status':'reviewed'}).data['count'],0)
+        self.assertEqual(self.client.get(url,{'company':self.company.pk,'kind':'debit','status':'unreviewed'}).data['count'],1)
+
+    def test_removing_required_data_clears_review_and_updates_filters(self):
+        self.records()
+        response=self.assign(self.credit,movement_kind='customer_receipt',studio=self.studio.pk,
+            channel='cash',operation_date='2026-09-01',reviewed=True)
+        self.assertEqual(response.status_code,200,response.data)
+        self.credit.refresh_from_db()
+        response=self.assign(self.credit,operation_date=None)
+        self.assertEqual(response.status_code,200,response.data)
+        self.assertFalse(response.data['classification']['reviewed'])
+        self.assertIn('operation_date',response.data['missing_fields'])
+        self.assertEqual(self.client.get('/api/finance/workspace/',{'company':self.company.pk,'kind':'credit','status':'unreviewed'}).data['count'],1)
+
+    def test_legacy_incomplete_review_flag_is_presented_and_filtered_as_pending(self):
+        self.records()
+        BankMovementClassification.objects.create(movement=self.debit,reviewed=True)
+        response=self.client.get(f'/api/finance/bank-movements/{self.debit.pk}/')
+        self.assertFalse(response.data['classification']['reviewed'])
+        for status,count in [('reviewed',0),('unreviewed',1),('review',1)]:
+            result=self.client.get('/api/finance/workspace/',{'company':self.company.pk,'kind':'debit','status':status})
+            self.assertEqual(result.data['count'],count)
 
     def test_credit_terminal_scope_and_operation_date(self):
         self.records();terminal=Terminal.objects.create(account=self.account,identifier='QA-TERMINAL',studio=self.studio,channel='card_terminal')
@@ -127,7 +151,7 @@ class BankClassificationTests(APITestCase):
         self.records();self.profile.can_edit_finance=False;self.profile.save()
         self.assertEqual(self.assign(self.debit,reviewed=True).status_code,403)
         self.profile.can_edit_finance=True;self.profile.save()
-        self.assertEqual(self.assign(self.debit,reviewed=True).status_code,200)
+        self.assertEqual(self.assign(self.debit,movement_kind='internal_transfer',reviewed=True).status_code,200)
         self.assertEqual(self.assign(self.debit,reviewed=False).status_code,409)
         self.debit.refresh_from_db();self.debit.reconciled=True;self.debit.save()
         self.assertEqual(self.assign(self.debit,reviewed=False).status_code,400)

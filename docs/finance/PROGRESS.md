@@ -587,3 +587,12 @@ existing credits, respecting account/studio scope, manual conflicts and review l
 PostgreSQL44 passed; SQLite42/2 skips; lint/build passed. Synthetic browser verified
 new automatic mapping and catch-up of1 older credit. No real financial records changed.
 See BANK_CLASSIFICATION_DELIVERY.md. Client acceptance pending; branches remain local.
+
+2026-10-26: client requested a compact bank dialog and a reliable processed flag.
+Removed persistent source/missing-data alerts, moved source details to header info
+icon, added live required-field markers. Reviewed now requires complete applicable
+assignments in UI/API; partial work saves, removing required data clears review.
+Legacy incomplete flags appear in Not reviewed queue. PostgreSQL46 passed; SQLite44/
+2 skips; lint/build passed. Synthetic browser verified source icon, partial/complete
+saves, automatic uncheck and queue exclusion. See BANK_CLASSIFICATION_DELIVERY.md.
+Client acceptance pending; no production release or real-data changes.

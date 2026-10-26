@@ -105,6 +105,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-075 | 2026-10-26 | Expense categories belong only to debits; recognize configured terminals | Client clarified credits need studio/payment assignments without expense categories and reported terminal recognition missing. Remove credit categories throughout ordinary editing/filtering; do not delete prior data silently. New credit posting matches a single active exact-account terminal identifier to studio/channel; existing records use an explicit audited catch-up action. Preserve manual conflicts, reviewed/reconciled rows and unknown/ambiguous matches. No automatic sale/date/reconciliation inference. |
 
+| D-076 | 2026-10-26 | Compact bank dialog; reviewed means required information is complete | Client requested field-level missing-data marks, removal of bulky source/missing-data alerts, a source info icon next to the transaction header, and disabling Recognized/reviewed until complete. Keep partial saves available; reject incomplete explicit review in API and clear review if required fields are removed. Not reviewed includes legacy incomplete review flags and serves as the daily work queue. Optional comments/descriptions/terminals stay optional and type-specific required fields/exemptions remain. Recognition is still separate from reconciliation. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

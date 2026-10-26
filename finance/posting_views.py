@@ -13,7 +13,7 @@ from .configuration import ConfigurationConflict
 from .import_views import BankImportViewSet, BankPreviewPermission
 from core_data.access import get_or_create_user_access_profile, user_has_global_access
 from core_data.models import Studio
-from .bank_classification import snapshot, presentation
+from .bank_classification import snapshot, presentation, missing_fields
 from .models import BankMovementClassification, Category, Terminal, SourceMapping, Account, BankDecision, BankEvent, BankMovement, BankPosting, Company
 from .views import visible_accounts, visible_studios
 
@@ -226,6 +226,10 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
                 if terminal.studio_id!=merged.get('studio') or terminal.channel!=merged.get('channel'):raise serializers.ValidationError({'terminal':'Terminal, studio and payment method must agree.'})
             if direction=='debit' and merged.get('movement_kind') in ('customer_receipt','fee_reimbursement'):raise serializers.ValidationError({'movement_kind':'This kind belongs to bank credits.'})
             if direction=='credit' and merged.get('movement_kind') in ('expense','fee'):raise serializers.ValidationError({'movement_kind':'This kind belongs to bank debits.'})
+            missing=missing_fields(direction,merged,Category.objects.filter(parent_id=merged.get('category'),active=True).exists() if merged.get('category') else False)
+            if missing and values.get('reviewed'):
+                raise serializers.ValidationError({field:'Complete this field before marking the movement reviewed.' for field in missing})
+            if missing:values['reviewed']=False
             item,_=BankMovementClassification.objects.get_or_create(movement=obj)
             for field,value in values.items():setattr(item,field+'_id' if field in ('category','subcategory','studio','terminal') else field,value)
             item.save();obj.classification=item
