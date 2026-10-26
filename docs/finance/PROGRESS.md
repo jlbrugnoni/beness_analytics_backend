@@ -466,3 +466,18 @@ change, push/merge/deployment. Client retest pending. See PAYMENT_XLSX_CORRECTIO
 
 XLSX correction checkpoints: backend `382ce7f`, frontend `f05977e`; both on
 `feature/finance-phase-2`, local commits only.
+
+
+## Native transaction export #4: header detection and visible feedback
+
+2026-10-25: Client's routine payment XLSX #4 was saved but unreadable because native
+header labels differ from the prepared workbook. Verified the original read-only;
+added explicit native aliases in routine parser v2. Actual source now yields 615
+incoming payments totaling 3,555,130.80 DOP plus 67 unsupported outgoing rows retained
+outside payment posting. Added prominent preview status, failed-history labels and
+permission-guarded re-read of retained failed routine reports into a new immutable
+preview. No real posting or source/grant/schema changes. PostgreSQL307 passed;
+SQLite301 passed/6 skips; frontend lint/build and synthetic browser re-read passed.
+Synthetic QA failed preview #5 / new preview #6 are unposted. Local servers restored
+on 3037 / 8027. See PAYMENT_XLSX_CORRECTION.md for source observations, scope and
+client test. Real #4 remains unchanged, ready for client re-read; acceptance pending.

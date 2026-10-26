@@ -94,6 +94,19 @@ class PaymentImportViewSet(PrivatePayments):
             batch=store(company,request.user,content,parsed,name)
         return Response(PaymentBatchSerializer(batch).data,status=201)
 
+    @action(detail=True,methods=['post'])
+    def reread(self,request,pk=None):
+        source=self.get_object()
+        with locked(request.user,source.company_id,['can_import_finance']) as company:
+            # Failed evidence is immutable. Re-reading creates a new preview only;
+            # duplicate_of preserves the source-byte relationship in history.
+            if source.origin!='report' or not source.file_issues or hasattr(source,'posting'):
+                raise serializers.ValidationError('Only failed routine report previews can be read again.')
+            content=bytes(source.original_file)
+            parsed=read_payment_xlsx(content) if source.file_name.lower().endswith('.xlsx') else read_payment_csv(content)
+            batch=store(company,request.user,content,parsed,source.file_name)
+        return Response(PaymentBatchSerializer(batch).data,status=201)
+
     @action(detail=False,methods=['post'],url_path='from-migration')
     def from_migration(self,request):
         class Input(serializers.Serializer):

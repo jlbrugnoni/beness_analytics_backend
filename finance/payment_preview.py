@@ -21,6 +21,19 @@ CODE = re.compile(r'(?<![A-Za-z0-9])B0[12]\d{8}(?![A-Za-z0-9])', re.I)
 METHODS = {'cierre','link','recurrente','transferencia','efectivo'}
 
 
+# Verified native transaction-export labels. Keep the enriched migration preset
+# separate: punctuation/spacing changes are aliases, not guessed field semantics.
+NATIVE_ALIASES = {'customer_id': {'RNC o Cédula'}, 'kind': {'Tipo de nota débito'},
+    'source_reviewed': {'Conciliada?'}, 'original_method': {'Método de pago'}}
+
+
+def header_names(key, native=False):
+    labels = {FIELDS[key]}
+    if key == 'currency': labels.add('Currency')
+    if native: labels.update(NATIVE_ALIASES.get(key, set()))
+    return {normalized(label) for label in labels}
+
+
 def worksheet(content, report_sheet=False):
     if len(content)>MAX_BYTES: raise ValueError('file_too_large')
     with zipfile.ZipFile(io.BytesIO(content)) as archive:
@@ -45,7 +58,7 @@ def worksheet(content, report_sheet=False):
         if report_sheet:
             if len(all_sheets)>100:raise ValueError('workbook_limit')
             candidates=[]
-            required={normalized(FIELDS[k]) for k in REQUIRED}
+            required={k:header_names(k, native=True) for k in REQUIRED}
             for candidate in all_sheets:
                 data=load(candidate)
                 for node in data.findall('s:sheetData/s:row',NS):
@@ -57,7 +70,7 @@ def worksheet(content, report_sheet=False):
                         if scanned>MAX_CELLS:raise ValueError('workbook_limit')
                         value=cell_value(item,strings)['value']
                         values.append(normalized(str(value or '')))
-                    if required<=set(values):candidates.append((candidate,data,number))
+                    if all(names.intersection(values) for names in required.values()):candidates.append((candidate,data,number))
             if not candidates:raise ValueError('missing_payment_header')
             if len(candidates)!=1:raise ValueError('ambiguous_payment_sheets')
             selected,sheet,header_number=candidates[0]
@@ -82,7 +95,7 @@ def worksheet(content, report_sheet=False):
         if headers is None:raise ValueError('missing_payment_header')
         mapping={}
         for key,label in FIELDS.items():
-            columns=[c for c,v in headers.items() if normalized(str(v['value'] or '')) in ({'moneda','currency'} if key=='currency' else {normalized(label)})]
+            columns=[c for c,v in headers.items() if normalized(str(v['value'] or '')) in header_names(key, native=report_sheet)]
             if len(columns)>1:raise ValueError('duplicate_header')
             if columns:mapping[key]=columns[0]
         if not REQUIRED<=mapping.keys():raise ValueError('missing_payment_header')
@@ -231,5 +244,5 @@ def read_payment_csv(content):
 def read_payment_xlsx(content):
     """Routine XLSX export: identify one payment table without a sheet-name requirement."""
     result=read_payment_preview(content,report_sheet=True)
-    result['parser_version']='alegra-payment-xlsx-v1'
+    result['parser_version']='alegra-payment-xlsx-v2'
     return result

@@ -13,10 +13,10 @@ from .models import FinancialReceipt, PaymentImportBatch
 from .test_migration_imports import MAIN
 
 
-def export_xlsx(preamble=True,duplicate=False,extra_parts=None):
+def export_xlsx(preamble=True,duplicate=False,extra_parts=None,native=False):
     """Single-sheet export without migration sheets or enriched manual columns."""
     rows=[{'date':{'type':'n','value':46274},'number':101,'amount':1200,'associations':'Facturas: B0200005029',
-        'kind':'Ingreso','original_method':'Tarjeta crédito'},
+        'kind':'Ingreso','source_reviewed':'No','original_method':'Tarjeta crédito'},
         {'date':'2026-09-09','number':'102','amount':2400,'associations':'Facturas: B0200005029',
         'kind':'Ingreso','original_method':'Efectivo'}]
     source=payment_workbook(rows,omit=['method','location','manual_reviewed','cached_invoice'])
@@ -29,6 +29,22 @@ def export_xlsx(preamble=True,duplicate=False,extra_parts=None):
         ET.SubElement(sheets,f'{{{MAIN}}}sheet',{'name':'Another payments report','sheetId':'4',
             '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id':'rId3'})
     sheet=ET.fromstring(files['xl/worksheets/sheet3.xml']);data=sheet.find(f'{{{MAIN}}}sheetData')
+    if native:
+        labels={'Numero':'Número','ID':'RNC o Cédula','Tipo_nota':'Tipo de nota débito',
+            'Conciliada':'Conciliada?','Metodo_pago':'Método de pago'}
+        for cell in data[0]:
+            for value in cell.iter(f'{{{MAIN}}}t'):
+                value.text=labels.get(value.text,value.text)
+        # The vendor exports expenses in the same table. They must never post
+        # as collections. Their source rows remain available for review.
+        from copy import deepcopy
+        expense=deepcopy(data[-1]);expense.set('r','4')
+        for cell in expense:
+            cell.set('r',''.join(c for c in cell.get('r') if c.isalpha())+'4')
+            for value in cell.iter(f'{{{MAIN}}}t'):
+                if value.text=='Ingreso':value.text='Egreso'
+                elif value.text=='102':value.text='B1300000001'
+        data.append(expense)
     if preamble:
         for row in data:
             row.set('r',str(int(row.get('r'))+2))
@@ -49,13 +65,24 @@ class PaymentXLSXReaderTests(SimpleTestCase):
     def test_single_export_detects_sheet_headers_and_excel_dates_without_enrichment(self):
         result=read_payment_xlsx(export_xlsx())
         self.assertEqual(result['file_issues'],[])
-        self.assertEqual(result['parser_version'],'alegra-payment-xlsx-v1')
+        self.assertEqual(result['parser_version'],'alegra-payment-xlsx-v2')
         self.assertEqual(result['summary']['amount_total'],'3600.00')
         self.assertEqual(result['rows'][0]['sheet'],'Reporte de ingresos')
         self.assertEqual(result['rows'][0]['source_row'],4)
         self.assertEqual(result['rows'][0]['date'],'2026-09-09')
         self.assertIsNone(result['rows'][0]['location']);self.assertIsNone(result['rows'][0]['method'])
         self.assertEqual(result['rows'][0]['invoice_payment_total'],'3600.00')
+
+    def test_native_labels_preserve_evidence_and_hold_expenses(self):
+        from .payment_posting import outcome
+        result=read_payment_xlsx(export_xlsx(native=True))
+        self.assertEqual(result['file_issues'],[])
+        self.assertEqual(result['summary']['amount_total'],'3600.00')
+        self.assertEqual(result['rows'][0]['original_method'],'Tarjeta crédito')
+        self.assertEqual(result['rows'][0]['source_reviewed'],'No')
+        self.assertEqual(result['rows'][-1]['kind'],'egreso')
+        self.assertEqual(outcome(result['rows'][-1],None),'invalid')
+        self.assertTrue(any(c['column_label']=='Método de pago' for c in result['rows'][0]['cells']))
 
     def test_existing_workbook_readable_without_renaming_or_conversion(self):
         result=read_payment_xlsx(payment_workbook())
@@ -112,3 +139,21 @@ class PaymentXLSXAPITests(APITestCase):
         batch=self.xlsx_batch(b'bad workbook');self.assertFalse(self.plan(batch)['can_commit'])
         self.assertEqual(self.commit(batch).status_code,400)
         self.assertFalse(FinancialReceipt.objects.exists())
+
+    def test_reread_failed_native_report_creates_preview_preserving_old_evidence(self):
+        source=export_xlsx(native=True)
+        with patch('finance.payment_views.read_payment_xlsx',return_value={
+                'rows':[],'file_issues':['missing_payment_header'],'parser_version':'alegra-payment-xlsx-v1'}):
+            failed=self.xlsx_batch(source)
+        response=self.client.post(f'/api/finance/payment-imports/{failed}/reread/',{},format='json')
+        self.assertEqual(response.status_code,201,response.data)
+        self.assertEqual(response.data['file_issues'],[])
+        self.assertEqual(response.data['duplicate_of'],failed)
+        self.assertEqual(self.plan(response.data['id'])['counts'],{'new':2,'invalid':1})
+        old=PaymentImportBatch.objects.get(pk=failed)
+        self.assertEqual(old.file_issues,['missing_payment_header']);self.assertEqual(old.rows.count(),0)
+        self.assertEqual(bytes(old.original_file),source)
+        self.assertFalse(FinancialReceipt.objects.exists())
+        self.assertEqual(self.client.post(f"/api/finance/payment-imports/{response.data['id']}/reread/",{},format='json').status_code,400)
+        self.profile.can_import_finance=False;self.profile.save()
+        self.assertEqual(self.client.post(f'/api/finance/payment-imports/{failed}/reread/',{},format='json').status_code,403)
