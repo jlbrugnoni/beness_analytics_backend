@@ -20,7 +20,12 @@ def movement_data(movement):
 
 
 def token(account, batch, purpose='commit', revision=0):
-    return hashlib.sha256(f'bank-plan-v1:{account.pk}:{account.ledger_revision}:{batch.pk}:{purpose}:{revision}'.encode()).hexdigest()
+    origin_state=[]
+    if batch.migration_batch_id:
+        origin_state=list(BankDecision.objects.filter(posting__status__in=['active','partial_undo'],
+            row__batch__migration_batch__isnull=False,row__batch__file_hash=batch.file_hash,
+            movement__account__company_id=account.company_id,movement__active=True).order_by('pk').values_list('pk','movement_id','movement__revision','posting__revision'))
+    return hashlib.sha256(f'bank-plan-v2:{account.pk}:{account.ledger_revision}:{batch.pk}:{purpose}:{revision}:{origin_state}'.encode()).hexdigest()
 
 
 def advance(account):
@@ -34,13 +39,15 @@ def event(posting, actor, action, movement=None, row=None, before=None, note='')
 
 
 def plan(batch, account):
-    rows = list(batch.rows.filter(kind='data'))
-    movements = list(BankMovement.objects.filter(account=account, provider=batch.provider, active=True).select_related('classification'))
+    rows = list(batch.rows.filter(kind='data').select_related('migration_row'))
+    movements = list(BankMovement.objects.filter(account=account, provider=batch.provider, active=True).select_related('classification','created_from__batch'))
     exact = defaultdict(list); identifiers = defaultdict(set); balances = defaultdict(set); weak = defaultdict(set); day_description = defaultdict(set); balance_description = defaultdict(set)
+    historical=defaultdict(set)
     by_id = {m.pk: m for m in movements}
     for m in movements:
         data = m.source
         exact[m.fingerprint].append(m.pk)
+        if m.created_from.batch.migration_batch_id:historical[(data['bank_date'],data['amount'])].add(m.pk)
         for key in ('reference', 'serial'):
             if data.get(key): identifiers[(key, data[key])].add(m.pk)
         if data.get('balance') is not None:
@@ -48,6 +55,14 @@ def plan(batch, account):
             balance_description[(data['balance'], data['description'])].add(m.pk)
         weak[(data['bank_date'], data['amount'], data['description'])].add(m.pk)
         day_description[(data['bank_date'], data['description'])].add(m.pk)
+    # Linked raw reports may supply IDs absent in the original workbook. Retain
+    # those identities as evidence without rewriting the historical primary source.
+    linked=BankDecision.objects.filter(posting__status__in=['active','partial_undo'],movement_id__in=by_id).select_related('row')
+    for decision in linked:
+        if not by_id[decision.movement_id].created_from.batch.migration_batch_id:continue
+        for key in ('reference','serial'):
+            value=decision.row.parsed.get(key)
+            if value:identifiers[(key,value)].add(decision.movement_id)
     counts = Counter(fingerprint(r.parsed) for r in rows if not r.issues)
     prior = defaultdict(set)
     evidence = BankDecision.objects.filter(posting__status__in=['active', 'partial_undo'], row__batch__account=account,
@@ -57,6 +72,11 @@ def plan(batch, account):
         prior[decision.row.row_number].add(decision.movement_id)
     posting = BankPosting.objects.filter(batch=batch).first()
     decisions = {d.row_id: d for d in posting.decisions.all()} if posting else {}
+    elsewhere=set()
+    if batch.migration_batch_id:
+        elsewhere=set(BankDecision.objects.filter(posting__status__in=['active','partial_undo'],
+            row__batch__migration_batch__isnull=False,row__batch__file_hash=batch.file_hash,
+            movement__account__company_id=account.company_id,movement__active=True).exclude(movement__account=account).values_list('row__row_number',flat=True))
     result = []
     for row in rows:
         data = row.parsed; ids = set(); outcome = 'invalid'; target = None
@@ -76,6 +96,7 @@ def plan(batch, account):
                 outcome = 'ambiguous'; ids = set(same)
             else:
                 ids |= known
+                ids |= historical[(data['bank_date'],data['amount'])]
                 for key in ('reference', 'serial'):
                     if data.get(key): ids |= identifiers[(key, data[key])]
                 if data.get('balance') is not None:
@@ -87,10 +108,24 @@ def plan(batch, account):
                 ids |= {pk for pk in weak[(data['bank_date'], data['amount'], data['description'])]
                         if data.get('balance') is None or by_id[pk].source.get('balance') is None}
                 outcome = 'correction' if len(ids) == 1 else 'ambiguous' if ids else 'new'
+        if outcome=='correction' and len(ids)==1 and counts.get(fingerprint(data))==1:
+            from .migration_bank import compatible_historical
+            candidate=by_id[next(iter(ids))]
+            if compatible_historical(candidate,data,incoming_historical=bool(row.migration_row_id)):
+                outcome='unchanged';target=candidate.pk
+        if row.migration_row_id and row.row_number in elsewhere:
+            outcome='origin_conflict';target=None;ids=set()
+        conflicts=[]
+        if outcome=='unchanged' and row.migration_row_id:
+            from .migration_bank import assignment_conflicts
+            conflicts=assignment_conflicts(by_id[target],row)
+            if conflicts:outcome='assignment_conflict'
         decision = decisions.get(row.pk)
         item = {'row_id': row.pk, 'source_line': row.source_line, 'source': data, 'issues': row.issues,
                 'outcome': outcome, 'target': target, 'candidate_count': len(ids),
-                'candidates': [movement_data(by_id[pk]) for pk in sorted(ids)[:50]]}
+                'candidates': [movement_data(by_id[pk]) for pk in sorted(ids)[:50]],
+                'assignment_conflicts':conflicts,'migration_source':row.migration_row.parsed if row.migration_row_id else None,
+                'migration_sheet':row.migration_row.sheet if row.migration_row_id else None}
         if decision:
             item.update(decision_id=decision.pk, revision=decision.revision, resolution=decision.resolution,
                         movement_id=decision.movement_id)
@@ -112,7 +147,7 @@ def commit(batch, account, actor, expected):
     posting = BankPosting.objects.create(batch=batch, actor=actor)
     patterns=terminal_patterns(account,actor)
     used = set()
-    rows = {r.pk: r for r in batch.rows.filter(kind='data')}
+    rows = {r.pk: r for r in batch.rows.filter(kind='data').select_related('migration_row')}
     for item in current['rows']:
         row = rows[item['row_id']]
         decision = BankDecision(posting=posting, row=row, outcome=item['outcome'])
@@ -120,14 +155,22 @@ def commit(batch, account, actor, expected):
             movement = BankMovement.objects.create(account=account, provider=batch.provider, source=row.parsed,
                 fingerprint=fingerprint(row.parsed), created_from=row)
             initialize_classification(movement)
+            from .migration_bank import apply_assignments
+            apply_assignments(movement,row)
             recognize_terminal(movement,actor,patterns=patterns)
             decision.movement = movement; decision.resolution = 'created'
             event(posting, actor, 'create', movement, row)
         elif item['outcome'] == 'unchanged' and item['target'] not in used:
             decision.movement_id = item['target']; decision.resolution = 'linked'
-            event(posting, actor, 'link', BankMovement.objects.get(pk=item['target']), row)
-        elif item['outcome'] == 'invalid':
-            decision.resolution = 'invalid'
+            movement=BankMovement.objects.get(pk=item['target'])
+            from .migration_bank import apply_assignments
+            before=movement_data(movement)
+            if apply_assignments(movement,row,fill=True):
+                movement.revision+=1;movement.save(update_fields=['revision','updated_at'])
+                event(posting,actor,'classify',movement,row,before,note='Historical workbook assignments filled missing fields')
+            event(posting, actor, 'link', movement, row)
+        elif item['outcome'] in ('invalid','origin_conflict'):
+            decision.resolution = item['outcome']
         if decision.movement_id: used.add(decision.movement_id)
         decision.save()
     event(posting, actor, 'commit')
@@ -141,6 +184,8 @@ def resolve(decision, account, actor, action, expected_revision, note, target=No
     if decision.revision != expected_revision or decision.resolution != 'pending':
         raise ConfigurationConflict('This row was already resolved. Reload the review.')
     if decision.row.issues: raise serializers.ValidationError('Upload a corrected source file for invalid rows.')
+    if decision.outcome=='assignment_conflict' and action in ('create','correct'):
+        raise serializers.ValidationError('Link or ignore this already identified movement; edit business assignments in Records.')
     if action in ('link', 'correct'):
         if not target or target.account_id != account.pk or target.provider != posting.batch.provider or not target.active:
             raise serializers.ValidationError('Choose an active movement from this account and bank format.')
@@ -149,15 +194,23 @@ def resolve(decision, account, actor, action, expected_revision, note, target=No
             raise serializers.ValidationError('Another row in this import already uses that movement. Keep distinct occurrences separate.')
         before = movement_data(target)
         if action == 'correct':
+            if decision.outcome=='assignment_conflict':raise serializers.ValidationError('Edit assignments in Records, or link to retain existing decisions. Source correction does not resolve assignment conflicts.')
             if target.reconciled: raise serializers.ValidationError('Reconciled movements require reconciliation review before source correction.')
             target.source = decision.row.parsed; target.fingerprint = fingerprint(target.source)
             target.revision += 1; target.save()
+        if action=='link' and decision.row.migration_row_id:
+            from .migration_bank import apply_assignments
+            if apply_assignments(target,decision.row,fill=True):
+                target.revision+=1;target.save(update_fields=['revision','updated_at'])
+                event(posting,actor,'classify',target,decision.row,before,note='Historical assignments filled after explicit identity review')
         decision.movement = target; decision.resolution = 'corrected' if action == 'correct' else 'linked'
         event(posting, actor, action, target, decision.row, before, note)
     elif action == 'create':
         movement = BankMovement.objects.create(account=account, provider=posting.batch.provider,
             source=decision.row.parsed, fingerprint=fingerprint(decision.row.parsed), created_from=decision.row)
         initialize_classification(movement)
+        from .migration_bank import apply_assignments
+        apply_assignments(movement,decision.row)
         recognize_terminal(movement,actor)
         decision.movement = movement; decision.resolution = 'created'
         event(posting, actor, 'create', movement, decision.row, note=note)

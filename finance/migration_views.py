@@ -8,12 +8,12 @@ from django.http import FileResponse
 from rest_framework import serializers, status, viewsets
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.parsers import FormParser, MultiPartParser
+from rest_framework.parsers import FormParser, MultiPartParser, JSONParser
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
 from .access import can_use_finance
 from .sales_import_views import SalesPreviewPermission, sales_preview_companies
-from .migration_reader import MAX_BYTES, read_migration_xlsx
+from .migration_reader import MAX_BYTES, read_migration_xlsx, totals
 from .migration_source import source_headers, readable_cells
 from .payment_preview import read_payment_preview, payment_totals
 from .models import Company, MigrationImportBatch, MigrationImportRow
@@ -30,24 +30,32 @@ class MigrationPermission(SalesPreviewPermission):
 
 
 class MigrationBatchSerializer(serializers.ModelSerializer):
+    bank_imports=serializers.SerializerMethodField()
+    def get_bank_imports(self,obj):
+        from .import_views import BankBatchSerializer
+        return BankBatchSerializer(obj.bank_imports.select_related('account__company','posting').defer('original_file').order_by('-pk')[:5],many=True).data
     company_name=serializers.CharField(source='company.name',read_only=True)
     class Meta:
         model=MigrationImportBatch
         fields=['id','company','company_name','selected_month','file_name','byte_size','parser_version','status',
-            'summary','file_issues','sheets','mappings','duplicate_of','uploaded_by','created_at']
+            'summary','file_issues','sheets','mappings','bank_imports','duplicate_of','uploaded_by','created_at']
         read_only_fields=fields
 
 
 class MigrationRowSerializer(serializers.ModelSerializer):
+    bank_issue=serializers.SerializerMethodField()
+    def get_bank_issue(self,obj):
+        from .migration_bank import bank_issue
+        return bank_issue(obj)
     class Meta:
         model=MigrationImportRow
-        fields=['id','sheet','source_row','kind','bank_date','operation_date','expense_period','amount','parsed','issues']
+        fields=['id','sheet','source_row','kind','bank_date','operation_date','expense_period','amount','parsed','issues','bank_issue']
         read_only_fields=fields
 
 
 class MigrationUploadSerializer(serializers.Serializer):
     company=serializers.PrimaryKeyRelatedField(queryset=Company.objects.none())
-    month=serializers.RegexField(r'^\d{4}-(?:0[1-9]|1[0-2])$')
+    month=serializers.RegexField(r'^\d{4}-(?:0[1-9]|1[0-2])$',required=False)
     file=serializers.FileField(max_length=255,allow_empty_file=False)
 
     def validate_month(self,value):
@@ -64,7 +72,7 @@ class MigrationUploadSerializer(serializers.Serializer):
 class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
     permission_classes=[IsAuthenticated,MigrationPermission]
     serializer_class=MigrationBatchSerializer
-    parser_classes=[MultiPartParser,FormParser]
+    parser_classes=[MultiPartParser,FormParser,JSONParser]
     http_method_names=['get','post','head','options']
 
     def finalize_response(self,request,response,*args,**kwargs):
@@ -90,7 +98,11 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
         serializer.is_valid(raise_exception=True);values=serializer.validated_data
         content=values['file'].read(MAX_BYTES+1)
         if len(content)>MAX_BYTES:raise serializers.ValidationError({'file':'The file exceeds 5 MiB.'})
-        parsed=read_migration_xlsx(content,values['month']);digest=hashlib.sha256(content).hexdigest()
+        parsed=read_migration_xlsx(content,values.get('month',''))
+        month=values.get('month') or (parsed['summary'].get('first_bank_date') or datetime.now().date().isoformat())[:7]
+        parsed['summary']['selected_month']=month
+        parsed['summary']['selected_bank_month']=parsed['summary'].get('bank_date_months',{}).get(month,parsed['summary']['all_rows'])
+        digest=hashlib.sha256(content).hexdigest()
         name=''.join(c for c in values['file'].name.replace('\\','/').split('/')[-1] if ord(c)>=32)[:255] or 'migration.xlsx'
         with transaction.atomic():
             company=Company.objects.select_for_update().get(pk=values['company'].pk)
@@ -98,13 +110,63 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
                 raise PermissionDenied('Migration access changed. Reload before uploading.')
             if not company.active:raise serializers.ValidationError({'company':'Activate the company before uploading.'})
             prior=MigrationImportBatch.objects.filter(company=company,file_hash=digest).order_by('pk').first()
-            batch=MigrationImportBatch.objects.create(company=company,selected_month=values['month']+'-01',
+            batch=MigrationImportBatch.objects.create(company=company,selected_month=month+'-01',
                 file_name=name,file_hash=digest,byte_size=len(content),original_file=content,
                 parser_version=parsed['parser_version'],status='failed' if parsed['file_issues'] else 'preview',
                 summary=parsed['summary'],file_issues=parsed['file_issues'],sheets=parsed['sheets'],mappings=parsed['mappings'],
                 duplicate_of=prior,uploaded_by=request.user)
             MigrationImportRow.objects.bulk_create([MigrationImportRow(batch=batch,**row) for row in parsed['rows']],batch_size=500)
         return Response(MigrationBatchSerializer(batch).data,status=status.HTTP_201_CREATED)
+
+    @action(detail=True,methods=['post'],url_path='copy-to-company')
+    def copy_to_company(self,request,pk=None):
+        source=self.get_object()
+        if not can_use_finance(request.user,'can_import_finance'):raise PermissionDenied()
+        class Input(serializers.Serializer):
+            company=serializers.PrimaryKeyRelatedField(queryset=Company.objects.none())
+        data=Input(data=request.data);data.fields['company'].queryset=migration_companies(request.user)
+        data.is_valid(raise_exception=True)
+        with transaction.atomic():
+            company=Company.objects.select_for_update().get(pk=data.validated_data['company'].pk)
+            if not migration_companies(request.user).filter(pk=company.pk).exists() or not migration_companies(request.user).filter(pk=source.company_id).exists() or not can_use_finance(request.user,'can_import_finance'):raise PermissionDenied()
+            if not company.active or company.pk==source.company_id:raise serializers.ValidationError('Choose another active company.')
+            prior=MigrationImportBatch.objects.filter(company=company,file_hash=source.file_hash).order_by('pk').first()
+            batch=MigrationImportBatch.objects.create(company=company,selected_month=source.selected_month,
+                file_name=source.file_name,file_hash=source.file_hash,byte_size=source.byte_size,original_file=source.original_file,
+                parser_version=source.parser_version,status=source.status,summary={**source.summary,'copied_from_preview':source.pk},
+                file_issues=source.file_issues,sheets=source.sheets,mappings=source.mappings,duplicate_of=prior,uploaded_by=request.user)
+            fields=['sheet','source_row','kind','bank_date','operation_date','expense_period','amount','raw','parsed','issues']
+            MigrationImportRow.objects.bulk_create([MigrationImportRow(batch=batch,**{field:getattr(row,field) for field in fields}) for row in source.rows.all()],batch_size=500)
+        return Response(MigrationBatchSerializer(batch).data,status=201)
+
+    @action(detail=True,methods=['get'],url_path='bank-candidates')
+    def bank_candidates(self,request,pk=None):
+        from .migration_bank import bank_issue
+        batch=self.get_object()
+        rows=list(batch.rows.all())
+        return Response({'row_ids':[row.pk for row in rows if not bank_issue(row)],
+            'cash_rows':sum(bank_issue(row)=='cash_entry' for row in rows),
+            'invalid_rows':sum(bank_issue(row)=='invalid_bank_facts' for row in rows)})
+
+    @action(detail=True,methods=['post'],url_path='prepare-bank')
+    def prepare_bank(self,request,pk=None):
+        from .posting_views import locked_account
+        from .migration_bank import prepare
+        from .import_views import BankBatchSerializer
+        from .views import visible_accounts
+        from .models import Account
+        class Input(serializers.Serializer):
+            account=serializers.PrimaryKeyRelatedField(queryset=Account.objects.none())
+            row_ids=serializers.ListField(child=serializers.IntegerField(min_value=1),min_length=1,max_length=20000)
+            confirm_bank_origin=serializers.BooleanField()
+        batch=self.get_object();data=Input(data=request.data)
+        data.fields['account'].queryset=visible_accounts(request.user).filter(company=batch.company,kind='bank')
+        data.is_valid(raise_exception=True)
+        if not data.validated_data['confirm_bank_origin']:raise serializers.ValidationError('Confirm that selected rows were paid through the chosen bank account.')
+        with locked_account(request.user,data.validated_data['account'].pk,['can_import_finance']) as account:
+            if not migration_companies(request.user).filter(pk=batch.company_id).exists():raise PermissionDenied()
+            derived=prepare(batch,account,request.user,data.validated_data['row_ids'])
+        return Response(BankBatchSerializer(derived).data,status=201)
 
     @action(detail=True,methods=['get'])
     def rows(self,request,pk=None):
@@ -116,10 +178,20 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
         if scope=='selected':
             start=batch.selected_month;end=date(start.year+1,1,1) if start.month==12 else date(start.year,start.month+1,1)
             qs=qs.filter(**{basis+'__gte':start,basis+'__lt':end})
+        start=serializers.DateField().run_validation(request.query_params['start']) if request.query_params.get('start') else None
+        end=serializers.DateField().run_validation(request.query_params['end']) if request.query_params.get('end') else None
+        if start and end and start>end:raise serializers.ValidationError('Start date must not follow end date.')
+        if start:qs=qs.filter(**{basis+'__gte':start})
+        if end:qs=qs.filter(**{basis+'__lte':end})
         kind=request.query_params.get('kind','all')
         if kind in ('credit','debit'):qs=qs.filter(kind=kind)
         elif kind!='all':raise serializers.ValidationError({'kind':'Choose credit, debit or all.'})
-        return self.get_paginated_response(MigrationRowSerializer(self.paginate_queryset(qs),many=True).data)
+        included=list(qs.values('bank_date','amount','kind','issues'))
+        review_count=sum(any(issue['code']!='payment_origin_unknown' for issue in row['issues']) for row in included)
+        response=self.get_paginated_response(MigrationRowSerializer(self.paginate_queryset(qs),many=True).data)
+        response.data['review_count']=review_count
+        response.data['filtered_totals']=totals(included)
+        return response
 
     @action(detail=True,methods=['get'],url_path='payments')
     def payments(self,request,pk=None):

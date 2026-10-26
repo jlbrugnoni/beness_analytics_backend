@@ -146,7 +146,7 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
         return response
 
     def get_queryset(self):
-        queryset = BankMovement.objects.filter(account__in=visible_accounts(self.request.user)).select_related('classification__category','classification__subcategory','classification__studio','classification__terminal','account__company','created_from__batch').prefetch_related('classification__category__children')
+        queryset = BankMovement.objects.filter(account__in=visible_accounts(self.request.user)).select_related('classification__category','classification__subcategory','classification__studio','classification__terminal','account__company','created_from__batch','created_from__migration_row').prefetch_related('classification__category__children')
         account = self.request.query_params.get('account')
         if account:
             if not account.isdecimal(): raise serializers.ValidationError({'account': 'Use an account ID.'})
@@ -159,8 +159,13 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
 
     def retrieve(self,request,pk=None):
         obj=self.get_object()
+        historical=obj.created_from.migration_row if obj.created_from.migration_row_id else None
+        if historical is None:
+            evidence=obj.decisions.filter(row__migration_row__isnull=False,posting__status__in=['active','partial_undo']).select_related('row__migration_row').first()
+            historical=evidence.row.migration_row if evidence else None
         return Response({**BankMovementSerializer(obj).data,**presentation(obj),
             'file_name':obj.created_from.batch.file_name,'batch':obj.created_from.batch_id,
+            'historical_source':historical.parsed if historical else None,
             'can_edit':bool(can_use_finance(request.user,'can_edit_finance') and obj.active and not obj.reconciled and obj.account.active and obj.account.company.active)})
 
     @action(detail=True,methods=['get'])

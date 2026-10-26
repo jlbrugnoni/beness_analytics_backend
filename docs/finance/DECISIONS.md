@@ -113,6 +113,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-079 | 2026-10-26 | Immediate recoverable finance reset for August replay | Client explicitly requests reset now to start with August2026 workbook and then Alegra/bank reports, superseding D-078 deferred timing for this local test run. Clear finance transactions/previews/processing history in isolated current QA; retain configuration, users/access, other apps and original-file evidence in a verified full backup. Completed with empty-table/API/browser verification and preserved-model hashes. No production reset; historical bank workbook posting still pending. |
 
+| D-080 | 2026-10-26 | Actionable historical bank import with explicit origin | Client cannot find an import action and finds pilot-month/entries/basis controls confusing. Deliver an all-date debit/credit view, optional date filters and explicit bank-row selection/account confirmation into the existing bank posting/review/undo flow. Preserve workbook manual assignments and original evidence; exclude explicit cash/invalid rows, leave unknown configuration reviewable and resolve ambiguous overlaps rather than duplicating money. Offer explicit preview copy when setup is under another authorized company; no silent reassignment or real posting. Client company/cash-origin clarification remains unanswered and can be resolved through those UI choices. Cash/manual ledger and full migration certification remain pending. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

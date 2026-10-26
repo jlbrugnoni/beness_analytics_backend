@@ -631,3 +631,16 @@ users/permissions/non-finance data retained; sequences retained, ledger tokens a
 Backend8027 restored, frontend3037 running. No reset of production or analytics. Next:
 client August workbook preview then routine report replay in same company. Historical
 bank migration posting remains pending. See BANK_CLASSIFICATION_DELIVERY.md.
+
+2026-10-26: client uploaded August–September1 workbook but could not import. Delivered
+historical bank bridge and simpler all-date debit/credit screen with optional filters,
+explicit bank-origin selection and existing posting/review/undo. Preserves source/manual
+assignments, conservative overlap matching and cross-account/stale-plan safeguards;
+explicit preview copy supports choosing the configured company without changing the
+original. 271 finance PostgreSQL tests, frontend lint/build and migration-drift check
+passed; synthetic browser two-row posting/classifications/reopen verified, fixture then
+cleaned. Real preview6 remains unchanged/unposted (327 rows), bank ledger empty for
+client replay. Migrations0014/15 applied only local QA/tests after verified full backup.
+Local8027/3037 restored. Cash/manual ledger, reconciliation/results/certification remain
+pending; client still selects correct company and confirms bank origin. See
+HISTORICAL_BANK_POSTING_DELIVERY.md. No production release; client acceptance pending.

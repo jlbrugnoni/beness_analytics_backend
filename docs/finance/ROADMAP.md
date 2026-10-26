@@ -208,3 +208,11 @@ and preview data while retaining all configuration/access and other apps. Curren
 baseline is now empty, ready for client August uploads. The later full end-to-end
 clean-replay checkpoint remains useful before certification; do not repeat a reset
 without an explicit request. See BANK_CLASSIFICATION_DELIVERY.md for scope/backup.
+
+2026-10-26 historical bank foundation: explicit selected workbook bank entries now
+post through normal bank review/commit/undo while preserving mapped manual decisions.
+All-date browsing, optional date filters and preview-company copy simplify the one-time
+workflow. This advances the bank part of Phase3.4.2/3.4.3; it does not complete cash/
+manual ledger, migration certification, reconciliation or results. Client real workbook
+is still unposted pending company/account and bank-origin choices. See
+HISTORICAL_BANK_POSTING_DELIVERY.md for tests, safeguards and replay steps.

@@ -370,6 +370,7 @@ class TaxProfile(DatedPolicy):
 
 
 class BankImportBatch(models.Model):
+    migration_batch = models.ForeignKey('MigrationImportBatch',null=True,blank=True,on_delete=models.PROTECT,related_name='bank_imports')
     account = models.ForeignKey(Account, on_delete=models.PROTECT, related_name='bank_previews')
     provider = models.CharField(max_length=10, choices=[('popular', 'Popular'), ('caixa', 'Caixa')])
     file_name = models.CharField(max_length=255)
@@ -391,6 +392,8 @@ class BankImportBatch(models.Model):
 
 
 class BankImportRow(models.Model):
+    migration_assignments = models.JSONField(default=dict,blank=True)
+    migration_row = models.ForeignKey('MigrationImportRow',null=True,blank=True,on_delete=models.PROTECT,related_name='bank_rows')
     batch = models.ForeignKey(BankImportBatch, on_delete=models.CASCADE, related_name='rows')
     row_number = models.PositiveIntegerField()
     source_line = models.PositiveIntegerField()

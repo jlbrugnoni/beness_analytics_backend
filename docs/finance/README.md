@@ -15,6 +15,11 @@ See [Daily workspace plan](DAILY_WORKSPACE_PLAN.md); first UI delivery implement
 Bank classification is now delivered in [Bank classification delivery](BANK_CLASSIFICATION_DELIVERY.md), client acceptance pending. Manual creation and later workflow stages remain unfinished.
 Existing phase acceptance is unchanged.
 
+Historical bank posting and a simpler all-date migration screen are now implemented;
+client acceptance pending. See [Historical bank posting delivery](HISTORICAL_BANK_POSTING_DELIVERY.md).
+The client's new workbook remains unposted; account/company and bank-origin selection
+are explicit. Cash/manual ledger, reconciliation and results remain later work.
+
 ## Documentation index
 
 | Document | Purpose |
