@@ -463,3 +463,6 @@ PostgreSQL 305 tests passed; SQLite299/6 skips; six new direct XLSX tests; front
 lint/build and browser chooser/guidance check passed. Actual #3 read-only reader
 check retains 1,128 payments without file errors. No real posting, schema/grant
 change, push/merge/deployment. Client retest pending. See PAYMENT_XLSX_CORRECTION.md.
+
+XLSX correction checkpoints: backend `382ce7f`, frontend `f05977e`; both on
+`feature/finance-phase-2`, local commits only.
