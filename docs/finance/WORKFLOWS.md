@@ -264,3 +264,11 @@ facts separate and locked, preserve source evidence, and move migration/setup ou
 of routine navigation. DAILY_WORKSPACE_PLAN.md supersedes the proposed navigation
 above where they conflict; older implemented-flow descriptions remain delivery
 history, not evidence that the new workspace has been built.
+
+
+D-072 refines D-071: use three primary Records tabs, Bank debits, Bank credits and
+Invoices. Both Alegra reports enrich the invoice table; invoice dialog shows items
+and zero/one/many linked payments, with permitted method/studio correction there.
+Unlinked payments remain in a secondary review view. Imported amount/number/client
+are read-only as explicitly confirmed by Q-018; source updates use reviewed report
+changes. DAILY_WORKSPACE_PLAN.md contains the proposed inheritance/override design.

@@ -151,3 +151,10 @@ reorders the next work around daily usability; reconciliation, results and relea
 remain later phases. Scope is documented, not a delivered table/editor or completed
 migration. Q-017 confirms three Dominican uploads (combined bank, Alegra transactions, Alegra
 invoices/items); Spain retains the existing Caixa/Mindbody source policy.
+
+
+D-072 refines the pending UX delivery to three main record tabs: bank debits,
+bank credits and invoices enriched by linked payments/items. Payment edits happen
+inside the invoice dialog; unlinked payments remain reachable in secondary review.
+Q-018 confirms source amounts/identifiers/client details remain read-only. No fourth
+primary payment tab or manual source-fact editor is required for this workflow.

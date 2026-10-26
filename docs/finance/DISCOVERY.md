@@ -467,3 +467,16 @@ Dominican uploads are therefore three files/types: combined bank report, Alegra
 transactions and Alegra invoices/items, “and thats it.” Four table views are not
 four uploads. This resolves the immediate Dominican selector inventory; Spain
 continues under the existing Caixa/Mindbody policy without an invented Alegra switch.
+
+
+## Q-018: invoice dialog / imported fact editability — 2026-10-25
+
+Client requests one invoice table enriched by both Alegra reports. Opening an
+invoice exposes its linked payment(s); correct method and studio inside the same
+dialog. The final sentence initially said source facts should be editable, which
+conflicted with prior instructions. Asked whether source amount/number/client
+should be read-only or manually editable. Client explicitly chose: “Read-only;
+changes come through a newer report and the source-change review flow.” Resolved
+in D-072. No further question about source-fact editing is needed. Three primary
+Records tabs replace the proposed four-tab design; unmatched payments remain
+secondary review work. No implementation or real-data changes in this checkpoint.

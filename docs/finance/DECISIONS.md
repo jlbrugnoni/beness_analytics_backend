@@ -97,6 +97,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-071 | 2026-10-25 | Client-requested workflow direction; detailed delivery design proposed | Finance must be table-centered like the existing Excel process: one routine upload page with company/report/file, readable preview/source evidence and coverage; a separate cross-import Records workspace with filters, statuses, edit dialogs and permission-controlled manual creation/actions. Initial migration is occasional setup, not the daily navigation. Imported source identities/amounts/client facts remain locked during ordinary editing; missing business classifications are follow-up work. Synthetic QA entities should not clutter the normal workspace. DAILY_WORKSPACE_PLAN.md records the current gaps, proposed delivery sequence and unresolved daily source inventory; no complete UI implementation is claimed. |
 
+| D-072 | 2026-10-25 | Accepted invoice-centered UI and protected source facts | Client simplifies D-071: Records has Bank debits, Bank credits and one Invoices table enriched by both Alegra sources. Open an invoice to inspect items and edit its linked payment(s) within the dialog; normally one payment, but multiple payments remain individually editable for method/studio corrections. Q-018 explicitly confirms amounts, numbers and client details are read-only, with changes through newer reports and source-change review. Unlinked payments must remain accessible as secondary review work without placeholder invoices. Detailed assignment inheritance/override design is in DAILY_WORKSPACE_PLAN.md; implementation pending. |
+
 ## Open policy decisions
 
 | Topic | Discovery reference | Dependency |

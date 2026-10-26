@@ -515,3 +515,14 @@ Q-017 answer: Dominican routine inventory is three uploads, combined bank debit/
 credit + Alegra transactions + Alegra invoices/items. Updated workspace/roadmap;
 four operational table tabs do not imply four files. Existing Spain source policy
 remains unchanged. Next delivery can proceed with the Dominican selector contract.
+
+
+2026-10-25: D-072 further simplifies the proposed workspace to three primary tabs
+(Bank debits, Bank credits, Invoices). Both Alegra sources enrich one invoice table;
+invoice dialog exposes items and individual linked payment method/studio corrections.
+Q-018 explicitly confirms amounts/numbers/client facts are read-only; later reports
+and source-change review supply changes. Updated DAILY_WORKSPACE_PLAN.md, decisions,
+discovery and workflows; proposed studio inheritance/manual override and unlinked-
+payment review safeguards are documented, not delivered. Documentation-only; no
+application tests, source/data/grant changes, push or deployment. Implementation
+of the simplified workspace remains next.

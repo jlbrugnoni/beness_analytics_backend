@@ -1,6 +1,6 @@
 # Daily finance workspace: client workflow correction
 
-Date: 2026-10-25. Client requirements recorded in D-071. The implementation
+Date: 2026-10-25. Client requirements recorded in D-071–072. The implementation
 sequence and permission/deletion recommendations below are proposed, not delivered.
 No runtime or financial records are changed by this document.
 
@@ -23,8 +23,9 @@ make their relationship understandable without exposing implementation terms.
 
 ## Target navigation
 
-- Records: default day-to-day destination with one company selector and four tabs:
-  Bank debits; Bank credits; Invoices and items; Customer payments (Alegra_adm).
+- Records: default day-to-day destination with one company selector and three tabs:
+  Bank debits; Bank credits; Invoices. Linked customer payments (Alegra_adm)
+  are displayed and edited inside the invoice dialog, not a fourth main tab.
   Use business labels; explain report names as source labels. Do not call all
   bank debits expenses or all bank credits sales: transfers, fees, reimbursements,
   refunds and other movements remain visible with their own treatment.
@@ -62,8 +63,9 @@ no routine Alegra switch or duplicate Mindbody upload is implied.
 Bank debit/credit are table views, not necessarily separate files. Popular's
 verified export has both sections; Caixa's verified export has both directions.
 Never require the user to split a combined source to fit the UI. Q-017 answer confirms three Dominican uploads: combined Popular bank report,
-Alegra transactions/payments, and Alegra invoices/items. The four operational tabs
-are views, not four mandatory files. Do not ask the client to split bank directions.
+Alegra transactions/payments, and Alegra invoices/items. Debit/credit and invoice
+tables are views, not mandatory separate files. Both Alegra reports feed the one
+invoice workspace without merging their distinct invoice and payment identities. Do not ask the client to split bank directions.
 Spain retains its already agreed Caixa bank and existing Mindbody Sales source
 policy; no additional mandatory report or Alegra cutover is inferred.
 
@@ -82,8 +84,7 @@ records originally created by that batch. Preserve filters/page on modal close.
 | --- | --- | --- |
 | Bank debits | Bank date, description, amount, currency, reference, reported balance where present | Manual description, expense month, category/subcategory, studio/administration, movement treatment, recognition/review, source/history |
 | Bank credits | Bank date, description, amount, currency, reference, reported balance where present | Operation date, payment method, terminal, studio, manual concept, movement treatment, recognition/review, source/history |
-| Invoices | Invoice code/date/client/status/total; expand to original item occurrences | Studio/payment assignments where allowed; reviewed cancellation flow; source/history |
-| Customer payments | Payment number/date/client/amount/account/original method/invoice reference | Corrected payment method, invoice-link/review information, effective studio and permitted assignment actions; source/history |
+| Invoices | Invoice code/date/client/status/total/studio; payment count and payment-method summary; status/review | Open invoice dialog for items, one or many linked payments, permitted studio/payment-method edits, source/history and reviewed cancellation flow |
 
 Use Edit dialog, not inline mutation. Show Original report and Editable business
 fields separately. Imported code/number, source dates, amount, customer identity,
@@ -100,6 +101,60 @@ Payment method review, Unreconciled and Reconciled views as their underlying
 behavior is implemented. Do not advertise a functioning reconciled filter based
 on a legacy checkbox or unsupported matching model. A record can have several
 pending reasons. Unknown information stays visible rather than being guessed.
+
+## Invoice-centered workspace (D-072)
+
+Both Alegra reports enrich one invoice table. Keep invoice/item and customer-
+payment records, identities, dates, original amounts and provenance distinct.
+An invoice row displays its number, date, client, invoice total, effective studio,
+payment-method summary/count and meaningful review/link status. Invoice totals
+are counted once regardless of item or payment count. Multiple methods can be
+summarized as Mixed with details in the dialog; never choose one arbitrarily.
+
+Click an invoice (with an explicit keyboard-accessible Open/Edit action) to open
+one dialog containing:
+
+- Invoice header and studio assignment; source identity, date/client/amount/status
+  remain read-only in ordinary editing.
+- Original item detail, available without a separate primary table.
+- Linked payments. For one payment, display its fields directly without a second
+  selection step. For several, display each distinct payment and its edit controls
+  in the same dialog. For none, show Waiting for payment report; do not create a
+  full-amount payment or infer collection merely from the invoice row.
+- Original reported payment number/date/amount/client/method/account and the
+  current corrected method/studio, visibly distinguished. Keep source evidence
+  and audit accessible without leaving the invoice context.
+
+The client explicitly wants payment-method and studio corrections in this dialog.
+Preserve separate invoice studio and payment studio assignments: use the invoice
+studio as the default when no payment-specific override exists. A payment studio
+correction affects that payment, not every sibling payment or the immutable cost-
+center field. An invoice studio correction updates its assignment; it propagates
+only to payments still inheriting the invoice studio. Explicit overrides survive
+later imports and invoice edits. Show From invoice versus Manual override and
+mismatch review clearly. This assignment behavior is the implementation design
+for the requested editing workflow, not an existing delivered receipt capability;
+the current receipt editor only changes payment method.
+
+Q-018 answered: invoice/payment amounts, identifiers and client details are
+read-only; source changes must arrive through a newer report and the existing
+source-change review flow. Do not enable manual mutation of these facts or silently
+overwrite them on reupload. Existing cancellation/immutable-fact contracts still
+apply; this answer does not authorize arbitrary source replacement or identity
+merging. Method/studio overrides are business assignments and retain history.
+
+Keep payments awaiting an invoice, cancelled/conflicting invoice links and source
+exceptions accessible from a Needs review / Unlinked payments view within this
+workspace, with payment detail/edit access where allowed. They cannot vanish just
+because the main table is invoice-centered. This is a secondary review view, not
+a fourth primary Records tab. It must also support payment-before-invoice imports
+without generating placeholder invoices. Posted payments, pending source rows and
+out-of-scope purchases remain clearly distinct.
+
+Payment sums/link coverage are not bank reconciliation. A single linked payment
+may be partial; never label an invoice bank-reconciled solely because it has one
+payment or its linked payment total equals the invoice amount. Use the actual
+stored link/coverage state and later bank-match model for their respective labels.
 
 ## Manual creation and permissions: recommendations
 
@@ -166,6 +221,11 @@ logic, production release or completed historical migration is claimed.
   operational records, new revenue, or duplicate expenses.
 - Invoice-level totals do not multiply by item/payment count; payment fractions
   remain distinct and company/currency totals are never combined incorrectly.
+- One invoice table combines invoice/item and payment report information. Invoice
+  dialogs handle zero, one and multiple payments with source facts locked and
+  independently editable method/studio assignments; overrides survive reimports.
+- Payment-before-invoice, link conflicts and cancelled invoices remain reachable
+  in the secondary review view without fabricating invoice records or bank matches.
 - Read-only users cannot create/edit/void; new action permissions are explicit;
   partial studio/sensitive access cannot leak rows, counts, origins or raw files.
 - Source files, financial history and client reports remain intact when test data
