@@ -549,3 +549,6 @@ Real report4 unchanged/unposted. See DAILY_WORKSPACE_DELIVERY.md for exact scope
 limits and client tests. Acceptance pending. Bank classification/manual cash/create-
 void services, full pending queue/fixture isolation and historical certification
 remain next bounded deliveries; reconciliation/results/release are not delivered.
+
+Daily workspace checkpoints: backend `77cba6a`, frontend `356cdbc`, local on
+`feature/finance-phase-2`. Local QA backend8027/frontend3037 restored after build.
