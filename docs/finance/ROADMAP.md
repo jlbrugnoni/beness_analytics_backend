@@ -149,4 +149,5 @@ shared navigation/browsing, necessary Phase 3.4.2/4 assignment/manual-entry foun
 pending-work filters, then September migration/routine-overlap rehearsal. This
 reorders the next work around daily usability; reconciliation, results and release
 remain later phases. Scope is documented, not a delivered table/editor or completed
-migration. Daily file inventory by country is Q-017, pending.
+migration. Q-017 confirms three Dominican uploads (combined bank, Alegra transactions, Alegra
+invoices/items); Spain retains the existing Caixa/Mindbody source policy.

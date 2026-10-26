@@ -460,3 +460,10 @@ files or tables in one bank file. Answer pending; do not invent four mandatory
 uploads or switch Spain to Alegra. Independent workspace/field/permission design
 is documented in DAILY_WORKSPACE_PLAN.md. Create/void permission and audited-void
 recommendations remain proposed; no user grants or records changed.
+
+
+Q-017 answer received: Dominican bank contains both credits and debits. Routine
+Dominican uploads are therefore three files/types: combined bank report, Alegra
+transactions and Alegra invoices/items, “and thats it.” Four table views are not
+four uploads. This resolves the immediate Dominican selector inventory; Spain
+continues under the existing Caixa/Mindbody policy without an invented Alegra switch.

@@ -61,9 +61,11 @@ no routine Alegra switch or duplicate Mindbody upload is implied.
 
 Bank debit/credit are table views, not necessarily separate files. Popular's
 verified export has both sections; Caixa's verified export has both directions.
-Never require the user to split a combined source to fit the UI. Q-017 requests
-actual daily file lists by country before finalizing the report selector. No
-fixed four-file or eight-file assumption in code until that answer is recorded.
+Never require the user to split a combined source to fit the UI. Q-017 answer confirms three Dominican uploads: combined Popular bank report,
+Alegra transactions/payments, and Alegra invoices/items. The four operational tabs
+are views, not four mandatory files. Do not ask the client to split bank directions.
+Spain retains its already agreed Caixa bank and existing Mindbody Sales source
+policy; no additional mandatory report or Alegra cutover is inferred.
 
 ## Operational tables and editing
 

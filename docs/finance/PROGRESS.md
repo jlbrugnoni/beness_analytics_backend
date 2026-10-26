@@ -509,3 +509,9 @@ Q-017 daily file inventory asked, pending. No UI, database, grant or real-record
 changes. Documentation checked; no application tests warranted. Next: record file
 inventory and implement workspace in bounded deliveries before September migration
 certification, reusing existing import/identity/audit protections.
+
+
+Q-017 answer: Dominican routine inventory is three uploads, combined bank debit/
+credit + Alegra transactions + Alegra invoices/items. Updated workspace/roadmap;
+four operational table tabs do not imply four files. Existing Spain source policy
+remains unchanged. Next delivery can proceed with the Dominican selector contract.
