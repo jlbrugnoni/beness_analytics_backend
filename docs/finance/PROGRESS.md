@@ -570,3 +570,6 @@ Browser caught date/month-control persistence issue; replaced with validated exp
 text fields and verified saved date/month via read-back. See BANK_CLASSIFICATION_DELIVERY.md.
 Client acceptance pending. Next remains manual/cash/provenance/migration and later
 reconciliation/results; no production schema migration, release, push or merge.
+
+Bank classification checkpoints: backend `11b81ab`, frontend `6566acd`; local
+`feature/finance-phase-2`. QA frontend3037/backend8027 restored after final checks.
