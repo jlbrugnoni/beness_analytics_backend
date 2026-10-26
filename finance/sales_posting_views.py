@@ -149,6 +149,7 @@ class FinancialSaleViewSet(viewsets.ReadOnlyModelViewSet):
             cancellation_treatment=serializers.ChoiceField(choices=['pending','refund','no_refund','replacement'],required=False)
             replacement=serializers.PrimaryKeyRelatedField(queryset=FinancialSale.objects.none(),allow_null=True,required=False)
             note=serializers.CharField(max_length=2000,allow_blank=False)
+        if set(request.data)-{'expected_revision','studio','channel','cancellation_treatment','replacement','note'}:raise serializers.ValidationError('Source facts are read-only.')
         original=self.get_object()
         with locked_company(request.user,original.company_id,['can_edit_finance']) as company:
             sale=get_object_or_404(self.get_queryset().select_for_update(of=('self',)),pk=original.pk,active=True)

@@ -2,7 +2,9 @@
 
 Date: 2026-10-25. Client requirements recorded in D-071–072. The implementation
 sequence and permission/deletion recommendations below are proposed, not delivered.
-No runtime or financial records are changed by this document.
+This document records the design. First UI delivery is now implemented:
+see DAILY_WORKSPACE_DELIVERY.md for actual scope, validation and remaining work.
+Do not infer completion of all proposed stages from this plan.
 
 ## Problem confirmed in the current implementation
 

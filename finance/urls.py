@@ -11,12 +11,15 @@ from .payment_views import PaymentImportViewSet, FinancialReceiptViewSet
 from .sales_posting_views import SalesPostingImportViewSet, FinancialSaleViewSet
 from .posting_views import BankPostingImportViewSet, BankMovementViewSet
 
+from .workspace_views import WorkspaceViewSet
+
 class FinanceAPIRoot(APIRootView):
     permission_classes = [IsAuthenticated, FinancePermission]
 
 
 router = DefaultRouter()
 router.APIRootView = FinanceAPIRoot
+router.register("workspace", WorkspaceViewSet, basename="finance-workspace")
 router.register("companies", CompanyViewSet, basename="finance-company")
 router.register("accounts", AccountViewSet, basename="finance-account")
 router.register("terminals", TerminalViewSet, basename="finance-terminal")

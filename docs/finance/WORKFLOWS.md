@@ -272,3 +272,12 @@ and zero/one/many linked payments, with permitted method/studio correction there
 Unlinked payments remain in a secondary review view. Imported amount/number/client
 are read-only as explicitly confirmed by Q-018; source updates use reviewed report
 changes. DAILY_WORKSPACE_PLAN.md contains the proposed inheritance/override design.
+
+
+First D-071/D-072 UI delivery implemented: Finance now opens Records with three
+primary tabs, one Upload page, invoice/items/linked-payment edit dialogs and a
+secondary unlinked-payment view. Existing import/identity/review/undo services
+remain; an audited receipt studio override/inheritance complements the method
+editor. DAILY_WORKSPACE_DELIVERY.md is authoritative for delivered scope and client
+tests. Broader bank classification/manual creation and later workflow UI remain
+unfinished; source recognition does not imply bank reconciliation.

@@ -526,3 +526,26 @@ discovery and workflows; proposed studio inheritance/manual override and unlinke
 payment review safeguards are documented, not delivered. Documentation-only; no
 application tests, source/data/grant changes, push or deployment. Implementation
 of the simplified workspace remains next.
+
+
+## Daily workspace UI delivery (D-071/D-072)
+
+2026-10-25 client timezone: implemented Records as finance landing with three tabs,
+company/filter/sort/pagination/full-query amounts and original evidence. Added one
+Upload page for the three Dominican report types, source range/count/preview,
+existing service confirmation and secondary history. Invoice dialogs show items
+and individual payment method/studio edits; audited studio override/inheritance is
+the only added assignment capability. Read-only source facts protected; old import
+review/undo URLs remain usable via exact batch links. No company cards, schema/data
+migration, real posting, source rewrite or grants changed. Test-company entities
+remain in isolated QA without deleting/moving real uploaded reports.
+
+PostgreSQL313 passed; final focusedPG50 passed; SQLite307/6 skips; frontend lint/
+build and Django/migration checks passed. Browser synthetic invoice300/two payments,
+studio-inheritance save preserving Recurring, source evidence, saved-source native
+confirmation and unlinked-payment access verified. Synthetic company6 now has four
+receipts after committing synthetic preview6 (101/102 unlinked + prior990001/990002).
+Real report4 unchanged/unposted. See DAILY_WORKSPACE_DELIVERY.md for exact scope,
+limits and client tests. Acceptance pending. Bank classification/manual cash/create-
+void services, full pending queue/fixture isolation and historical certification
+remain next bounded deliveries; reconciliation/results/release are not delivered.

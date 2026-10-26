@@ -158,3 +158,10 @@ bank credits and invoices enriched by linked payments/items. Payment edits happe
 inside the invoice dialog; unlinked payments remain reachable in secondary review.
 Q-018 confirms source amounts/identifiers/client details remain read-only. No fourth
 primary payment tab or manual source-fact editor is required for this workflow.
+
+
+D-071/D-072 first UI delivery implemented; client acceptance pending. Records and
+one Upload page, invoice/payment dialog, filters and audited receipt studio edits
+reuse existing services. See DAILY_WORKSPACE_DELIVERY.md. Bank assignment/manual
+entry/create-void services, unified pending work and fixture isolation remain before
+full UX-2–4 / September certification; no full phase completion or release claimed.

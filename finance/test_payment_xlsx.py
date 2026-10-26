@@ -150,6 +150,8 @@ class PaymentXLSXAPITests(APITestCase):
         self.assertEqual(response.data['file_issues'],[])
         self.assertEqual(response.data['duplicate_of'],failed)
         self.assertEqual(self.plan(response.data['id'])['counts'],{'new':2,'invalid':1})
+        self.assertEqual(self.plan(response.data['id'])['excluded_rows'],1)
+        self.assertEqual(response.data['date_range'],['2026-09-09','2026-09-09'])
         old=PaymentImportBatch.objects.get(pk=failed)
         self.assertEqual(old.file_issues,['missing_payment_header']);self.assertEqual(old.rows.count(),0)
         self.assertEqual(bytes(old.original_file),source)

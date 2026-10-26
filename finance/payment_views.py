@@ -2,6 +2,8 @@ import hashlib
 import io
 from contextlib import contextmanager
 from django.db import transaction
+from django.db.models import Min, Max
+from django.db.models.fields.json import KeyTextTransform
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
 from rest_framework import serializers, viewsets
@@ -43,13 +45,17 @@ class PrivatePayments(viewsets.ReadOnlyModelViewSet):
 class PaymentBatchSerializer(serializers.ModelSerializer):
     company_name=serializers.CharField(source='company.name',read_only=True)
     posting_status=serializers.SerializerMethodField()
+    date_range=serializers.SerializerMethodField()
+    def get_date_range(self,obj):
+        values=obj.rows.filter(source__date__isnull=False).exclude(source__date=None).aggregate(first=Min(KeyTextTransform('date','source')),last=Max(KeyTextTransform('date','source')))
+        return [values['first'],values['last']]
     def get_posting_status(self,obj):
         posting=getattr(obj,'posting',None)
         return posting.status if posting else 'not_imported'
     class Meta:
         model=PaymentImportBatch
         fields=['id','company','company_name','origin','migration_batch','selected_month','file_name','file_hash',
-            'parser_version','summary','file_issues','duplicate_of','uploaded_by','created_at','posting_status']
+            'parser_version','summary','file_issues','duplicate_of','uploaded_by','created_at','posting_status','date_range']
 
 
 def store(company,actor,content,parsed,file_name,migration=None,month=None):
@@ -125,6 +131,7 @@ class PaymentImportViewSet(PrivatePayments):
         batch=self.get_object()
         with locked(request.user,batch.company_id,active=False) as company:
             result=operations.plan(batch,company);posting=result.pop('posting')
+            result['excluded_rows']=batch.rows.filter(source__kind='egreso').count()
             result['rows']=self.get_paginated_response(self.paginate_queryset(result['rows'])).data
             result.update(posting={'id':posting.pk,'status':posting.status,'revision':posting.revision} if posting else None,
                 can_commit=bool(not posting and not batch.file_issues and batch.rows.exists() and company.active and can_use_finance(request.user,'can_import_finance')),
@@ -188,11 +195,15 @@ class PaymentImportViewSet(PrivatePayments):
 
 class FinancialReceiptViewSet(PrivatePayments):
     def get_queryset(self):
-        qs=FinancialReceipt.objects.filter(company__in=migration_companies(self.request.user)).select_related('sale__studio','studio')
+        qs=FinancialReceipt.objects.filter(company__in=migration_companies(self.request.user)).select_related('sale__studio','studio','created_from__batch')
         company=self.request.query_params.get('company')
         if company:
             if not company.isdecimal():raise serializers.ValidationError('Use a company ID.')
             qs=qs.filter(company_id=company)
+        sale=self.request.query_params.get('sale')
+        if sale:
+            if not sale.isdecimal():raise serializers.ValidationError('Use an invoice ID.')
+            qs=qs.filter(sale_id=sale)
         return qs
 
     @staticmethod
@@ -200,7 +211,7 @@ class FinancialReceiptViewSet(PrivatePayments):
         result=operations.state(receipt)
         inherited=receipt.sale.studio_id if receipt.sale_id and receipt.assignments.get('studio_origin')=='invoice' else receipt.studio_id
         studio_name=(receipt.sale.studio.name if receipt.sale_id and receipt.sale.studio_id else None) if receipt.assignments.get('studio_origin')=='invoice' else receipt.studio.name if receipt.studio_id else None
-        result.update(company=receipt.company_id,effective_studio=inherited,effective_studio_name=studio_name,invoice_code=receipt.source['invoice_code'])
+        result.update(file_name=receipt.created_from.batch.file_name,batch=receipt.created_from.batch_id,company=receipt.company_id,effective_studio=inherited,effective_studio_name=studio_name,invoice_code=receipt.source['invoice_code'])
         return result
 
     def list(self,request):
@@ -221,16 +232,26 @@ class FinancialReceiptViewSet(PrivatePayments):
     def assign(self,request,pk=None):
         class Input(serializers.Serializer):
             expected_revision=serializers.IntegerField(min_value=1)
-            channel=serializers.ChoiceField(choices=[v for v,label in SourceMapping.CHANNELS],allow_null=True)
+            channel=serializers.ChoiceField(choices=[v for v,label in SourceMapping.CHANNELS],allow_null=True,required=False)
+            studio=serializers.PrimaryKeyRelatedField(queryset=Studio.objects.none(),allow_null=True,required=False)
             note=serializers.CharField(max_length=2000,allow_blank=False)
-        original=self.get_object();data=Input(data=request.data);data.is_valid(raise_exception=True);v=data.validated_data
+        if set(request.data)-{'expected_revision','channel','studio','note'}:raise serializers.ValidationError('Source facts are read-only.')
+        original=self.get_object();data=Input(data=request.data)
+        data.fields['studio'].queryset=Studio.objects.filter(site_id=original.company.site_id)
+        data.is_valid(raise_exception=True);v=data.validated_data
+        if not any(k in v for k in ('channel','studio')):raise serializers.ValidationError('Choose an assignment to change.')
         with locked(request.user,original.company_id,['can_edit_finance']) as company:
             receipt=get_object_or_404(self.get_queryset(),pk=original.pk,active=True)
             if receipt.revision!=v['expected_revision']:raise ConfigurationConflict('Payment changed. Reload before saving.')
             if receipt.reconciled:raise serializers.ValidationError('Resolve the bank reconciliation before changing this payment.')
-            before=operations.state(receipt);receipt.channel=v['channel'] or ''
-            receipt.assignments={**receipt.assignments,'channel':v['channel'],'channel_origin':'manual','channel_review':not bool(v['channel'])}
-            receipt.edited=True;receipt.revision+=1;receipt.save(update_fields=['channel','assignments','edited','revision'])
+            before=operations.state(receipt)
+            if 'channel' in v:
+                receipt.channel=v['channel'] or ''
+                receipt.assignments={**receipt.assignments,'channel':v['channel'],'channel_origin':'manual','channel_review':not bool(v['channel'])}
+            if 'studio' in v:
+                receipt.studio=v['studio']
+                receipt.assignments={**receipt.assignments,'studio':receipt.studio_id,'studio_origin':'manual' if receipt.studio_id else 'invoice'}
+            receipt.edited=True;receipt.revision+=1;receipt.save(update_fields=['channel','studio','assignments','edited','revision'])
             operations.event(PaymentPosting.objects.get(batch=receipt.created_from.batch),request.user,'assign',receipt,before,v['note'])
             operations.advance(company);return Response(self.serialize(receipt))
 

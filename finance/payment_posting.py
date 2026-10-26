@@ -77,6 +77,7 @@ def plan(batch,company):
         status=outcome(row.source,receipt);counts[decision.resolution if decision else status]+=1
         rows.append({'row_id':row.pk,'source_row':row.source_row,'number':row.source.get('number'),
             'date':row.source.get('date'),'amount':row.source.get('amount'),'invoice_code':row.source.get('invoice_code'),
+            'kind':row.source.get('kind'),'customer':row.source.get('customer'),
             'method':row.source.get('method'),'original_method':row.source.get('original_method'),
             'location':row.source.get('location'),'issues':row.source['issues'],'outcome':status,
             'decision_id':decision.pk if decision else None,'decision_revision':decision.revision if decision else None,
