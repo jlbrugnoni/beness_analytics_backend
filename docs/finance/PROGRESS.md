@@ -673,3 +673,14 @@ changes.322 bank movements and workbook previews restored; later Alegra test pos
 were absent from that snapshot and must be repeated before September overlap tests.
 Prepared Alegra previews only, no financial posting/reset. Added a persistent startup
 launcher and LOCAL_TEST_RUNTIME.md; normal database/env and saved backup unchanged.
+
+2026-10-27: read-only client September overlap audit completed against a consistent
+private DB copy. Routine bank batch20 has175 rows:161 created,4 historical links,
+10 pending. All14 September1 source occurrences remain represented by the14 existing
+historical rows; no new overlap-day movement. Full period175 ledger occurrences and
+credit/debit totals match report. All322 historical classifications and sources match
+pre-import audit baselines exactly. Pending rows expose description-whitespace false
+conflicts and weak reused-terminal candidates; equal6,800 credits need distinct balance
+evidence. No decisions or data changed, no code fix/complete replay acceptance claimed.
+No new routine Alegra reports are present yet; historical744 invoices/745 receipts only.
+See SEPTEMBER_OVERLAP_AUDIT.md for evidence, limitations and recommended next changes.

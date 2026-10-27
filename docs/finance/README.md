@@ -33,6 +33,10 @@ certification, manual/cash ledger, reconciliation and monthly results remain pen
 For local startup after restarting the Mac, see [Persistent local test runtime](LOCAL_TEST_RUNTIME.md).
 The working finance database now lives in the project .local-finance folder, not /private/tmp.
 
+Latest verification: [September overlap audit](SEPTEMBER_OVERLAP_AUDIT.md), 2026-10-27.
+Bank preservation/amount checks pass;10 overlaps still need review and the two routine
+September Alegra reports are not yet present. This is not full replay certification.
+
 | Document | Purpose |
 | --- | --- |
 | [Business rules](BUSINESS_RULES.md) | Accepted behavior, source facts, and outstanding definitions |
