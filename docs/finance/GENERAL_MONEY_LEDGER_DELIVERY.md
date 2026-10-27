@@ -1,7 +1,8 @@
 # General money ledger and cash foundation
 
 Delivery date: 2026-10-27. Implemented locally on `feature/finance-phase-2` in both
-repositories. Client testing/acceptance pending; no production deployment.
+repositories. Client accepted the workflow on2026-10-27 after document comparison and successful
+manual entry testing (D-084); no production deployment.
 
 ## Accepted business definition (D-083)
 

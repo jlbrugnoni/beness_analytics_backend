@@ -121,6 +121,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-083 | 2026-10-27 | General actual income/expenses include cash | Client confirms one general cash account per company initially, later studio accounts; individual manual cash receipts represent actual cash received. Historical expenses default to the selected bank account because their cash origin is unknown; manual expenses choose Account from. Explicit Efectivo income rows migrate separately. Opening cash balance stays unverified. Invoices/payments remain separate sales evidence; no automatic cash copy or double counting. Implementation acceptance pending. |
 
+| D-084 | 2026-10-27 | General money/cash workflow accepted; daily closures discovery begins | Client confirms everything matches their documents and reports successful manual entries. Accept D-083 delivery and preserve all client data. Proceed to daily closures discovery using existing operation-date/studio/method, fee, rounding and source rules. Table presentation and multi-day deposit splitting are awaiting confirmation. This is not full historical certification, authorization to reset/deploy, or acceptance of a reconciliation engine. |
+
 ## Open policy decisions
 
 

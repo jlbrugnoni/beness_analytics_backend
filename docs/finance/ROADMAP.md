@@ -233,3 +233,10 @@ and the four historical cash receipts, then develop closures comparing actual
 receipts with authoritative sales/payment evidence. Verified balances, paired
 transfers, cash migration undo/source correction and monthly result calculations
 remain separate later work; bank overlap issues still require follow-up.
+
+2026-10-27 acceptance update: client confirms D-083 records match their documents and
+manual creation works (D-084). Daily closures discovery is now active; see
+DAILY_CLOSURES_PLAN.md for C-1 read-only comparison, C-2 explicit allocations, C-3
+exceptions/Spain integration and C-4 acceptance before monthly results. Two client
+confirmations remain. Preserve all current records; no reset or reconciliation
+mutation is part of this discovery step.

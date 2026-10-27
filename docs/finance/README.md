@@ -30,9 +30,13 @@ certification, reconciliation and monthly results remain pending.
 
 Current delivery (2026-10-27): [General money ledger and cash foundation](GENERAL_MONEY_LEDGER_DELIVERY.md).
 Manual cash/bank entries and historical cash receipt import are implemented, with
-client testing pending. Existing records are preserved; closures and certified
+client acceptance recorded in D-084. Existing records are preserved; closures and certified
 balances remain future work. This supersedes earlier references to manual/cash
 records as entirely undelivered.
+
+Next phase: [Daily closures discovery and plan](DAILY_CLOSURES_PLAN.md). Client
+accepted the general money/cash workflow; daily comparison and reconciliation are
+being defined, with table presentation and deposit splitting awaiting confirmation.
 
 ## Documentation index
 

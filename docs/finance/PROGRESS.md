@@ -697,3 +697,11 @@ receipts totaling26,860.00 DOP, unposted. Existing483 movements/744 invoices/745
 payments and pending bank reviews unchanged. Client acceptance, closures, balances,
 paired transfers, cash migration undo/corrections and monthly results remain pending.
 See GENERAL_MONEY_LEDGER_DELIVERY.md. No reset, production release, push or merge.
+
+2026-10-27: client reports document agreement and successful manual entries. D-083
+general money/cash workflow accepted (D-084). Began daily closures discovery and
+recorded staged comparison/allocation/exception plan in DAILY_CLOSURES_PLAN.md.
+Two business confirmations remain: table presentation and multi-day deposit splitting.
+Retain BR-040 rounding rule; initial redundant tolerance question withdrawn. Existing
+models have no explicit financial reconciliation allocation ledger yet. No code/data
+mutation, client entry cleanup, reset, release or independent certification performed.
