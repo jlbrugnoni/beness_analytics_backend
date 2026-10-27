@@ -12,6 +12,7 @@ from .sales_posting_views import SalesPostingImportViewSet, FinancialSaleViewSet
 from .posting_views import BankPostingImportViewSet, BankMovementViewSet
 
 from .workspace_views import WorkspaceViewSet
+from .money_views import MoneyMovementViewSet
 
 class FinanceAPIRoot(APIRootView):
     permission_classes = [IsAuthenticated, FinancePermission]
@@ -35,6 +36,7 @@ router.register("sales", FinancialSaleViewSet, basename="finance-sale")
 router.register("sales-imports", SalesPostingImportViewSet, basename="finance-sales-import")
 router.register("bank-imports", BankPostingImportViewSet, basename="finance-bank-import")
 router.register("bank-movements", BankMovementViewSet, basename="finance-bank-movement")
+router.register("movements", MoneyMovementViewSet, basename="finance-movement")
 urlpatterns = [path("policy-preview/", PolicyPreview.as_view(), name="finance-policy-preview"),
                path("policy-setup/", PolicySetup.as_view(), name="finance-policy-setup"),path("overview/", FinanceOverview.as_view(), name="finance-overview"),
                path("configuration-options/", ConfigurationOptions.as_view(), name="finance-configuration-options"),

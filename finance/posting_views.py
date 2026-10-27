@@ -19,14 +19,14 @@ from .views import visible_accounts, visible_studios
 
 
 @contextmanager
-def locked_account(user, account_id, capabilities=(), active=True):
+def locked_account(user, account_id, capabilities=(), active=True, bank_only=True):
     with transaction.atomic():
         original = Account.objects.get(pk=account_id)
         company = Company.objects.select_for_update().get(pk=original.company_id)
         account = Account.objects.select_for_update().get(pk=account_id)
         if not can_view_full_account(user, account) or not can_view_sensitive_detail(user) or any(not can_use_finance(user, cap) for cap in capabilities):
             raise PermissionDenied('Bank action permission or account access is unavailable.')
-        if active and account.kind != 'bank':
+        if active and bank_only and account.kind != 'bank':
             raise serializers.ValidationError('Bank transactions require a bank account.')
         if active and (not account.active or not company.active):
             raise serializers.ValidationError('Activate the company and account before changing transactions.')
@@ -119,6 +119,15 @@ class BankPostingImportViewSet(BankImportViewSet):
             return Response({**result, 'status': posting.status})
 
 
+def movement_origin(obj):
+    row=obj.created_from if obj.created_from_id else None
+    historical=obj.historical_row if obj.historical_row_id else None
+    return {'origin':'migration' if historical or row and row.batch.migration_batch_id else 'report' if row else 'manual',
+        'account_kind':obj.account.kind,'file_name':row.batch.file_name if row else historical.batch.file_name if historical else None,
+        'batch':row.batch_id if row else None,'source_row':row.source_line if row else historical.source_row if historical else None,
+        'manual':bool(obj.manual_key),'can_edit_facts':bool(obj.manual_key and obj.active and not obj.reconciled and not obj.decisions.filter(posting__status__in=['active','partial_undo']).exists())}
+
+
 class BankMovementSerializer(serializers.ModelSerializer):
     class Meta:
         model = BankMovement
@@ -127,7 +136,7 @@ class BankMovementSerializer(serializers.ModelSerializer):
 
 
 class BankEventSerializer(serializers.ModelSerializer):
-    batch_id = serializers.IntegerField(source='posting.batch_id', read_only=True)
+    batch_id = serializers.IntegerField(source='posting.batch_id', read_only=True,allow_null=True)
 
     class Meta:
         model = BankEvent
@@ -146,7 +155,7 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
         return response
 
     def get_queryset(self):
-        queryset = BankMovement.objects.filter(account__in=visible_accounts(self.request.user)).select_related('classification__category','classification__subcategory','classification__studio','classification__terminal','account__company','created_from__batch','created_from__migration_row').prefetch_related('classification__category__children')
+        queryset = BankMovement.objects.filter(account__in=visible_accounts(self.request.user)).select_related('classification__category','classification__subcategory','classification__studio','classification__terminal','account__company','created_from__batch','created_from__migration_row','historical_row__batch').prefetch_related('classification__category__children')
         account = self.request.query_params.get('account')
         if account:
             if not account.isdecimal(): raise serializers.ValidationError({'account': 'Use an account ID.'})
@@ -159,12 +168,12 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
 
     def retrieve(self,request,pk=None):
         obj=self.get_object()
-        historical=obj.created_from.migration_row if obj.created_from.migration_row_id else None
+        historical=obj.historical_row if obj.historical_row_id else obj.created_from.migration_row if obj.created_from_id and obj.created_from.migration_row_id else None
         if historical is None:
             evidence=obj.decisions.filter(row__migration_row__isnull=False,posting__status__in=['active','partial_undo']).select_related('row__migration_row').first()
             historical=evidence.row.migration_row if evidence else None
         return Response({**BankMovementSerializer(obj).data,**presentation(obj),
-            'file_name':obj.created_from.batch.file_name,'batch':obj.created_from.batch_id,
+            **movement_origin(obj),
             'historical_source':historical.parsed if historical else None,
             'can_edit':bool(can_use_finance(request.user,'can_edit_finance') and obj.active and not obj.reconciled and obj.account.active and obj.account.company.active)})
 
@@ -201,49 +210,18 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
         data.is_valid(raise_exception=True);values=dict(data.validated_data)
         revision=values.pop('expected_revision');note=values.pop('note')
         if not values:raise serializers.ValidationError('Choose a business field to change.')
-        with locked_account(request.user,original.account_id,['can_edit_finance']) as account:
+        with locked_account(request.user,original.account_id,['can_edit_finance'],bank_only=False) as account:
             obj=get_object_or_404(self.get_queryset().select_for_update(of=('self',)),pk=original.pk,active=True)
             if obj.revision!=revision:raise ConfigurationConflict('The bank record changed. Reload before saving.')
             if obj.reconciled:raise serializers.ValidationError('Review bank reconciliation before editing this movement.')
-            before=operations.movement_data(obj);merged={**snapshot(obj),**values};direction=obj.source['direction']
-            allowed_kinds=BankMovementClassification.DEBIT_KINDS if direction=='debit' else BankMovementClassification.CREDIT_KINDS
-            if values.get('movement_kind') and values['movement_kind'] not in allowed_kinds:
-                raise serializers.ValidationError({'movement_kind':'Choose a supported type for this direction.'})
-            values['movement_kind']=effective_kind(direction,merged.get('movement_kind'))
-            merged['movement_kind']=values['movement_kind']
-            if isinstance(merged.get('expense_period'),str):
-                from datetime import date
-                merged['expense_period']=date.fromisoformat(merged['expense_period'])
-            if merged.get('expense_period') and merged['expense_period'].day!=1:raise serializers.ValidationError({'expense_period':'Use the first day of the expense month.'})
-            if direction=='debit' and merged.get('operation_date'):raise serializers.ValidationError({'operation_date':'Operation date is assigned to bank credits.'})
-            if direction=='credit' and any(values.get(field) is not None for field in ('category','subcategory')):
-                raise serializers.ValidationError({'category':'Categories apply only to bank debits.'})
-            if direction=='credit' and merged.get('expense_period'):raise serializers.ValidationError({'expense_period':'Expense month is assigned to bank debits.'})
-            for field in ('category','subcategory'):
-                if merged.get(field):
-                    category=get_object_or_404(Category.objects.select_related('parent'),pk=merged[field],company=account.company)
-                    if merged.get(field)!=before['classification'].get(field) and not category.effective_active:raise serializers.ValidationError({field:'Choose an active category.'})
-                    if field=='category' and category.parent_id:raise serializers.ValidationError({field:'Choose a main category.'})
-                    if field=='subcategory' and category.parent_id!=merged.get('category'):raise serializers.ValidationError({field:'Subcategory must belong to the selected category.'})
-            if merged.get('subcategory') and not merged.get('category'):raise serializers.ValidationError({'category':'Choose the parent category.'})
-            if merged.get('studio') and not visible_studios(request.user).filter(pk=merged['studio'],site_id=account.company.site_id).exists():raise serializers.ValidationError({'studio':'Choose a studio in this company.'})
-            if merged.get('studio') and account.studios.exists() and not account.studios.filter(pk=merged['studio']).exists():raise serializers.ValidationError({'studio':'Choose a participating studio for this account.'})
-            if merged.get('administration') and not user_has_global_access(request.user) and get_or_create_user_access_profile(request.user).allowed_studios.exists():raise PermissionDenied('Company-wide administration requires whole-company scope.')
-            if merged.get('administration') and merged.get('studio'):raise serializers.ValidationError({'studio':'Administration is company-wide; leave studio empty.'})
-            if merged.get('terminal'):
-                terminal=get_object_or_404(Terminal,pk=merged['terminal'],account=account)
-                if not terminal.active and terminal.pk!=before['classification'].get('terminal'):raise serializers.ValidationError({'terminal':'Choose an active terminal.'})
-                if terminal.studio_id!=merged.get('studio') or terminal.channel!=merged.get('channel'):raise serializers.ValidationError({'terminal':'Terminal, studio and payment method must agree.'})
-            if merged['movement_kind'] not in allowed_kinds:raise serializers.ValidationError({'movement_kind':'Choose a supported type for this direction.'})
-            missing=missing_fields(direction,merged,Category.objects.filter(parent_id=merged.get('category'),active=True).exists() if merged.get('category') else False)
-            if missing and values.get('reviewed'):
-                raise serializers.ValidationError({field:'Complete this field before marking the movement reviewed.' for field in missing})
-            if missing:values['reviewed']=False
+            before=operations.movement_data(obj)
+            from .movement_validation import validate_assignments
+            values=validate_assignments(request.user,account,obj.source['direction'],before['classification'],values)
             item,_=BankMovementClassification.objects.get_or_create(movement=obj)
             for field,value in values.items():setattr(item,field+'_id' if field in ('category','subcategory','studio','terminal') else field,value)
             item.save();obj.classification=item
             obj.revision+=1;obj.save(update_fields=['revision','updated_at'])
-            operations.event(BankPosting.objects.get(batch=obj.created_from.batch),request.user,'classify',obj,before=before,note=note)
+            operations.event(BankPosting.objects.get(batch=obj.created_from.batch) if obj.created_from_id else None,request.user,'classify',obj,before=before,note=note)
             operations.advance(account)
             return Response({**BankMovementSerializer(obj).data,**presentation(obj)})
 

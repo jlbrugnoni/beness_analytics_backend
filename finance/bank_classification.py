@@ -108,6 +108,6 @@ def recognize_terminal(movement, actor, existing=False, patterns=None):
     item.save();movement.classification=item
     if existing:
         movement.revision+=1;movement.save(update_fields=['revision','updated_at'])
-        operations.event(BankPosting.objects.get(batch=movement.created_from.batch),actor,'classify',movement,
+        operations.event(BankPosting.objects.get(batch=movement.created_from.batch) if movement.created_from_id else None,actor,'classify',movement,
             before=before,note='Automatic terminal recognition: '+terminal.identifier)
     return True

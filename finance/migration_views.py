@@ -168,6 +168,33 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
             derived=prepare(batch,account,request.user,data.validated_data['row_ids'])
         return Response(BankBatchSerializer(derived).data,status=201)
 
+    def cash_account(self,request,batch,value):
+        from .views import visible_accounts
+        from django.shortcuts import get_object_or_404
+        if not str(value).isdecimal():raise serializers.ValidationError('Choose a cash account.')
+        return get_object_or_404(visible_accounts(request.user),pk=value,company_id=batch.company_id,kind='cash',currency=batch.company.default_currency)
+
+    @action(detail=True,methods=['get'],url_path='cash-preview')
+    def cash_preview(self,request,pk=None):
+        from .migration_cash import cash_plan
+        batch=self.get_object();account=self.cash_account(request,batch,request.query_params.get('account',''))
+        return Response(cash_plan(batch,account))
+
+    @action(detail=True,methods=['post'],url_path='import-cash')
+    def import_cash(self,request,pk=None):
+        from .posting_views import locked_account
+        from .migration_cash import import_cash
+        class Input(serializers.Serializer):
+            account=serializers.IntegerField(min_value=1)
+            expected_plan=serializers.CharField(min_length=64,max_length=64)
+        data=Input(data=request.data);data.is_valid(raise_exception=True);batch=self.get_object()
+        selected=self.cash_account(request,batch,data.validated_data['account'])
+        with locked_account(request.user,selected.pk,['can_import_finance'],bank_only=False) as account:
+            if not migration_companies(request.user).filter(pk=batch.company_id).exists():raise PermissionDenied()
+            if batch.status!='preview' or batch.file_issues:raise serializers.ValidationError('Use a readable workbook.')
+            result=import_cash(batch,account,request.user,data.validated_data['expected_plan'])
+        return Response(result)
+
     @action(detail=True,methods=['get'],url_path='alegra')
     def alegra(self,request,pk=None):
         from .migration_sales import read_workbook_sales

@@ -15,7 +15,7 @@ def fingerprint(source):
 
 def movement_data(movement):
     from .bank_classification import snapshot
-    return {'id': movement.pk, 'revision': movement.revision, 'active': movement.active,
+    return {'id': movement.pk, 'account':movement.account_id, 'revision': movement.revision, 'active': movement.active,
             'reconciled': movement.reconciled, 'source': movement.source, 'classification': snapshot(movement)}
 
 
@@ -40,14 +40,15 @@ def event(posting, actor, action, movement=None, row=None, before=None, note='')
 
 def plan(batch, account):
     rows = list(batch.rows.filter(kind='data').select_related('migration_row'))
-    movements = list(BankMovement.objects.filter(account=account, provider=batch.provider, active=True).select_related('classification','created_from__batch'))
+    from django.db.models import Q
+    movements = list(BankMovement.objects.filter(Q(provider=batch.provider)|Q(provider='manual',manual_key__isnull=False),account=account,active=True).select_related('classification','created_from__batch'))
     exact = defaultdict(list); identifiers = defaultdict(set); balances = defaultdict(set); weak = defaultdict(set); day_description = defaultdict(set); balance_description = defaultdict(set)
     historical=defaultdict(set)
     by_id = {m.pk: m for m in movements}
     for m in movements:
         data = m.source
         exact[m.fingerprint].append(m.pk)
-        if m.created_from.batch.migration_batch_id:historical[(data['bank_date'],data['amount'])].add(m.pk)
+        if not m.created_from_id or m.created_from.batch.migration_batch_id:historical[(data['bank_date'],data['amount'])].add(m.pk)
         for key in ('reference', 'serial'):
             if data.get(key): identifiers[(key, data[key])].add(m.pk)
         if data.get('balance') is not None:
@@ -59,17 +60,19 @@ def plan(batch, account):
     # those identities as evidence without rewriting the historical primary source.
     linked=BankDecision.objects.filter(posting__status__in=['active','partial_undo'],movement_id__in=by_id).select_related('row')
     for decision in linked:
-        if not by_id[decision.movement_id].created_from.batch.migration_batch_id:continue
+        original=by_id[decision.movement_id]
+        if original.created_from_id and not original.created_from.batch.migration_batch_id:continue
         for key in ('reference','serial'):
             value=decision.row.parsed.get(key)
             if value:identifiers[(key,value)].add(decision.movement_id)
     counts = Counter(fingerprint(r.parsed) for r in rows if not r.issues)
-    prior = defaultdict(set)
+    prior = defaultdict(set);prior_sources=defaultdict(list)
     evidence = BankDecision.objects.filter(posting__status__in=['active', 'partial_undo'], row__batch__account=account,
         row__batch__provider=batch.provider, row__batch__file_hash=batch.file_hash,
         movement__active=True).exclude(row__batch=batch).select_related('row')
     for decision in evidence:
         prior[decision.row.row_number].add(decision.movement_id)
+        prior_sources[decision.row.row_number].append(decision.row.parsed)
     posting = BankPosting.objects.filter(batch=batch).first()
     decisions = {d.row_id: d for d in posting.decisions.all()} if posting else {}
     elsewhere=set()
@@ -86,7 +89,7 @@ def plan(batch, account):
             known = prior[row.row_number]
             if known:
                 ids = known
-                if len(known) == 1 and by_id[next(iter(known))].source == data:
+                if len(known) == 1 and (by_id[next(iter(known))].source == data or by_id[next(iter(known))].manual_key and data in prior_sources[row.row_number]):
                     outcome = 'unchanged'; target = next(iter(known))
                 else:
                     outcome = 'correction' if len(known) == 1 else 'ambiguous'
@@ -187,13 +190,14 @@ def resolve(decision, account, actor, action, expected_revision, note, target=No
     if decision.outcome=='assignment_conflict' and action in ('create','correct'):
         raise serializers.ValidationError('Link or ignore this already identified movement; edit business assignments in Records.')
     if action in ('link', 'correct'):
-        if not target or target.account_id != account.pk or target.provider != posting.batch.provider or not target.active:
+        if not target or target.account_id != account.pk or target.provider not in (posting.batch.provider,'manual') or not target.active:
             raise serializers.ValidationError('Choose an active movement from this account and bank format.')
         if target.revision != target_revision: raise ConfigurationConflict('The movement changed. Reload before resolving.')
         if posting.decisions.filter(movement=target).exists():
             raise serializers.ValidationError('Another row in this import already uses that movement. Keep distinct occurrences separate.')
         before = movement_data(target)
         if action == 'correct':
+            if target.manual_key:raise serializers.ValidationError('Link bank evidence to a manual entry; do not overwrite its independent facts.')
             if decision.outcome=='assignment_conflict':raise serializers.ValidationError('Edit assignments in Records, or link to retain existing decisions. Source correction does not resolve assignment conflicts.')
             if target.reconciled: raise serializers.ValidationError('Reconciled movements require reconciliation review before source correction.')
             target.source = decision.row.parsed; target.fingerprint = fingerprint(target.source)

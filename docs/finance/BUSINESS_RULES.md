@@ -419,3 +419,14 @@ use minimized/anonymized test fixtures that preserve the relevant relationships.
 
 Observed file contents describe these samples. Generalize only after validating
 other layouts and agreed exception cases.
+
+## General money and cash clarification — 2026-10-27 (D-083)
+
+The actual-money ledger covers cash and bank income/expenses. Start with one general
+cash account per company; studio accounts can follow. Individual manual receipts
+record actual received cash, independently of invoice/payment evidence. New manual
+expenses select Account from and retain their expense month. Historical expenses
+default to the selected bank account; only explicit Efectivo income rows enter cash
+migration. Cash opening balances remain unknown/unverified, not zero. Transfers and
+cash deposits remain internal movements; no duplicate sales or expenses. See
+GENERAL_MONEY_LEDGER_DELIVERY.md for implemented scope and remaining work.

@@ -119,6 +119,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-082 | 2026-10-26 | Historical Alegra workflow and bank UI delivery accepted | Client confirms "i think all is correct" after testing D-081. Accept the delivered workbook invoice/payment path, debit field simplification and review-status presentation. This does not certify all historical amounts, authorize a reset/release or complete reconciliation/results. Next validate overlapping routine September reports and preservation of manual assignments in the same company/account. |
 
+| D-083 | 2026-10-27 | General actual income/expenses include cash | Client confirms one general cash account per company initially, later studio accounts; individual manual cash receipts represent actual cash received. Historical expenses default to the selected bank account because their cash origin is unknown; manual expenses choose Account from. Explicit Efectivo income rows migrate separately. Opening cash balance stays unverified. Invoices/payments remain separate sales evidence; no automatic cash copy or double counting. Implementation acceptance pending. |
+
 ## Open policy decisions
 
 

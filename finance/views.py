@@ -69,6 +69,24 @@ class CompanyViewSet(ConfigurationViewSet):
         if not configuration_sites(self.request.user).filter(pk=site.pk).exists():
             raise PermissionDenied("Company configuration requires site-wide access.")
 
+    @action(detail=True,methods=['post'],url_path='general-cash')
+    def general_cash(self,request,pk=None):
+        self.check_write_access()
+        with transaction.atomic():
+            company=self.get_write_instance()
+            if not company.active or not configuration_sites(request.user).filter(pk=company.site_id).exists():raise PermissionDenied()
+            name=f'General cash ({company.default_currency})'
+            existing=company.accounts.filter(name=name).first()
+            if existing:
+                if existing.kind!='cash':raise serializers.ValidationError('This account name is already used by a bank account.')
+                return Response(AccountSerializer(existing).data)
+            account=Account.objects.create(company=company,name=name,kind='cash',currency=company.default_currency,
+                statement_imports_expected=False,opening_balance=None,opening_balance_date=None)
+            payload=AccountSerializer(account).data
+            ConfigurationChange.objects.create(actor=request.user,target_type='account',target_id=account.pk,
+                target_label=name,before={},after=dict(payload))
+        return Response(payload,status=201)
+
     @action(detail=True, methods=["post"], url_path="initialize-categories")
     def initialize_categories(self, request, pk=None):
         from .catalog import CATALOG_VERSION, create_starting_catalog

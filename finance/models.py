@@ -75,6 +75,8 @@ class Account(models.Model):
             raise ValidationError({"opening_balance": "Provide both a reference balance and its date, or leave both empty."})
         if self.pk:
             previous = type(self).objects.get(pk=self.pk)
+            if previous.kind != self.kind and self.bank_movements.exists():
+                raise ValidationError({'kind':'An account with recorded movements cannot change its type.'})
             if previous.kind == "bank" and self.kind != "bank" and self.bank_previews.exists():
                 raise ValidationError({"kind": "An account with bank report history must remain a bank account."})
             if previous.company_id != self.company_id:
@@ -423,7 +425,13 @@ class BankMovement(models.Model):
     provider = models.CharField(max_length=10)
     source = models.JSONField(default=dict)
     fingerprint = models.CharField(max_length=64, db_index=True)
-    created_from = models.ForeignKey(BankImportRow, on_delete=models.PROTECT)
+    # Shared money ledger; the legacy model/table name is kept for compatibility.
+    created_from = models.ForeignKey(BankImportRow, null=True, blank=True, on_delete=models.PROTECT)
+    historical_row = models.ForeignKey('MigrationImportRow', null=True, blank=True, on_delete=models.PROTECT, related_name='cash_movements')
+    source_key = models.CharField(max_length=64, null=True, blank=True, unique=True)
+    manual_key = models.UUIDField(null=True, blank=True, unique=True)
+    manual_request_hash = models.CharField(max_length=64, blank=True)
+    manual_actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True, on_delete=models.SET_NULL, related_name='+')
     revision = models.PositiveIntegerField(default=1)
     active = models.BooleanField(default=True)
     reconciled = models.BooleanField(default=False)
@@ -466,7 +474,7 @@ class BankDecision(models.Model):
 
 
 class BankEvent(models.Model):
-    posting = models.ForeignKey(BankPosting, on_delete=models.PROTECT, related_name='events')
+    posting = models.ForeignKey(BankPosting, null=True, blank=True, on_delete=models.PROTECT, related_name='events')
     movement = models.ForeignKey(BankMovement, null=True, blank=True, on_delete=models.PROTECT, related_name='events')
     row = models.ForeignKey(BankImportRow, null=True, blank=True, on_delete=models.PROTECT)
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)

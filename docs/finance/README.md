@@ -12,7 +12,7 @@ implemented behavior, checks, setup, and acceptance steps.
 Latest client priority: simpler daily Upload and all-records workspace (D-071).
 See [Daily workspace plan](DAILY_WORKSPACE_PLAN.md); first UI delivery implemented in
 [Daily workspace delivery](DAILY_WORKSPACE_DELIVERY.md), client acceptance pending.
-Bank classification is now delivered in [Bank classification delivery](BANK_CLASSIFICATION_DELIVERY.md), client acceptance pending. Manual creation and later workflow stages remain unfinished.
+Bank classification is now delivered in [Bank classification delivery](BANK_CLASSIFICATION_DELIVERY.md), client acceptance pending. Manual creation is now implemented in the general money ledger delivery below; later workflow stages remain unfinished.
 Existing phase acceptance is unchanged.
 
 Historical bank posting and a simpler all-date migration screen are now implemented;
@@ -26,7 +26,13 @@ explicit migration path; bank review/reconciliation labels are clarified. See
 
 Client accepted the historical Alegra workflow and bank UI corrections on 2026-10-26
 (D-082). Next: client replay of overlapping routine September reports. Full historical
-certification, manual/cash ledger, reconciliation and monthly results remain pending.
+certification, reconciliation and monthly results remain pending.
+
+Current delivery (2026-10-27): [General money ledger and cash foundation](GENERAL_MONEY_LEDGER_DELIVERY.md).
+Manual cash/bank entries and historical cash receipt import are implemented, with
+client testing pending. Existing records are preserved; closures and certified
+balances remain future work. This supersedes earlier references to manual/cash
+records as entirely undelivered.
 
 ## Documentation index
 

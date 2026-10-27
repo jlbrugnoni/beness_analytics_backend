@@ -684,3 +684,16 @@ conflicts and weak reused-terminal candidates; equal6,800 credits need distinct 
 evidence. No decisions or data changed, no code fix/complete replay acceptance claimed.
 No new routine Alegra reports are present yet; historical744 invoices/745 receipts only.
 See SEPTEMBER_OVERLAP_AUDIT.md for evidence, limitations and recommended next changes.
+
+2026-10-27: D-083 general money/cash foundation implemented locally. Records presents
+Expenses/Income/Invoices; manual bank/cash creation, audited financial edits and
+logical voids reuse account/studio/sensitive controls. General cash setup remains
+explicit with unknown opening balance. Historical explicit Efectivo credits have
+a separate idempotent cash preview/import, expenses default bank. Manual bank
+statement overlaps require review. Fresh285 PostgreSQL tests and frontend lint/build
+passed; schema0017 applied after verified backup, all legacy financial values intact.
+Browser created only company1 cash account6 and inspected workbook8:4 new cash
+receipts totaling26,860.00 DOP, unposted. Existing483 movements/744 invoices/745
+payments and pending bank reviews unchanged. Client acceptance, closures, balances,
+paired transfers, cash migration undo/corrections and monthly results remain pending.
+See GENERAL_MONEY_LEDGER_DELIVERY.md. No reset, production release, push or merge.

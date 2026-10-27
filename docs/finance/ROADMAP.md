@@ -224,3 +224,12 @@ available; client still needs to confirm real invoice/payment imports and valida
 results. Bank recognition remains separate from reconciliation. This is additional
 Phase3.4 foundation, not cash/manual ledger or full migration/reconciliation completion.
 See HISTORICAL_ALEGRA_DELIVERY.md.
+
+## Scope update — 2026-10-27
+
+General bank/cash manual records and explicit historical cash-receipt migration are
+implemented (D-083), awaiting client acceptance. Next verify actual manual entries
+and the four historical cash receipts, then develop closures comparing actual
+receipts with authoritative sales/payment evidence. Verified balances, paired
+transfers, cash migration undo/source correction and monthly result calculations
+remain separate later work; bank overlap issues still require follow-up.

@@ -503,3 +503,13 @@ Routine payment input correction D-069: original XLSX is supported through
 alegra-payment-xlsx-v1 using name-independent table/header detection. Historical
 preview remains strict to the known Alegra_adm worksheet; neither mode rewrites
 original evidence. Both feed the same receipts. See PAYMENT_XLSX_CORRECTION.md.
+
+## Actual-money ledger extension — 2026-10-27
+
+D-083 extends existing BankMovement storage to manual bank/cash entries and direct
+historical cash lineage. The physical name is retained for compatibility; the
+public movements API and Expenses/Income workspace represent all account kinds.
+Manual UUID/request hashes and historical source keys provide idempotency. Existing
+classification and audit logic is shared; invoice/payment models remain independent.
+See GENERAL_MONEY_LEDGER_DELIVERY.md for routes, permissions, preservation proof and
+explicit limits. No automatic invoice-to-cash posting is introduced.

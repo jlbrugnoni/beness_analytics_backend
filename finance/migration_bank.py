@@ -94,7 +94,7 @@ def map_assignments(movement,row):
 
 def compatible_historical(movement,source,incoming_historical=False):
     """A later bank report may add missing bank metadata, but must not conflict."""
-    if not incoming_historical and not movement.created_from.batch.migration_batch_id:return False
+    if not incoming_historical and (not movement.created_from_id or not movement.created_from.batch.migration_batch_id):return False
     old=movement.source
     if any(old.get(key)!=source.get(key) for key in ('bank_date','amount','currency','direction')):return False
     if any(old.get(key) and source.get(key) and old[key]!=source[key] for key in ('description','reference','serial','balance')):return False

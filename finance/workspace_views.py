@@ -41,7 +41,9 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
         accounts=visible_accounts(request.user).filter(company__in=companies)
         return Response({'companies':[{'id':c.pk,'name':c.name,'country':c.site.country_code,
             'currency':c.default_currency,'active':c.active,'site':c.site_id} for c in companies],
-            'accounts':list(accounts.values('id','company_id','name','currency','active','kind')),
+            'accounts':[{'id':a.pk,'company_id':a.company_id,'name':a.name,'currency':a.currency,'active':a.active,'kind':a.kind,
+                'opening_balance':str(a.opening_balance) if a.opening_balance is not None else None,'opening_balance_date':a.opening_balance_date,
+                'studio_ids':list(a.studios.values_list('pk',flat=True))} for a in accounts],
             'studios':list(Studio.objects.filter(site_id__in=companies.values('site_id')).values('id','site_id','name')),
             'categories':[{'id':c.pk,'company':c.company_id,'parent':c.parent_id,'name':c.name,'active':c.effective_active} for c in Category.objects.filter(company__in=companies).select_related('parent')]})
 
@@ -86,6 +88,7 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
             category=serializers.IntegerField(required=False,min_value=1)
             subcategory=serializers.IntegerField(required=False,min_value=1)
             status=serializers.ChoiceField(choices=['all','review','missing_category','method_review','reviewed','unreviewed','reconciled','unreconciled'],default='all')
+            origin=serializers.ChoiceField(choices=['all','manual','report','migration'],default='all')
             sort=serializers.ChoiceField(choices=['date','-date','amount','-amount','number','-number'],default='-date')
         data=Filters(data=request.query_params);data.is_valid(raise_exception=True);f=data.validated_data
         company=get_object_or_404(companies_for(request.user),pk=f['company'])
@@ -101,6 +104,9 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
                 raise PermissionDenied()
             qs=BankMovement.objects.filter(account__in=visible_accounts(request.user).filter(company=company),active=True,source__direction=kind).select_related('account','created_from__batch','classification__category','classification__subcategory','classification__studio','classification__terminal').prefetch_related('classification__category__children')
             if f.get('account'):qs=qs.filter(account_id=f['account'])
+            if f['origin']=='manual':qs=qs.filter(manual_key__isnull=False)
+            elif f['origin']=='report':qs=qs.filter(created_from__isnull=False,created_from__batch__migration_batch__isnull=True)
+            elif f['origin']=='migration':qs=qs.filter(Q(historical_row__isnull=False)|Q(created_from__batch__migration_batch__isnull=False))
             date_key='bank_date';amount_key='amount';number_key='reference'
             if f.get('search'):qs=qs.filter(Q(source__description__icontains=f['search'])|Q(source__reference__icontains=f['search'])|Q(source__serial__icontains=f['search'])|Q(classification__description__icontains=f['search']))
             for field in ('studio','channel','category','subcategory'):
@@ -158,9 +164,9 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
         rows=[]
         for obj in self.paginate_queryset(qs):
             if bank:
+                from .posting_views import movement_origin
                 rows.append({'id':obj.pk,'source':obj.source,'account':obj.account_id,'account_name':obj.account.name,
-                    'reconciled':obj.reconciled,'file_name':obj.created_from.batch.file_name,'batch':obj.created_from.batch_id,
-                    'source_row':obj.created_from.row_number,'revision':obj.revision,**presentation(obj)})
+                    'reconciled':obj.reconciled,'revision':obj.revision,**movement_origin(obj),**presentation(obj)})
             elif kind=='invoices':
                 item=FinancialSaleViewSet.serialize(obj)
                 # Receipt detail requires the same bank/sensitive gate as before.
