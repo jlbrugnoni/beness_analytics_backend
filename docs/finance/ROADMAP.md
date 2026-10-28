@@ -240,3 +240,10 @@ DAILY_CLOSURES_PLAN.md for C-1 read-only comparison, C-2 explicit allocations, C
 exceptions/Spain integration and C-4 acceptance before monthly results. Two client
 confirmations remain. Preserve all current records; no reset or reconciliation
 mutation is part of this discovery step.
+
+2026-10-27 C-1 update (D-085): monthly per-method summary, all-days/cumulative
+dialog and source evidence now implemented for DR, awaiting client acceptance.
+Client does not split deposits; remove that feature from the planned allocation
+scope. Next define explicit whole-record/group confirmation and reopening after
+comparison acceptance. Spain Mindbody integration, exceptions/results and certified
+balances remain future phases. See MONTHLY_CLOSURES_DELIVERY.md.

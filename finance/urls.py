@@ -13,6 +13,7 @@ from .posting_views import BankPostingImportViewSet, BankMovementViewSet
 
 from .workspace_views import WorkspaceViewSet
 from .money_views import MoneyMovementViewSet
+from .closure_views import ClosureViewSet
 
 class FinanceAPIRoot(APIRootView):
     permission_classes = [IsAuthenticated, FinancePermission]
@@ -20,6 +21,7 @@ class FinanceAPIRoot(APIRootView):
 
 router = DefaultRouter()
 router.APIRootView = FinanceAPIRoot
+router.register("closures", ClosureViewSet, basename="finance-closure")
 router.register("workspace", WorkspaceViewSet, basename="finance-workspace")
 router.register("companies", CompanyViewSet, basename="finance-company")
 router.register("accounts", AccountViewSet, basename="finance-account")

@@ -1,6 +1,7 @@
 # Daily closures — phase discovery and delivery plan
 
-2026-10-27. Status: discovery begun; implementation not yet delivered.
+2026-10-27. Status: monthly comparison C-1 implemented; client acceptance pending. See
+MONTHLY_CLOSURES_DELIVERY.md for final behavior and validation.
 Predecessor: general money ledger delivery accepted by client (D-084).
 
 ## Client acceptance and scope
@@ -47,13 +48,11 @@ cash. An invoice payment is sales evidence; it does not create an actual cash en
 - Settlement timing is suggestive, never an automatic hard date cutoff. Missing
   operation date/studio/method stays in an explicit unassigned queue.
 
-## Questions awaiting client reply
+## Questions resolved by client (D-085)
 
-1. Confirm the proposed main table: operation date + studio + payment method, with
-   gross sales, estimated fees, expected receipts, actual receipts and difference,
-   plus source detail on click. This presents the already accepted comparison basis.
-2. Permit splitting a bank deposit across several operation days, preserving its
-   original amount and requiring allocations to sum exactly to that amount?
+1. Client wants a monthly summary per payment method, opening every calendar day
+   and accumulated difference, with optional studio filtering.
+2. Client does not split deposits. Keep one operation date per receipt.
 
 An initial third question about tolerances was withdrawn after finding BR-040;
 retain that established decision rather than reopening it.
@@ -81,13 +80,13 @@ source evidence before relying on differences for reconciliation.
 C-1 is read-only. It does not set reconciled flags or change invoices, payments,
 manual receipts, classifications or historical source values.
 
-### C-2: Explicit allocation and reconciliation
+### C-2: Explicit confirmation and reconciliation (scope amended D-085)
 
-After client confirms deposit splitting, add saved links/allocations with decimal
-amounts, source revisions, actor/time, confirmation note when required and audit
-history. Support many invoice payments per collection group and many actual receipts
-per day. Require both sides' allocated totals to conserve their original amounts;
-prevent reuse/over-allocation, stale edits and concurrent double allocation.
+Do not introduce deposit splitting. A later saved reconciliation must reference
+whole underlying receipt/payment records, their revisions, group/date/method/studio,
+actor/time and required discrepancy confirmation, with an audit/reopen flow.
+Prevent the same receipt being confirmed in conflicting groups. Detailed confirmation
+behavior will be defined after the client accepts the monthly comparison.
 
 Expose reconciliation and reversible unlink/reopen through normal permissions.
 Protect reconciled records from source changes and manual edits; changed evidence
@@ -138,3 +137,10 @@ records. Preserve current pending bank overlap decisions for separate review.
 - Tests prove no source/reconciliation state mutation and no cross-scope data leak.
 - Client receives What I did / What you should test and a bounded list of remaining
   work. Code, rules and progress are documented for the next developer.
+
+2026-10-27 implementation clarification: the payments report is the authority for
+expected collections. Valid active payments with invoice linkage/assignment warnings
+remain included provisionally and visible for review; invoice totals are never
+substituted. Incoming collection comparison is distinct from net revenue/refund result
+adjustments. See MONTHLY_CLOSURES_DELIVERY.md; this supersedes earlier exclusion
+assumptions that would hide a reported payment due solely to an invoice problem.

@@ -430,3 +430,15 @@ default to the selected bank account; only explicit Efectivo income rows enter c
 migration. Cash opening balances remain unknown/unverified, not zero. Transfers and
 cash deposits remain internal movements; no duplicate sales or expenses. See
 GENERAL_MONEY_LEDGER_DELIVERY.md for implemented scope and remaining work.
+
+## Monthly closures presentation — 2026-10-27 (D-085)
+
+Select a month and see accumulated expected/actual collections and difference for
+each payment method, opening every calendar day and source detail in a dialog.
+Expected collections use valid posted Alegra payment amounts once, less effective
+method withholding; invoice-link warnings do not erase payment evidence. Actual
+uses independent customer bank/cash receipts on their assigned operation date.
+Keep one operation date per deposit; no splitting. Distinguish original incoming
+collections from later refunds/net-revenue adjustments. C-1 is read-only and does
+not confirm reconciliations. See MONTHLY_CLOSURES_DELIVERY.md for rounding, exclusions,
+unknown values and exact source rules.

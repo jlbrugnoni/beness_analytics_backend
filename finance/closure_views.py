@@ -1,0 +1,63 @@
+"""Company-wide read-only monthly closure views with the existing finance gates."""
+from datetime import date
+from django.shortcuts import get_object_or_404
+from rest_framework import serializers, viewsets
+from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from .access import can_use_finance
+from .sales_import_views import SalesPreviewPermission
+from .workspace_views import companies_for
+from .views import visible_accounts
+from .closures import CHANNELS,compare
+
+
+class ClosureViewSet(viewsets.GenericViewSet):
+    permission_classes=[IsAuthenticated,SalesPreviewPermission]
+    http_method_names=['get','head','options']
+
+    def finalize_response(self,request,response,*args,**kwargs):
+        response=super().finalize_response(request,response,*args,**kwargs)
+        response['Cache-Control']='private, no-store';return response
+
+    def comparison(self,request):
+        if not can_use_finance(request.user,'can_view_finance_bank_accounts'):raise PermissionDenied()
+        class Filters(serializers.Serializer):
+            company=serializers.IntegerField(min_value=1)
+            month=serializers.RegexField(r'^\d{4}-(0[1-9]|1[0-2])$')
+            studio=serializers.IntegerField(min_value=1,required=False)
+            channel=serializers.ChoiceField(choices=CHANNELS,required=False)
+            day=serializers.DateField(required=False)
+            side=serializers.ChoiceField(choices=['expected','actual','review','excluded'],required=False)
+            def validate_month(self,value):
+                try:date.fromisoformat(value+'-01')
+                except ValueError:raise serializers.ValidationError('Use a valid month.')
+                return value
+        data=Filters(data=request.query_params);data.is_valid(raise_exception=True);f=data.validated_data
+        company=get_object_or_404(companies_for(request.user),pk=f['company'])
+        if f.get('studio'):
+            from core_data.models import Studio
+            get_object_or_404(Studio,pk=f['studio'],site_id=company.site_id)
+        if f.get('day') and f['day'].isoformat()[:7]!=f['month']:raise serializers.ValidationError('Day must belong to selected month.')
+        if company.site.country_code!='DO' or company.default_currency!='DOP':
+            return {'supported':False,'company':company.pk,'month':f['month'],'currency':company.default_currency,'methods':[]},[],f
+        accounts=visible_accounts(request.user).filter(company=company)
+        # Never compare company-wide sales against a silently partial set of accounts.
+        if company.accounts.exclude(pk__in=accounts.values('pk')).exists():raise PermissionDenied('Full company account visibility is required for closures.')
+        summary,rows=compare(company,accounts,f['month'],f.get('studio'))
+        return summary,rows,f
+
+    def list(self,request):
+        summary,_,_=self.comparison(request)
+        return Response(summary)
+
+    @action(detail=False,methods=['get'])
+    def evidence(self,request):
+        _,rows,f=self.comparison(request)
+        if f.get('channel'):rows=[r for r in rows if r['channel']==f['channel']]
+        if f.get('day'):rows=[r for r in rows if r['date']==f['day'].isoformat()]
+        if f.get('side')=='review':rows=[r for r in rows if r['issues']]
+        elif f.get('side')=='excluded':rows=[r for r in rows if r.get('excluded_kind')]
+        elif f.get('side'):rows=[r for r in rows if r['side']==f['side'] and not r.get('excluded_kind')]
+        return self.get_paginated_response(self.paginate_queryset(rows))

@@ -293,3 +293,19 @@ states; reasons and before/after actor audit remain. The existing overlap and so
 correction services preserve assignments; undo protects revised records. Import
 details is the shortened label for the unchanged source review/undo/history screen.
 BANK_CLASSIFICATION_DELIVERY.md is authoritative for delivered scope and client tests.
+
+## Monthly closures comparison — C-1 (D-085)
+
+Open Finance → Closures, select company and month, optionally studio. Each payment
+method shows expected receipts (Alegra payment amounts less estimated withholding),
+actual recorded bank/cash receipts and actual-minus-expected difference. Click the
+method for all calendar days, monthly totals and accumulated difference; click a date
+for source records, toggling All/Alegra payments/Actual bank-cash. Review unresolved
+assignments and excluded internal/refund/extraordinary credits through their queues.
+
+Use Records to correct business assignments and then refresh Closures. Source facts
+remain protected. One actual receipt has one operation date; no deposit splitting.
+Opening a comparison or a zero difference never confirms reconciliation. Unknown
+fees remain —, and source coverage is not certified. DR is available first; Spain's
+Mindbody bridge and explicit saved confirmations remain later work. See
+MONTHLY_CLOSURES_DELIVERY.md for the exact calculation and client acceptance steps.

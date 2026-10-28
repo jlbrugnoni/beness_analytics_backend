@@ -123,6 +123,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-084 | 2026-10-27 | General money/cash workflow accepted; daily closures discovery begins | Client confirms everything matches their documents and reports successful manual entries. Accept D-083 delivery and preserve all client data. Proceed to daily closures discovery using existing operation-date/studio/method, fee, rounding and source rules. Table presentation and multi-day deposit splitting are awaiting confirmation. This is not full historical certification, authorization to reset/deploy, or acceptance of a reconciliation engine. |
 
+| D-085 | 2026-10-27 | Monthly per-method closure summary; no deposit splitting | Client reviews all calendar days of a selected month and accumulated expected/actual differences for Cierre, Transfer, Cash, Recurrentes and Link. Expected receipts use Alegra payments less method fees; actual uses bank/cash receipts. Adopt a per-method monthly summary opening an all-days dialog. Keep one operation date per deposit; no splitting across days. Valid posted payment evidence is not erased solely by invoice-link warnings. Read-only comparison first; existing rounding review rule remains. |
+
 ## Open policy decisions
 
 

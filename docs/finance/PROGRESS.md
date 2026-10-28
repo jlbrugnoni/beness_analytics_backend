@@ -705,3 +705,17 @@ Two business confirmations remain: table presentation and multi-day deposit spli
 Retain BR-040 rounding rule; initial redundant tolerance question withdrawn. Existing
 models have no explicit financial reconciliation allocation ledger yet. No code/data
 mutation, client entry cleanup, reset, release or independent certification performed.
+
+2026-10-27: client clarifies monthly/all-days closure layout and declines deposit
+splitting (D-085). Delivered read-only DR monthly per-method comparison and daily/
+cumulative/evidence dialogs with optional studio scope, effective fee estimates,
+review queues and explicit exclusions. Expected collections sum posted Alegra
+payments once; invoice warnings remain visible without erasing valid payments.
+No confirmation/reconciliation writes, deposit split, schema change, reset or
+production release.293 PostgreSQL finance tests and frontend lint/build passed;
+client acceptance pending. See MONTHLY_CLOSURES_DELIVERY.md. Spain Mindbody comparison,
+explicit confirmations, verified balances and monthly results remain later work.
+Browser follow-up: verified monthly/daily/source views and independent actual-source
+filter. All33 finance table hashes unchanged across read-only verification, including
+client manual entries;493 movements/744 invoices/745 payments remain. Shared flex
+layout min-width corrected and route gate reuses existing financial-account access.

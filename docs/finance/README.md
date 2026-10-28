@@ -34,9 +34,10 @@ client acceptance recorded in D-084. Existing records are preserved; closures an
 balances remain future work. This supersedes earlier references to manual/cash
 records as entirely undelivered.
 
-Next phase: [Daily closures discovery and plan](DAILY_CLOSURES_PLAN.md). Client
-accepted the general money/cash workflow; daily comparison and reconciliation are
-being defined, with table presentation and deposit splitting awaiting confirmation.
+Current comparison delivery: [Monthly closures](MONTHLY_CLOSURES_DELIVERY.md),
+with a per-method monthly summary, all-days/cumulative dialog and source evidence
+for DR. Client testing pending. No deposit splitting or reconciliation writes.
+See [Closures plan](DAILY_CLOSURES_PLAN.md) for remaining phases.
 
 ## Documentation index
 
