@@ -719,3 +719,9 @@ Browser follow-up: verified monthly/daily/source views and independent actual-so
 filter. All33 finance table hashes unchanged across read-only verification, including
 client manual entries;493 movements/744 invoices/745 payments remain. Shared flex
 layout min-width corrected and route gate reuses existing financial-account access.
+
+2026-10-27 D-086: client requests selectable month navigation and a quieter daily
+table. Replaced native month input with localized month/year dropdowns and adjacent
+month arrows. Removed running accumulated-difference column and duplicate total;
+retained daily differences and one final monthly difference. UI-only, no backend
+calculation/schema/data change. Validation and local commits recorded with delivery.

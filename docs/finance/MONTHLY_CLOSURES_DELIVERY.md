@@ -22,7 +22,8 @@ There is no combined-all-method success indicator that could mask opposing error
 
 Click a method to see every calendar day, including days without recorded activity,
 with Alegra payments, estimated withholding, expected receipts, actual receipts,
-daily difference and accumulated difference. Month totals appear at the bottom.
+daily difference. Month totals, including the full monthly difference, appear at
+the bottom. The running accumulated-difference column was removed by D-086.
 Click a date to inspect supporting invoice payments and actual receipts. Review and
 excluded-movement queues are separately accessible with paginated evidence.
 
@@ -119,12 +120,23 @@ when evidence changes; a zero difference alone must not set booleans.
   permits the content flex item to shrink within its available width. The Closures
   route uses the existing financial-account capability gate.
 
+## Month navigation and table refinement — D-086
+
+Month selection now uses localized month names and a year dropdown, with previous/next
+month arrows that cross year boundaries. There is no need to type a date. The year
+menu follows the selected year (10 preceding and5 following years, within1–9999).
+The daily table retains its daily difference and one monthly total at the bottom;
+the running cumulative column and duplicate total have been removed from the UI.
+Backend response fields are retained for compatibility; monetary calculations and
+financial records are unchanged. Changed-file lint/build and browser checks cover
+dropdowns, year rollover and the6-column daily table.
+
 ## What the client should test
 
 1. Open Closures for the working company and August2026. Compare the method summary
    to the corresponding payment-report and receipt records, noting visible warnings.
-2. Open Cierre. Verify3.5% estimated fees, all31 days, month totals and accumulated
-   difference. Open Link and check5%; Cash and Transfer have no withheld fee by default.
+2. Open Cierre. Verify3.5% estimated fees, all31 days, month totals and the total
+   difference in the final row. Open Link and check5%; Cash and Transfer have no withheld fee by default.
 3. Click a day and inspect individual payments and actual receipts. A split invoice
    must contribute each payment once, not repeat the invoice total.
 4. Open Cash and verify the manual cash receipt appears on its operation date.

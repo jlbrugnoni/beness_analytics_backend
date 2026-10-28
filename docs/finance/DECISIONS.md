@@ -125,6 +125,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-085 | 2026-10-27 | Monthly per-method closure summary; no deposit splitting | Client reviews all calendar days of a selected month and accumulated expected/actual differences for Cierre, Transfer, Cash, Recurrentes and Link. Expected receipts use Alegra payments less method fees; actual uses bank/cash receipts. Adopt a per-method monthly summary opening an all-days dialog. Keep one operation date per deposit; no splitting across days. Valid posted payment evidence is not erased solely by invoice-link warnings. Read-only comparison first; existing rounding review rule remains. |
 
+| D-086 | 2026-10-27 | Select months without typing; simplify daily closure table | Client reports native month input is awkward and requests removal of running accumulated difference as noisy. Use localized month/year dropdowns with previous/next month arrows. Keep the daily difference column and one monthly total difference in the final row. This is a UI refinement; calculations, sources and saved financial records stay unchanged. |
+
 ## Open policy decisions
 
 

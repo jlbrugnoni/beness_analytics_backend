@@ -309,3 +309,7 @@ Opening a comparison or a zero difference never confirms reconciliation. Unknown
 fees remain —, and source coverage is not certified. DR is available first; Spain's
 Mindbody bridge and explicit saved confirmations remain later work. See
 MONTHLY_CLOSURES_DELIVERY.md for the exact calculation and client acceptance steps.
+
+D-086 refinement: select month/year from dropdowns or use previous/next month arrows.
+The daily table shows daily differences; the full monthly difference appears once
+in the final Month total row. Running accumulated differences are no longer displayed.
