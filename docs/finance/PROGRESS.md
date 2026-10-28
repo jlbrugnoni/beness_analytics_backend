@@ -764,3 +764,13 @@ user/group permissions, financial records or schema changed. Documented the test
 matrix and real-partner acceptance in OPERATIONAL_ACCESS_VALIDATION.md. Real September
 reports, remaining identity decisions, full-period comparison and cutover rehearsal
 remain pending; asked client for available routine report upload names/numbers.
+
+2026-10-27 second September bank overlap investigation: client uploaded bank21,
+September14–30. Read-only audit confirms53 correct overlap links,32 new movements,
+85 pending (50 credits/35 debits), all pending on16–30 with only different-day
+candidates. Popular serial reuse causes all50 credit holds, including44 AZUL; generic
+reference1 additionally causes26 debit holds. Existing v3 strong-match preference
+does not prevent weak identifier-only candidates for genuinely new transactions.
+Daily upload lacks direct review controls; older BankPostingPanel contains them.
+Recorded source examples, counts and safe correction recommendation in
+SEPTEMBER_SECOND_OVERLAP_AUDIT.md. No code/decision/data mutation in this investigation.
