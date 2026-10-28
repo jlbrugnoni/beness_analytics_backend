@@ -751,3 +751,6 @@ remain release gates. See DR_OPERATIONAL_RELEASE.md for scope, tests and cutover
 2026-10-27 closure history presentation: client confirms operational checks work.
 Reopen history entries now show only action, actor and timestamp; the corresponding
 check entry retains its comment. Stored audit events and financial data are unchanged.
+Follow-up: display the returned history entries chronologically, with the first action
+at the top and subsequent check/reopen actions below. API ordering and audit data remain
+unchanged.
