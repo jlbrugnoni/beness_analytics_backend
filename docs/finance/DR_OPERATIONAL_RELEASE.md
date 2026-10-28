@@ -126,6 +126,13 @@ cash import was undone by the developing agent during this delivery.
 
 ## Remaining V1 release gates
 
+2026-10-27 follow-up: client confirms daily check/reopen works; requested history
+presentation refinements are complete. Seven additional closure access tests plus
+the existing closure/check suites passed (20 tests) in disposable PostgreSQL.
+See [OPERATIONAL_ACCESS_VALIDATION.md](OPERATIONAL_ACCESS_VALIDATION.md) for the
+verified permission matrix and real-profile acceptance steps. Actual partner profile
+acceptance and the other gates below remain pending.
+
 - Client acceptance of O-1/O-2/O-3 and representative create/edit/void/review workflows.
 - Normal September invoice/items CSV and transaction/payments XLSX are not present
   in the working database at the start of this increment. Obtain the real uploads,

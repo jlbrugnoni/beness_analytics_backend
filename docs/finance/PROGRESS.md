@@ -754,3 +754,13 @@ check entry retains its comment. Stored audit events and financial data are unch
 Follow-up: display the returned history entries chronologically, with the first action
 at the top and subsequent check/reopen actions below. API ordering and audit data remain
 unchanged.
+
+2026-10-27 operational access follow-up: added seven API regression tests for viewer
+versus reconciler, each required visibility capability, live site/studio restrictions,
+cross-company IDs, inherited group capability, inactive company/user and feature off.
+Denied reads/writes preserve checks/events and hide review notes. All20 closure,
+operational-check and new access tests passed in disposable PostgreSQL. No working
+user/group permissions, financial records or schema changed. Documented the tested
+matrix and real-partner acceptance in OPERATIONAL_ACCESS_VALIDATION.md. Real September
+reports, remaining identity decisions, full-period comparison and cutover rehearsal
+remain pending; asked client for available routine report upload names/numbers.
