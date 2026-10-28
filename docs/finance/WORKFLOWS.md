@@ -313,3 +313,13 @@ MONTHLY_CLOSURES_DELIVERY.md for the exact calculation and client acceptance ste
 D-086 refinement: select month/year from dropdowns or use previous/next month arrows.
 The daily table shows daily differences; the full monthly difference appears once
 in the final Month total row. Running accumulated differences are no longer displayed.
+
+## DR operational closure checks and cash recovery
+
+From a company-wide daily closure, open Check day. Exact differences can be checked
+without a comment; explain a nonzero difference. Review history or reopen the check
+when needed. Refresh after editing records: changed support shows Needs recheck.
+This does not set individual financial reconciliation flags or close the month.
+Under Initial setup → Cash income migration, preview Undo/Restore, review protected
+records and provide a reason before applying. Protect real working entries; use
+a separate disposable migration for recovery tests. See DR_OPERATIONAL_RELEASE.md.

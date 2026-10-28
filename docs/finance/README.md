@@ -39,6 +39,11 @@ with a per-method monthly summary, all-days/cumulative dialog and source evidenc
 for DR. Client testing pending. No deposit splitting or reconciliation writes.
 See [Closures plan](DAILY_CLOSURES_PLAN.md) for remaining phases.
 
+Current release scope: [DR Operational Finance V1](DR_OPERATIONAL_RELEASE.md).
+DR operations ship first after acceptance/rehearsal; Spain is V2, then financial
+analytics. This supersedes earlier plans treating Spain or BI as V1 blockers.
+New operational checks and cash recovery are implemented; release gates remain.
+
 ## Documentation index
 
 For local startup after restarting the Mac, see [Persistent local test runtime](LOCAL_TEST_RUNTIME.md).

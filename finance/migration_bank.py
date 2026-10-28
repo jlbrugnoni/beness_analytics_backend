@@ -2,6 +2,7 @@
 from decimal import Decimal
 from .models import BankImportBatch, BankImportRow, BankMovement, BankMovementClassification, BankDecision, Category, Terminal
 from .bank_readers import normalized
+from .bank_identity import description_text
 from .bank_classification import missing_fields, snapshot, effective_kind
 from core_data.models import Studio
 
@@ -97,7 +98,8 @@ def compatible_historical(movement,source,incoming_historical=False):
     if not incoming_historical and (not movement.created_from_id or not movement.created_from.batch.migration_batch_id):return False
     old=movement.source
     if any(old.get(key)!=source.get(key) for key in ('bank_date','amount','currency','direction')):return False
-    if any(old.get(key) and source.get(key) and old[key]!=source[key] for key in ('description','reference','serial','balance')):return False
+    if old.get('description') and source.get('description') and description_text(old['description'])!=description_text(source['description']):return False
+    if any(old.get(key) not in (None,'') and source.get(key) not in (None,'') and old[key]!=source[key] for key in ('reference','serial','balance')):return False
     return any(old.get(key) not in (None,'') and old.get(key)==source.get(key) for key in ('reference','serial','balance'))
 
 

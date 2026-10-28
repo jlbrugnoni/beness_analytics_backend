@@ -442,3 +442,14 @@ Keep one operation date per deposit; no splitting. Distinguish original incoming
 collections from later refunds/net-revenue adjustments. C-1 is read-only and does
 not confirm reconciliations. See MONTHLY_CLOSURES_DELIVERY.md for rounding, exclusions,
 unknown values and exact source rules.
+
+## Operational check and recovery delivery policy — 2026-10-27
+
+A closure check reviews a whole company/day/method against current assigned evidence.
+It does not certify report coverage, change money or set individual reconciled flags.
+Exact differences need no comment; nonzero differences require a recorded reason.
+Changed supporting sources/assignments/invoice revisions/fees require rechecking;
+reopening/rechecking remains audited. Existing missing-data queues stay open.
+Historical cash undo/restore retains source keys/history and protects later edits,
+checked/linked/reconciled records, ownership/scope and possible duplicate restores.
+See DR_OPERATIONAL_RELEASE.md; implementation awaits client acceptance.

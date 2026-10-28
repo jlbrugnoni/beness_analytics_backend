@@ -11,11 +11,12 @@ from .sales_import_views import SalesPreviewPermission
 from .workspace_views import companies_for
 from .views import visible_accounts
 from .closures import CHANNELS,compare
+from .closure_checks import attach_checks
 
 
 class ClosureViewSet(viewsets.GenericViewSet):
     permission_classes=[IsAuthenticated,SalesPreviewPermission]
-    http_method_names=['get','head','options']
+    http_method_names=['get','post','head','options']
 
     def finalize_response(self,request,response,*args,**kwargs):
         response=super().finalize_response(request,response,*args,**kwargs)
@@ -46,6 +47,8 @@ class ClosureViewSet(viewsets.GenericViewSet):
         # Never compare company-wide sales against a silently partial set of accounts.
         if company.accounts.exclude(pk__in=accounts.values('pk')).exists():raise PermissionDenied('Full company account visibility is required for closures.')
         summary,rows=compare(company,accounts,f['month'],f.get('studio'))
+        attach_checks(company,summary,rows,f.get('studio'))
+        summary['can_check']=company.active and can_use_finance(request.user,'can_reconcile_finance') and not f.get('studio')
         return summary,rows,f
 
     def list(self,request):
@@ -61,3 +64,46 @@ class ClosureViewSet(viewsets.GenericViewSet):
         elif f.get('side')=='excluded':rows=[r for r in rows if r.get('excluded_kind')]
         elif f.get('side'):rows=[r for r in rows if r['side']==f['side'] and not r.get('excluded_kind')]
         return self.get_paginated_response(self.paginate_queryset(rows))
+
+    def write_check(self,request,operation):
+        from django.db import transaction
+        from .models import Company
+        from .closure_checks import save_check,reopen
+        if not can_use_finance(request.user,'can_reconcile_finance') or not can_use_finance(request.user,'can_view_finance_bank_accounts'):raise PermissionDenied()
+        class Input(serializers.Serializer):
+            company=serializers.IntegerField(min_value=1)
+            day=serializers.DateField()
+            channel=serializers.ChoiceField(choices=CHANNELS)
+            expected_revision=serializers.IntegerField(min_value=0)
+            expected_token=serializers.CharField(min_length=64,max_length=64,required=False)
+            note=serializers.CharField(max_length=2000,allow_blank=True,required=False)
+        data=Input(data=request.data);data.is_valid(raise_exception=True);v=data.validated_data
+        with transaction.atomic():
+            company=get_object_or_404(companies_for(request.user),pk=v['company'])
+            company=Company.objects.select_for_update().get(pk=company.pk)
+            if not company.active or company.site.country_code!='DO' or company.default_currency!='DOP':raise serializers.ValidationError('Choose an active Dominican company.')
+            from .access import can_view_sensitive_detail
+            if not can_view_sensitive_detail(request.user):raise PermissionDenied()
+            accounts=visible_accounts(request.user).filter(company=company)
+            if company.accounts.exclude(pk__in=accounts.values('pk')).exists():raise PermissionDenied()
+            if operation=='check':
+                if 'expected_token' not in v:raise serializers.ValidationError({'expected_token':'Refresh the comparison before checking.'})
+                summary,rows=compare(company,accounts,v['day'].isoformat()[:7])
+                item=save_check(company,request.user,summary,rows,v)
+            else:item=reopen(company,request.user,v)
+        return Response({'id':item.pk,'revision':item.revision,'state':item.state})
+
+    @action(detail=False,methods=['post'],url_path='check')
+    def check(self,request):return self.write_check(request,'check')
+
+    @action(detail=False,methods=['post'])
+    def reopen(self,request):return self.write_check(request,'reopen')
+
+    @action(detail=False,methods=['get'])
+    def history(self,request):
+        from .models import ClosureCheckEvent
+        _,_,f=self.comparison(request)
+        if not f.get('day') or not f.get('channel'):raise serializers.ValidationError('Choose a day and payment method.')
+        events=ClosureCheckEvent.objects.filter(closure__company_id=f['company'],closure__day=f['day'],closure__channel=f['channel']).select_related('actor')
+        rows=[{'id':e.pk,'action':e.action,'actor':e.actor_id,'actor_name':((' '.join([e.actor.first_name,e.actor.last_name]).strip() or e.actor.email) if e.actor else None),'note':e.note,'created_at':e.created_at,'before':e.before,'after':e.after} for e in self.paginate_queryset(events)]
+        return self.get_paginated_response(rows)

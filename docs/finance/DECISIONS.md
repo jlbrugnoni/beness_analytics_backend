@@ -127,6 +127,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-086 | 2026-10-27 | Select months without typing; simplify daily closure table | Client reports native month input is awkward and requests removal of running accumulated difference as noisy. Use localized month/year dropdowns with previous/next month arrows. Keep the daily difference column and one monthly total difference in the final row. This is a UI refinement; calculations, sources and saved financial records stay unchanged. |
 
+| D-087 | 2026-10-27 | Release DR operations first, Spain second, analytics afterward | Client accepts separate operational and analytical deliveries and explicitly removes Spain as a V1 priority. V1 focuses on DR imports, bank/cash records, classifications, closures/checks and correction/recovery with a tested release rehearsal. V2 adds Spain. Financial analytics/results/dashboard work starts after Spain is included. Preserve current data; no deployment/reset is implied by proceeding with development. |
+
 ## Open policy decisions
 
 

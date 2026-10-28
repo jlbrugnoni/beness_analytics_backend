@@ -247,3 +247,13 @@ Client does not split deposits; remove that feature from the planned allocation
 scope. Next define explicit whole-record/group confirmation and reopening after
 comparison acceptance. Spain Mindbody integration, exceptions/results and certified
 balances remain future phases. See MONTHLY_CLOSURES_DELIVERY.md.
+
+## Release sequence superseding earlier phase dependencies — D-087
+
+V1 releases Dominican Operational Finance after import/overlap, general cash/bank
+records, closure checks, correction/recovery and a real-cycle release rehearsal pass.
+Spain is V2 and is not a V1 release blocker. Financial Analytics (results, allocation,
+BI and dashboards) begins after V2. Verified balances and paired transfer UI remain
+outside V1 unless separately required. See DR_OPERATIONAL_RELEASE.md for delivered
+work, acceptance steps, missing source reports and production gates. No release,
+reset or financial decision is implied by this roadmap change.

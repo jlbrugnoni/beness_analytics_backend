@@ -195,6 +195,23 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
             result=import_cash(batch,account,request.user,data.validated_data['expected_plan'])
         return Response(result)
 
+    @action(detail=True,methods=['get','post'],url_path='cash-recovery')
+    def cash_recovery(self,request,pk=None):
+        from .migration_cash import recovery_plan,recover_cash
+        from .posting_views import locked_account
+        class Input(serializers.Serializer):
+            account=serializers.IntegerField(min_value=1)
+            mode=serializers.ChoiceField(choices=['undo','restore'])
+            expected_plan=serializers.CharField(min_length=64,max_length=64,required=False)
+            note=serializers.CharField(max_length=2000,allow_blank=False,required=False)
+        data=Input(data=request.data if request.method=='POST' else request.query_params);data.is_valid(raise_exception=True)
+        v=data.validated_data;batch=self.get_object();selected=self.cash_account(request,batch,v['account'])
+        if request.method=='GET':return Response(recovery_plan(batch,selected,request.user,v['mode']))
+        if not v.get('expected_plan') or not v.get('note'):raise serializers.ValidationError('Review the preview and provide a reason.')
+        with locked_account(request.user,selected.pk,['can_import_finance','can_edit_finance'],bank_only=False) as account:
+            if not migration_companies(request.user).filter(pk=batch.company_id).exists():raise PermissionDenied()
+            return Response(recover_cash(batch,account,request.user,v['mode'],v['expected_plan'],v['note']))
+
     @action(detail=True,methods=['get'],url_path='alegra')
     def alegra(self,request,pk=None):
         from .migration_sales import read_workbook_sales

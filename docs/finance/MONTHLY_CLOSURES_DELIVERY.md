@@ -1,5 +1,9 @@
 # Monthly closures comparison — C-1 delivery
 
+Current extension: [DR Operational Finance V1](DR_OPERATIONAL_RELEASE.md) adds audited
+daily checks/reopen and cash recovery. The read-only API restrictions below describe
+the original C-1 checkpoint; the extension is the current implementation.
+
 2026-10-27. Local development branches only; client acceptance pending.
 
 ## Business definition (D-085)

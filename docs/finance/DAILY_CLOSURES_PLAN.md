@@ -144,3 +144,9 @@ remain included provisionally and visible for review; invoice totals are never
 substituted. Incoming collection comparison is distinct from net revenue/refund result
 adjustments. See MONTHLY_CLOSURES_DELIVERY.md; this supersedes earlier exclusion
 assumptions that would hide a reported payment due solely to an invoice problem.
+
+2026-10-27 operational extension: company/day/method review checks, reopening,
+evidence snapshots and dynamic Needs recheck are now implemented; see
+DR_OPERATIONAL_RELEASE.md. This reviews assigned evidence without setting individual
+financial reconciliation flags or locking periods. No deposit splitting is introduced.
+DR V1 acceptance and source replay remain pending; Spain is V2, analytics afterward.

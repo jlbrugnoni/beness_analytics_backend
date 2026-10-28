@@ -55,3 +55,54 @@ def import_cash(batch,account,actor,expected):
         created.append(movement.pk)
     if created:advance(account)
     return {'created':len(created),'already_imported':current['already_imported'],'pending':current['pending']}
+
+
+def recovery_plan(batch,account,actor,mode):
+    """Undo/restore only unchanged own imports, never silently erase subsequent work."""
+    from .access import can_use_finance
+    from .bank_posting import movement_data
+    from .models import ClosureCheck
+    items=list(BankMovement.objects.filter(account=account,historical_row__batch__company=batch.company,
+        historical_row__batch__file_hash=batch.file_hash,provider='cash').select_related('classification','historical_row__batch'))
+    active_cash=list(BankMovement.objects.filter(account__company=batch.company,account__kind='cash',active=True).select_related('historical_row__batch'))
+    checked=set()
+    for check in ClosureCheck.objects.filter(company=batch.company,state='checked'):
+        checked.update(r['id'] for r in check.snapshot.get('records',[]) if r.get('side')=='actual')
+    can_write=can_use_finance(actor,'can_import_finance') and can_use_finance(actor,'can_edit_finance')
+    manager=can_use_finance(actor,'can_manage_finance_settings')
+    eligible=[];protected=[];states=[]
+    for item in items:
+        if item.active!=(mode=='undo'):continue
+        latest=item.events.order_by('-pk').first();reason=None
+        if not can_write or (item.manual_actor_id!=actor.pk and not manager):reason='permission'
+        elif item.reconciled or item.pk in checked:reason='checked'
+        elif not latest or latest.action not in (('cash_migration','cash_migration_restore') if mode=='undo' else ('cash_migration_undo',)):reason='changed'
+        elif latest.after!=movement_data(item):reason='changed'
+        elif item.decisions.filter(posting__status__in=['active','partial_undo']).exists():reason='linked'
+        elif mode=='restore':
+            c=getattr(item,'classification',None);studios=set(account.studios.values_list('pk',flat=True))
+            if studios and (not c or c.studio_id not in studios):reason='account_scope'
+            for candidate in active_cash:
+                if candidate.historical_row_id and candidate.historical_row.batch.file_hash==batch.file_hash:continue
+                if all(candidate.source.get(k)==item.source.get(k) for k in ('bank_date','amount','currency','direction')):reason='possible_overlap';break
+        states.append(movement_data(item))
+        if reason:protected.append({'id':item.pk,'reason':reason})
+        else:eligible.append(item.pk)
+    token=fingerprint(['cash-recovery-v1',batch.company_id,batch.pk,account.pk,mode,account.ledger_revision,
+        states,[(m.pk,m.revision,m.active) for m in active_cash],eligible,protected])
+    return {'token':token,'eligible':eligible,'protected':protected,'mode':mode,'can_write':bool(can_write)}
+
+
+def recover_cash(batch,account,actor,mode,expected,note):
+    from .configuration import ConfigurationConflict
+    from .bank_posting import movement_data
+    current=recovery_plan(batch,account,actor,mode)
+    if expected!=current['token']:raise ConfigurationConflict('Cash records changed. Review a fresh recovery preview.')
+    if not current['can_write']:
+        from rest_framework.exceptions import PermissionDenied
+        raise PermissionDenied()
+    for item in BankMovement.objects.select_for_update().filter(pk__in=current['eligible']):
+        before=movement_data(item);item.active=mode=='restore';item.revision+=1;item.save(update_fields=['active','revision','updated_at'])
+        event(None,actor,'cash_migration_'+mode,item,before=before,note=note)
+    if current['eligible']:advance(account)
+    return {'changed':len(current['eligible']),'protected':len(current['protected']),'mode':mode}

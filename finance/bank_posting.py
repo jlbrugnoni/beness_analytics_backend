@@ -5,6 +5,7 @@ from collections import Counter, defaultdict
 from django.utils import timezone
 from rest_framework import serializers
 from .configuration import ConfigurationConflict
+from .bank_identity import comparable_source
 from .bank_classification import recognize_terminal, terminal_patterns, initialize_classification
 from .models import BankDecision, BankEvent, BankMovement, BankPosting
 
@@ -25,7 +26,7 @@ def token(account, batch, purpose='commit', revision=0):
         origin_state=list(BankDecision.objects.filter(posting__status__in=['active','partial_undo'],
             row__batch__migration_batch__isnull=False,row__batch__file_hash=batch.file_hash,
             movement__account__company_id=account.company_id,movement__active=True).order_by('pk').values_list('pk','movement_id','movement__revision','posting__revision'))
-    return hashlib.sha256(f'bank-plan-v2:{account.pk}:{account.ledger_revision}:{batch.pk}:{purpose}:{revision}:{origin_state}'.encode()).hexdigest()
+    return hashlib.sha256(f'bank-plan-v3:{account.pk}:{account.ledger_revision}:{batch.pk}:{purpose}:{revision}:{origin_state}'.encode()).hexdigest()
 
 
 def advance(account):
@@ -42,12 +43,12 @@ def plan(batch, account):
     rows = list(batch.rows.filter(kind='data').select_related('migration_row'))
     from django.db.models import Q
     movements = list(BankMovement.objects.filter(Q(provider=batch.provider)|Q(provider='manual',manual_key__isnull=False),account=account,active=True).select_related('classification','created_from__batch'))
-    exact = defaultdict(list); identifiers = defaultdict(set); balances = defaultdict(set); weak = defaultdict(set); day_description = defaultdict(set); balance_description = defaultdict(set)
+    normalized_exact = defaultdict(list); identifiers = defaultdict(set); balances = defaultdict(set); weak = defaultdict(set); day_description = defaultdict(set); balance_description = defaultdict(set)
     historical=defaultdict(set)
     by_id = {m.pk: m for m in movements}
     for m in movements:
         data = m.source
-        exact[m.fingerprint].append(m.pk)
+        normalized_exact[fingerprint(comparable_source(data))].append(m.pk)
         if not m.created_from_id or m.created_from.batch.migration_batch_id:historical[(data['bank_date'],data['amount'])].add(m.pk)
         for key in ('reference', 'serial'):
             if data.get(key): identifiers[(key, data[key])].add(m.pk)
@@ -65,7 +66,7 @@ def plan(batch, account):
         for key in ('reference','serial'):
             value=decision.row.parsed.get(key)
             if value:identifiers[(key,value)].add(decision.movement_id)
-    counts = Counter(fingerprint(r.parsed) for r in rows if not r.issues)
+    counts = Counter(fingerprint(comparable_source(r.parsed)) for r in rows if not r.issues)
     prior = defaultdict(set);prior_sources=defaultdict(list)
     evidence = BankDecision.objects.filter(posting__status__in=['active', 'partial_undo'], row__batch__account=account,
         row__batch__provider=batch.provider, row__batch__file_hash=batch.file_hash,
@@ -84,12 +85,12 @@ def plan(batch, account):
     for row in rows:
         data = row.parsed; ids = set(); outcome = 'invalid'; target = None
         if not row.issues:
-            fp = fingerprint(data)
-            same = [pk for pk in exact[fp] if by_id[pk].source == data]
+            fp = fingerprint(comparable_source(data))
+            same = [pk for pk in normalized_exact[fp] if comparable_source(by_id[pk].source) == comparable_source(data)]
             known = prior[row.row_number]
             if known:
                 ids = known
-                if len(known) == 1 and (by_id[next(iter(known))].source == data or by_id[next(iter(known))].manual_key and data in prior_sources[row.row_number]):
+                if len(known) == 1 and (comparable_source(by_id[next(iter(known))].source) == comparable_source(data) or by_id[next(iter(known))].manual_key and data in prior_sources[row.row_number]):
                     outcome = 'unchanged'; target = next(iter(known))
                 else:
                     outcome = 'correction' if len(known) == 1 else 'ambiguous'
@@ -111,7 +112,15 @@ def plan(batch, account):
                 ids |= {pk for pk in weak[(data['bank_date'], data['amount'], data['description'])]
                         if data.get('balance') is None or by_id[pk].source.get('balance') is None}
                 outcome = 'correction' if len(ids) == 1 else 'ambiguous' if ids else 'new'
-        if outcome=='correction' and len(ids)==1 and counts.get(fingerprint(data))==1:
+        # A reused AZUL terminal/serial is weak evidence across days. Prefer a
+        # unique compatible same-day amount/balance identity, without discarding
+        # substantive description or identifier conflicts.
+        if outcome in ('correction','ambiguous') and data.get('balance') is not None and counts.get(fingerprint(comparable_source(data)))==1:
+            from .migration_bank import compatible_historical
+            strong=[pk for pk in ids if by_id[pk].source.get('balance')==data['balance'] and
+                compatible_historical(by_id[pk],data,incoming_historical=bool(row.migration_row_id))]
+            if len(strong)==1:outcome='unchanged';target=strong[0];ids={target}
+        if outcome=='correction' and len(ids)==1 and counts.get(fingerprint(comparable_source(data)))==1:
             from .migration_bank import compatible_historical
             candidate=by_id[next(iter(ids))]
             if compatible_historical(candidate,data,incoming_historical=bool(row.migration_row_id)):
@@ -126,7 +135,9 @@ def plan(batch, account):
         decision = decisions.get(row.pk)
         item = {'row_id': row.pk, 'source_line': row.source_line, 'source': data, 'issues': row.issues,
                 'outcome': outcome, 'target': target, 'candidate_count': len(ids),
-                'candidates': [movement_data(by_id[pk]) for pk in sorted(ids)[:50]],
+                'candidates': [movement_data(by_id[pk]) for pk in sorted(ids,key=lambda pk:(
+                    any(by_id[pk].source.get(k)!=data.get(k) for k in ('bank_date','amount','currency','direction')),
+                    data.get('balance') is None or by_id[pk].source.get('balance')!=data.get('balance'),pk))[:50]],
                 'assignment_conflicts':conflicts,'migration_source':row.migration_row.parsed if row.migration_row_id else None,
                 'migration_sheet':row.migration_row.sheet if row.migration_row_id else None}
         if decision:

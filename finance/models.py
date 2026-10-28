@@ -720,3 +720,33 @@ class PaymentEvent(models.Model):
 
     class Meta:
         ordering=['created_at','pk']
+
+
+class ClosureCheck(models.Model):
+    """Operational review of a whole company/day/method, never a month lock."""
+    company=models.ForeignKey(Company,on_delete=models.PROTECT,related_name='closure_checks')
+    day=models.DateField()
+    channel=models.CharField(max_length=24,choices=SourceMapping.CHANNELS)
+    state=models.CharField(max_length=12,choices=[('checked','Checked'),('open','Open')],default='open')
+    evidence_token=models.CharField(max_length=64,blank=True)
+    snapshot=models.JSONField(default=dict)
+    note=models.TextField(blank=True,max_length=2000)
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,null=True,on_delete=models.SET_NULL)
+    checked_at=models.DateTimeField(null=True)
+    revision=models.PositiveIntegerField(default=1)
+
+    class Meta:
+        constraints=[models.UniqueConstraint(fields=['company','day','channel'],name='finance_closure_check_group')]
+
+
+class ClosureCheckEvent(models.Model):
+    closure=models.ForeignKey(ClosureCheck,on_delete=models.PROTECT,related_name='events')
+    actor=models.ForeignKey(settings.AUTH_USER_MODEL,null=True,on_delete=models.SET_NULL)
+    action=models.CharField(max_length=12,choices=[('check','Checked'),('reopen','Reopened')])
+    before=models.JSONField(default=dict)
+    after=models.JSONField(default=dict)
+    note=models.TextField(blank=True,max_length=2000)
+    created_at=models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering=['-pk']

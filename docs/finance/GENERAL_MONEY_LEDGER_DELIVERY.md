@@ -1,5 +1,9 @@
 # General money ledger and cash foundation
 
+Follow-up: historical cash undo/restore and operational closure checks are now
+implemented in [DR Operational Finance V1](DR_OPERATIONAL_RELEASE.md). The deferred
+recovery statements below describe the original foundation checkpoint.
+
 Delivery date: 2026-10-27. Implemented locally on `feature/finance-phase-2` in both
 repositories. Client accepted the workflow on2026-10-27 after document comparison and successful
 manual entry testing (D-084); no production deployment.

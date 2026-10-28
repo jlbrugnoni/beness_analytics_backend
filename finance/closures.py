@@ -4,6 +4,7 @@ from collections import Counter
 from datetime import date
 from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from django.db.models import Q, Exists, OuterRef
+from .bank_posting import fingerprint
 from .models import BankMovement, FinancialReceipt, FinancialSale, FeePolicy, BankDecision, PaymentDecision
 
 CHANNELS=('card_terminal','transfer','cash','recurring','payment_link')
@@ -43,6 +44,7 @@ def compare(company,accounts,month,studio=None):
     evidence=[];issues=Counter();excluded=Counter()
     def record(side,obj,day,channel,value,studio_id,number,description,reasons,include=True,**extra):
         item={'side':side,'id':obj.pk,'date':day,'channel':channel,'amount':money(value),'studio':studio_id,
+            'revision':obj.revision,'source_hash':fingerprint(obj.source),
             'number':number,'description':description,'currency':obj.source.get('currency'),'issues':reasons,'included':include,**extra}
         evidence.append(item)
         for reason in reasons:issues[reason]+=1
@@ -64,7 +66,7 @@ def compare(company,accounts,month,studio=None):
         if receipt.assignments.get('studio_origin')=='manual_pending':reasons.append('studio_review')
         if sale and sale.assignments.get('requires_review'):reasons.append('invoice_review')
         record('expected',receipt,day,ch,value,sid,receipt.number,source.get('customer') or '',reasons,include,
-            invoice=sale.code if sale else source.get('invoice_code'),file_name=receipt.created_from.batch.file_name,
+            sale_revision=sale.revision if sale else None,invoice=sale.code if sale else source.get('invoice_code'),file_name=receipt.created_from.batch.file_name,
             studio_name=sale.studio.name if sid and sale and receipt.assignments.get('studio_origin')=='invoice' else receipt.studio.name if receipt.studio_id else None)
         if include:
             cell=grid[ch][day];cell['gross']+=value;cell['payments']+=1;cell['review']+=bool(reasons)

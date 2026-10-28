@@ -725,3 +725,25 @@ table. Replaced native month input with localized month/year dropdowns and adjac
 month arrows. Removed running accumulated-difference column and duplicate total;
 retained daily differences and one final monthly difference. UI-only, no backend
 calculation/schema/data change. Validation and local commits recorded with delivery.
+
+2026-10-27 D-087 operational release increment: V1 is DR operations only; Spain is
+V2, with Financial Analytics after V2. Implemented comparison-only whitespace/strong
+balance bank identity and ranked candidates; same-file replay in an isolated copy
+linked173 existing rows, held2 debit identities and created0 movements, preserving
+all493 sources/classifications. Actual batch20 still has10 saved pending decisions;
+8 now have compatible unchanged candidates. No real import decisions were resolved.
+Added audited company/day/method checks/reopen with existing reconcile permission,
+nonzero-difference reasons, fresh-evidence/revision protection and dynamic Needs recheck
+on changed support/fees. These are operational checks, not month locks, balancing
+entries or mutations to individual reconciled flags. Added cash migration undo/restore
+previews with source-ID retention, audit, ownership/scope/revision protection, checked/
+edited/linked protections and restore overlap detection. Full304 PostgreSQL tests,
+frontend lint/build, migration drift and whitespace checks passed.0018 applied to
+local QA after private integrity-checked backup; all33 legacy finance table hashes
+match after schema and browser verification. Browser verified exact-day optional
+reason, nonzero-day disabled confirm without reason and cash recovery preview4eligible.
+No real checks, cash recovery, source/assignment changes, reset, grants, push/merge or
+production deployment. New check/event tables remain empty for client testing. Routine
+September Alegra invoice/payment reports are still absent; September14–30 bank upload,
+remaining identity reviews, client acceptance and real-cycle/production rehearsal
+remain release gates. See DR_OPERATIONAL_RELEASE.md for scope, tests and cutover plan.
