@@ -84,7 +84,7 @@ class SalesPostingImportViewSet(SalesImportViewSet):
             expected_plan=serializers.CharField(min_length=64,max_length=64)
             decision_id=serializers.IntegerField(min_value=1)
             expected_revision=serializers.IntegerField(min_value=1)
-            action=serializers.ChoiceField(choices=['cancel','retain'])
+            action=serializers.ChoiceField(choices=['cancel','retain','correct_date'])
             note=serializers.CharField(max_length=2000,allow_blank=False)
         data=Input(data=request.data);data.is_valid(raise_exception=True);values=data.validated_data;batch=self.get_object()
         with locked_company(request.user,batch.company_id,['can_import_finance','can_edit_finance']) as company:

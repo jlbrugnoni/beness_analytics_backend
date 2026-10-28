@@ -3,14 +3,13 @@
 Updated2026-10-28. Backend/frontend work is on `feature/finance-phase-2`.
 **Current phase: DR operational V1 acceptance and release preparation.**
 
-Current local finance records/import history are empty after the owner-authorized
-clean replay reset2026-10-28. Configuration/users/permissions/analytics are preserved,
-and a full backup/rehearsal is verified. See [Clean replay](CLEAN_REPLAY_2026.md).
-Rejected invoice filtering/source-row diagnostics and precise waiting-invoice messages
-are delivered. Upload a corrected Jan–Aug supervised workbook, then September reports.
-Missing totals in the old workbook were not invented; a corrected source is still needed.
-[Invoice/payment review](INVOICE_PAYMENT_REVIEW.md) remains permanent business logic.
-Earlier dataset/audit counts below refer to backed-up records, not current live data.
+Current Jan–Aug source is reimported after D-092. The owner subsequently undid invoice
+imports:4,949 invoices remain active;46 unlinked invoices were reversed. April23 dates
+are valid, but14 payment rows lack Numero. No further reset is needed. Date-only source
+correction and fresh invoice recovery previews are delivered; client acceptance pending.
+See [Invoice correction and recovery](INVOICE_DATE_RECOVERY.md). Configuration/payments/
+bank assignments are preserved. The prior [clean replay reset](CLEAN_REPLAY_2026.md)
+is historical evidence, not an empty-current-dataset statement.
 Spain is V2; financial analytics follows Spain. Do not treat older phase plans or
 pending-acceptance statements as the current delivery status. Current readiness and
 remaining gates are in [DR operational release](DR_OPERATIONAL_RELEASE.md) and

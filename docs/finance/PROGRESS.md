@@ -4,6 +4,11 @@ Updated: 2026-10-28.
 
 ## Current checkpoint
 
+Latest: D-093 date-only invoice source approval and recovery preview delivered.
+Current imported April23 dates valid;14 Alegra_adm payment numbers missing; owner
+undo reversed46 unlinked invoices. No new reset. See INVOICE_DATE_RECOVERY.md.
+D-092 empty-dataset statement below is superseded by the owner’s reimport.
+
 Latest: D-092 rejected invoice diagnostics delivered and clean local reset completed.
 24 transaction/import/check tables empty;55 other tables preserved by full-row hashes.
 Corrected source workbook still needed; client replay acceptance pending. See CLEAN_REPLAY_2026.md.
@@ -1002,3 +1007,15 @@ tables and retained55 other tables unchanged; integrity/FK passed. Removed2,351
 movements,4,881 invoices,4,984 receipts plus imports/history. No corrected February
 source supplied, so original totals remain for owner correction before replay.
 See CLEAN_REPLAY_2026.md; backend8027/frontend3037 restarted. No merge/push/deploy.
+
+
+2026-10-28 D-093: traced migrations10/11 April23:14 invoices/16items valid date46135
+→2026-04-23. Alegra_adm2268–2281 lack Numero cells, not bad dates. Invoice imports
+12/13 partial_undo/undone reversed46, including14April23. Added reviewed newer-source
+date-only correction with exact other-fact/status agreement, reason, stale/reconcile/
+access gates and before/after audit; preserves assignments and original preview/file.
+Added reprepare invoice preview after undo, reusing payment batch and idempotent
+unposted preview.357 finance PostgreSQL tests,5 final guards tests, frontend lint/build
+passed. Copy recovery preserved all existing evidence, produced4,949unchanged+46new+
+2invalid; no actual working recovery/source edits or reset. Missing real payment IDs
+remain owner input. Browser verified recovery control. See INVOICE_DATE_RECOVERY.md.

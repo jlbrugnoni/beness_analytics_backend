@@ -103,6 +103,20 @@ def legacy_equivalent(snapshot,sale):
     return facts(*old)==facts(*new)
 
 
+def date_correction(snapshot, sale):
+    if not sale or not sale.active or snapshot['issues']:return False
+    source=snapshot['source']
+    if source.get('date')==sale.source.get('date'):return False
+    if source.get('status_kind')!=sale.source.get('status_kind'):return False
+    # A newer source may correct the date only; numbers, client, amounts and items
+    # must all agree. Preserve every other fact and the manual assignments.
+    from datetime import date
+    try:date.fromisoformat(source['date'])
+    except (ValueError,TypeError,KeyError):return False
+    comparable={**source,'date':sale.source.get('date')}
+    return facts(comparable,snapshot['items'])==facts(sale.source,sale.items)
+
+
 def outcome(snapshot, sale):
     if snapshot['issues']:
         return 'invalid'
@@ -135,6 +149,7 @@ def plan(batch, company):
         rows.append({'invoice_id': invoice.pk, 'code': invoice.code, 'source': snapshot['source'],
             'item_count': invoice.item_count, 'items': snapshot['items'], 'issues': snapshot['issues'],
             'review_issues':preview_issues(snapshot),'source_rows':invoice.row_numbers,'outcome': status,
+            'can_correct_date':bool(date_correction(snapshot,sale) and not sale.reconciled and not sale.receipts.filter(active=True,reconciled=True).exists() and batch.created_at>sale.created_from.batch.created_at),
             'decision_id': decision.pk if decision else None, 'decision_revision': decision.revision if decision else None,
             'resolution': decision.resolution if decision else None, 'sale': state(sale) if sale else None})
     return {'token': token(company, batch), 'interpretation_version': VERSION, 'counts': dict(counts), 'rows': rows, 'posting': posting}
@@ -215,10 +230,21 @@ def resolve(decision, company, actor, action, note, expected_revision):
         sale.source = {**sale.source, 'status': snapshot['source']['status'], 'status_kind': 'cancelled'}
         sale.revision += 1; sale.save(update_fields=['source', 'revision'])
         decision.resolution = 'cancelled'; event(decision.posting, actor, 'cancel', sale, before, note)
+    elif action == 'correct_date':
+        snapshot=next(item for item in snapshots(decision.posting.batch) if item['invoice'].pk==decision.invoice_id)
+        if not date_correction(snapshot,sale):
+            raise serializers.ValidationError('Only a date-only correction with all other invoice facts unchanged can be approved.')
+        if sale.reconciled or sale.receipts.filter(active=True,reconciled=True).exists():raise serializers.ValidationError('Resolve the reconciliation before correcting the invoice date.')
+        if decision.posting.batch.created_at<=sale.created_from.batch.created_at:
+            raise serializers.ValidationError('Use a newer report to correct the invoice date.')
+        before=state(sale)
+        sale.source={**sale.source,'date':snapshot['source']['date']}
+        sale.revision+=1;sale.save(update_fields=['source','revision'])
+        decision.resolution='date_corrected';event(decision.posting,actor,'correct_date',sale,before,note)
     elif action == 'retain':
         decision.resolution = 'retained'; event(decision.posting, actor, 'retain', sale, note=note)
     else:
-        raise serializers.ValidationError('Choose cancel or retain current facts.')
+        raise serializers.ValidationError('Choose cancellation, a date-only correction or retain current facts.')
     from .payment_posting import refresh_links
     refresh_links(company,actor)
     decision.revision += 1; decision.save(update_fields=['resolution', 'revision'])
@@ -267,7 +293,9 @@ def undo_plan(posting, company):
     eligible = []; protected = []; reused = 0
     for decision in posting.decisions.select_related('sale'):
         sale = decision.sale
-        if decision.resolution == 'cancelled':
+        if decision.resolution == 'date_corrected':
+            protected.append({'sale_id': sale.pk, 'reason': 'approved_date_correction'})
+        elif decision.resolution == 'cancelled':
             protected.append({'sale_id': sale.pk, 'reason': 'approved_cancellation'})
         elif decision.resolution != 'created':
             if sale: reused += 1

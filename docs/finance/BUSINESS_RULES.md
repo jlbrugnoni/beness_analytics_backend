@@ -463,3 +463,13 @@ automatically; name differences require confirmation; amount differences require
 manual source correction or a reasoned exception. Preserve both names and all amounts.
 Approval binds current source evidence and is invalidated by later changes. No inferred
 balancing entry, write-off or daily closure check. See INVOICE_PAYMENT_REVIEW.md.
+
+
+## Date correction and recovery — D-093
+
+Imported invoice dates may be corrected only through explicit approval of a newer
+report when all other source facts/status agree. Preserve original report, assignments
+and before/after audit; require reason and enforce access, stale/reconciliation gates.
+Reprepare reversed invoice imports without clearing payments/bank records. Missing
+payment numbers require verified source IDs, never synthesized from invoice codes.
+See INVOICE_DATE_RECOVERY.md.

@@ -241,7 +241,7 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
             if not migration_companies(request.user).filter(pk=company.pk).exists():raise PermissionDenied()
             sales=source.sales_imports.select_related('company','posting').order_by('-pk').first()
             payments=PaymentImportBatch.objects.filter(migration_batch=source,selected_month__isnull=True).select_related('company','posting').order_by('-pk').first()
-            if not sales:
+            if not sales or (getattr(sales,'posting',None) and sales.posting.status in ('undone','partial_undo')):
                 content=bytes(source.original_file);parsed=read_workbook_sales(content)
                 prior=SalesImportBatch.objects.filter(company=company,file_hash=source.file_hash).order_by('pk').first()
                 sales=SalesImportBatch.objects.create(company=company,migration_batch=source,file_name=source.file_name,

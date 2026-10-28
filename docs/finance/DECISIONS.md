@@ -137,6 +137,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-092 | 2026-10-28 | Reject incomplete invoice facts clearly and restart local replay | Client authorizes rejected-invoice visibility improvement, full backup and finance-only reset for corrected Jan–Aug and September replay. Missing invoice totals require verified source correction, never automatic derivation from payments. Display rejection reason and source rows; corrected valid invoice imports reassess existing payments. Preserve configuration, users, grants and analytics. Corrected February source has not been supplied. See CLEAN_REPLAY_2026.md. |
 
+| D-093 | 2026-10-28 | Correct imported invoice dates and recover without reset | Owner requests investigation of April23 migration invoices and a way to correct entries without clearing all data. Implement a reviewed date-only change from a newer report when all other invoice facts/status agree, preserving original evidence and classifications. Recovery after undo prepares a fresh invoice preview and reuses existing payments; financial posting remains explicit. April23 current dates are valid, missing payment numbers still require actual Alegra evidence. No synthetic IDs or unrequested data reset. See INVOICE_DATE_RECOVERY.md. |
+
 ## Open policy decisions
 
 Implementation note D-089 (2026-10-28): fulfill the existing source-preservation and
