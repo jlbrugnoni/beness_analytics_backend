@@ -39,13 +39,21 @@ class SalesPostingImportViewSet(SalesImportViewSet):
 
     @action(detail=True, methods=['get'])
     def processing(self, request, pk=None):
+        class Filters(serializers.Serializer):
+            outcome=serializers.ChoiceField(choices=['all','invalid'],default='all')
+            search=serializers.CharField(required=False,allow_blank=True,max_length=100,default='')
+        filters=Filters(data=request.query_params);filters.is_valid(raise_exception=True);f=filters.validated_data
         batch = self.get_object()
         with locked_company(request.user, batch.company_id, active=False) as company:
             result = operations.plan(batch, company); posting = result.pop('posting')
             pending=[row for row in result['rows'] if row['resolution']=='pending']
             result['pending_count']=len(pending)
             result['ready_count']=sum(row['outcome']=='unchanged' for row in pending)
-            result['rows'] = self.get_paginated_response(self.paginate_queryset(result.pop('rows'))).data
+            rows=result.pop('rows')
+            result['invalid_count']=sum(row['outcome']=='invalid' for row in rows)
+            if f['outcome']=='invalid':rows=[row for row in rows if row['outcome']=='invalid']
+            if f['search']:rows=[row for row in rows if f['search'].casefold() in row['code'].casefold()]
+            result['rows'] = self.get_paginated_response(self.paginate_queryset(rows)).data
             result['posting'] = {'id': posting.pk, 'status': posting.status, 'revision': posting.revision, 'actor':posting.actor_id} if posting else None
             result['can_commit'] = bool(not posting and batch.status == 'preview' and company.active and can_use_finance(request.user, 'can_import_finance'))
             result['can_review'] = bool(posting and posting.status == 'active' and company.active and can_use_finance(request.user,'can_import_finance') and can_use_finance(request.user,'can_edit_finance'))

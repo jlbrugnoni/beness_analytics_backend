@@ -1,3 +1,8 @@
+**Current2026-10-28: clean replay reset D-092 completed.** Local finance records/import
+history are empty; configuration/access/analytics preserved. Corrected source and new
+Jan–Aug/September replay acceptance pending. See CLEAN_REPLAY_2026.md. Historical
+counts and checks below refer to backups, not the current local database.
+
 # DR operational V1 — acceptance checkpoint
 
 **Dataset superseded by owner-authorized local reset2026-10-28.** Current records

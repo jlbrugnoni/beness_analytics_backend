@@ -214,6 +214,14 @@ class FinancialReceiptViewSet(PrivatePayments):
         inherited=receipt.sale.studio_id if receipt.sale_id and receipt.assignments.get('studio_origin')=='invoice' else receipt.studio_id
         studio_name=(receipt.sale.studio.name if receipt.sale_id and receipt.sale.studio_id else None) if receipt.assignments.get('studio_origin')=='invoice' else receipt.studio.name if receipt.studio_id else None
         result.update(file_name=receipt.created_from.batch.file_name,batch=receipt.created_from.batch_id,company=receipt.company_id,effective_studio=inherited,effective_studio_name=studio_name,invoice_code=receipt.source['invoice_code'])
+        if receipt.link_issue=='invoice_missing':
+            from .models import SalesImportInvoice
+            rejected=SalesImportInvoice.objects.filter(batch__company_id=receipt.company_id,
+                batch__provider=receipt.provider,batch__posting__status__in=['active','partial_undo'],
+                code=receipt.source.get('invoice_code')).exclude(issues=[]).select_related('batch').defer('batch__original_file').order_by('-batch__created_at','-pk').first()
+            if rejected:
+                result['invoice_problem']={'reason':'missing_invoice_total' if not str(rejected.source.get('invoice_total') or '').strip() else 'invalid_invoice',
+                    'issues':rejected.issues,'source_rows':rejected.row_numbers,'file_name':rejected.batch.file_name,'batch':rejected.batch_id}
         if receipt.link_issue or (receipt.sale_id and receipt.sale.payment_link_review):
             from .payment_matching import for_receipt
             comparison=for_receipt(receipt)

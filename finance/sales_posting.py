@@ -115,9 +115,16 @@ def outcome(snapshot, sale):
     return 'unchanged'
 
 
+def preview_issues(snapshot):
+    issues=list(snapshot['issues'])
+    if not str(snapshot['source'].get('invoice_total') or '').strip():issues.append('missing_invoice_total')
+    if any(not str(item.get('total') or '').strip() for item in snapshot['items']):issues.append('missing_item_total')
+    return list(dict.fromkeys(issues))
+
+
 def plan(batch, company):
     posting = SalesPosting.objects.filter(batch=batch).first()
-    sales = {sale.code: sale for sale in FinancialSale.objects.filter(company=company, provider=batch.provider, active=True).select_related('created_from__batch')}
+    sales = {sale.code: sale for sale in FinancialSale.objects.filter(company=company, provider=batch.provider, active=True).select_related('created_from__batch').defer('created_from__batch__original_file')}
     decisions = {decision.invoice_id: decision for decision in posting.decisions.select_related('sale')} if posting else {}
     rows = []; counts = Counter()
     for snapshot in snapshots(batch):
@@ -126,7 +133,8 @@ def plan(batch, company):
         status = outcome(snapshot, sale)
         counts[decision.resolution if decision else status] += 1
         rows.append({'invoice_id': invoice.pk, 'code': invoice.code, 'source': snapshot['source'],
-            'item_count': invoice.item_count, 'items': snapshot['items'], 'issues': snapshot['issues'], 'outcome': status,
+            'item_count': invoice.item_count, 'items': snapshot['items'], 'issues': snapshot['issues'],
+            'review_issues':preview_issues(snapshot),'source_rows':invoice.row_numbers,'outcome': status,
             'decision_id': decision.pk if decision else None, 'decision_revision': decision.revision if decision else None,
             'resolution': decision.resolution if decision else None, 'sale': state(sale) if sale else None})
     return {'token': token(company, batch), 'interpretation_version': VERSION, 'counts': dict(counts), 'rows': rows, 'posting': posting}

@@ -135,6 +135,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-091 | 2026-10-28 | Permanent exact-reference and aggregate-payment review | Client confirms invoice number and amount are primary facts; contact/company name differences may arise across Alegra reports. Exact company/provider/invoice reference plus combined active payment total and matching names links automatically. Different names with matching total require explicit confirmation. Different total requires manual source correction or explicit acceptance with a reason. Keep original facts, full split-payment group, audit and stale-decision protection; no prefix-based fiscal inference or automatic balancing. See INVOICE_PAYMENT_REVIEW.md. |
 
+| D-092 | 2026-10-28 | Reject incomplete invoice facts clearly and restart local replay | Client authorizes rejected-invoice visibility improvement, full backup and finance-only reset for corrected Jan–Aug and September replay. Missing invoice totals require verified source correction, never automatic derivation from payments. Display rejection reason and source rows; corrected valid invoice imports reassess existing payments. Preserve configuration, users, grants and analytics. Corrected February source has not been supplied. See CLEAN_REPLAY_2026.md. |
+
 ## Open policy decisions
 
 Implementation note D-089 (2026-10-28): fulfill the existing source-preservation and

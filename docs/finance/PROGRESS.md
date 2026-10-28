@@ -4,6 +4,11 @@ Updated: 2026-10-28.
 
 ## Current checkpoint
 
+Latest: D-092 rejected invoice diagnostics delivered and clean local reset completed.
+24 transaction/import/check tables empty;55 other tables preserved by full-row hashes.
+Corrected source workbook still needed; client replay acceptance pending. See CLEAN_REPLAY_2026.md.
+The D-091 dataset counts below are historical backup evidence.
+
 Latest: D-091 permanent invoice/payment comparison and explicit review delivered;
 client acceptance pending. Current Jan–Aug workbook is imported (4,881 sales/4,984
 receipts/2,351 movements). New source audit/review supersedes old empty/reset wording
@@ -985,3 +990,15 @@ preserved all source facts/assignments/counts, updated3 warnings, repeat0. No fi
 exceptions accepted.350 finance PostgreSQL tests and16 final workspace/matching tests
 passed; changed frontend lint/build passed. Browser name/amount comparison verified.
 See INVOICE_PAYMENT_REVIEW.md for business logic, limitations and owner test cases.
+
+
+2026-10-28 D-092: owner authorizes clearer rejected-source review, then backup/reset
+for a complete replay. Added rejected invoice filter/search, explicit missing totals
+and source rows to daily/historical invoice processing; payment waiting diagnostics
+identify invalid posted invoice evidence. No source amount synthesis.352 PostgreSQL
+finance tests, changed frontend lint/build passed; browser verified B0200000880 before
+reset. Full private snapshot/rehearsal verified; local reset cleared24 financial
+tables and retained55 other tables unchanged; integrity/FK passed. Removed2,351
+movements,4,881 invoices,4,984 receipts plus imports/history. No corrected February
+source supplied, so original totals remain for owner correction before replay.
+See CLEAN_REPLAY_2026.md; backend8027/frontend3037 restarted. No merge/push/deploy.
