@@ -858,3 +858,16 @@ DR operating cycle: confirm known operation dates/methods, cash receipts and exp
 internal movements/refunds, and compare resulting daily/monthly totals with the
 client's complete source document. Partner-profile validation and cutover preparation
 remain outstanding. No financial records, permissions or deployment state changed.
+
+
+2026-10-28 client confirms a real daily closure for September21 worked. This accepts
+that representative daily cycle; full-month comparison and remaining release gates
+remain separate. Client requested Records > Income editor to close automatically
+on successful save. Added opt-in closeOnSave to the existing movement editor and
+enabled it only for Records income. Refresh still runs after saving; validation,
+API failures and stale revisions leave the dialog open with the existing error.
+Expense editors and closure evidence editors retain their current behavior. The
+nested manual-facts editor already closes its parent on successful save. Changed-
+file frontend lint and diff checks passed. Client test: edit a legitimate income
+assignment in Records and Save; confirm return to refreshed table and persistence
+on reopening. No working financial writes, schema change, reset or deployment.
