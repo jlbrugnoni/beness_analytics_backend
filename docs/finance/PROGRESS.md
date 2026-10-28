@@ -747,3 +747,7 @@ production deployment. New check/event tables remain empty for client testing. R
 September Alegra invoice/payment reports are still absent; September14–30 bank upload,
 remaining identity reviews, client acceptance and real-cycle/production rehearsal
 remain release gates. See DR_OPERATIONAL_RELEASE.md for scope, tests and cutover plan.
+
+2026-10-27 closure history presentation: client confirms operational checks work.
+Reopen history entries now show only action, actor and timestamp; the corresponding
+check entry retains its comment. Stored audit events and financial data are unchanged.
