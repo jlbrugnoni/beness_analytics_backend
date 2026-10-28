@@ -1,60 +1,60 @@
 # Finance module handover
 
-Status: Phase 0 accepted; Phase 1 accepted; Phase 2.1 accepted; Phase 2.2 accepted; Phase 2.3 accepted (D-039); Phase 2.4 accepted (D-042); Phase 3.1 accepted (D-048); Phase 3.2 accepted (D-051); Phase 3.3.1 Alegra source previews accepted (D-056); Phase 3.3.2 sales posting/review/undo accepted (D-059); Phase 3.4.1 historical source previews implemented; client acceptance pending. Updated: 2026-10-25.
+Updated2026-10-28. Backend/frontend work is on `feature/finance-phase-2`.
+**Current phase: DR operational V1 acceptance and release preparation.**
+Spain is V2; financial analytics follows Spain. Do not treat older phase plans or
+pending-acceptance statements as the current delivery status. Current readiness and
+remaining gates are in [DR operational release](DR_OPERATIONAL_RELEASE.md) and
+[Acceptance status](DR_V1_ACCEPTANCE_STATUS.md); chronological evidence is in
+[Progress](PROGRESS.md).
 
-The finance module will support bank imports, sales reconciliation, expense
-classification, historical migration, and monthly management results for the
-Dominican Republic and Spain. The client has accepted the overall direction.
-The main discovery batch is answered. Finance foundation/access and account/terminal/category/source-mapping/fee/timing/tax configuration code and
-migrations now exist. Bank previews/history and bank transaction posting/review/undo are implemented; Alegra source previews and sales posting/review/undo are implemented; reconciliation and results remain planned. See the delivery documents below for
-implemented behavior, checks, setup, and acceptance steps.
+Implemented and client-tested workflows include editable configuration, historical
+bank/Alegra/cash migration, routine bank and dual Alegra reports, overlapping imports,
+manual bank/cash income and expenses, classification, monthly/daily collections
+comparison, operational checks/reopen/history and direct correction from closure
+review queues. Income editors on Records close after successful save; failures stay
+open. September21 Cierre was verified against saved data as82,025.00 expected/actual
+and Checked. This is representative acceptance, not a certified full month.
 
-Latest client priority: simpler daily Upload and all-records workspace (D-071).
-See [Daily workspace plan](DAILY_WORKSPACE_PLAN.md); first UI delivery implemented in
-[Daily workspace delivery](DAILY_WORKSPACE_DELIVERY.md), client acceptance pending.
-Bank classification is now delivered in [Bank classification delivery](BANK_CLASSIFICATION_DELIVERY.md), client acceptance pending. Manual creation is now implemented in the general money ledger delivery below; later workflow stages remain unfinished.
-Existing phase acceptance is unchanged.
+The two Alegra reports have distinct authority: invoices/items provide invoice facts
+and studio evidence, while transactions provide payments (including split payments).
+Both arrival orders and repeat uploads passed actual-source rehearsals. Native
+September reports are posted;611 invoices and615 payments have equal gross totals.
+Historic/native encoding overlaps have scoped, audited recovery, accepted by client.
+Bank14–30 September and repeat upload were accepted without duplicate creations.
+Older bank20 still has10 pending decisions that require explicit resolution.
 
-Historical bank posting and a simpler all-date migration screen are now implemented;
-client acceptance pending. See [Historical bank posting delivery](HISTORICAL_BANK_POSTING_DELIVERY.md).
-The client's new workbook remains unposted; account/company and bank-origin selection
-are explicit. Cash/manual ledger, reconciliation and results remain later work.
+Source amounts, bank dates/descriptions/references and imported invoice/customer
+facts are protected; business assignments are edited separately. Normal assignment
+edits do not require a comment for bank/cash records. Operational checks are evidence
+reviews, not month locks or coverage certification. No deposit splitting, verified
+running-balance promise or paired transfer workflow is included in V1.
 
-Follow-up: client posted the bank portion. Both Alegra workbook sheets now have an
-explicit migration path; bank review/reconciliation labels are clarified. See
-[Historical Alegra delivery](HISTORICAL_ALEGRA_DELIVERY.md) for current previews and tests.
-
-Client accepted the historical Alegra workflow and bank UI corrections on 2026-10-26
-(D-082). Next: client replay of overlapping routine September reports. Full historical
-certification, reconciliation and monthly results remain pending.
-
-Current delivery (2026-10-27): [General money ledger and cash foundation](GENERAL_MONEY_LEDGER_DELIVERY.md).
-Manual cash/bank entries and historical cash receipt import are implemented, with
-client acceptance recorded in D-084. Existing records are preserved; closures and certified
-balances remain future work. This supersedes earlier references to manual/cash
-records as entirely undelivered.
-
-Current comparison delivery: [Monthly closures](MONTHLY_CLOSURES_DELIVERY.md),
-with a per-method monthly summary, all-days/cumulative dialog and source evidence
-for DR. Client testing pending. No deposit splitting or reconciliation writes.
-See [Closures plan](DAILY_CLOSURES_PLAN.md) for remaining phases.
-
-Current release scope: [DR Operational Finance V1](DR_OPERATIONAL_RELEASE.md).
-DR operations ship first after acceptance/rehearsal; Spain is V2, then financial
-analytics. This supersedes earlier plans treating Spain or BI as V1 blockers.
-New operational checks and cash recovery are implemented; release gates remain.
+Remaining work is full-period operational/source comparison, representative cash/
+transfer/internal/refund scenarios, real-profile access acceptance and production
+cutover/backup rehearsal. Do not copy QA companies/accounts/users or the whole local
+SQLite database into production. Do not reset client records, broaden permissions or
+merge/push/deploy without the relevant user authorization.
 
 ## Documentation index
 
 For local startup after restarting the Mac, see [Persistent local test runtime](LOCAL_TEST_RUNTIME.md).
 The working finance database now lives in the project .local-finance folder, not /private/tmp.
 
-Latest verification: [September overlap audit](SEPTEMBER_OVERLAP_AUDIT.md), 2026-10-27.
-Bank preservation/amount checks pass;10 overlaps still need review and the two routine
-September Alegra reports are not yet present. This is not full replay certification.
+Latest verification:333 PostgreSQL finance regression tests, frontend lint/build and
+migration drift passed2026-10-28. A later small income-dialog save change passed
+changed-file lint and client testing. Current read-only acceptance audit and next
+client tests are in [DR V1 acceptance status](DR_V1_ACCEPTANCE_STATUS.md). Historical
+audit documents below describe evidence at their own dates, not current queue counts.
 
 | Document | Purpose |
 | --- | --- |
+| [DR V1 acceptance status](DR_V1_ACCEPTANCE_STATUS.md) | Current saved results, unresolved queues and next real-cycle tests |
+| [DR operational release](DR_OPERATIONAL_RELEASE.md) | Agreed V1/V2 sequence and deployment gates |
+| [Closure review workflow](CLOSURE_REVIEW_WORKFLOW.md) | Issue filters and direct supporting-record editors |
+| [Alegra September acceptance](ALEGRA_SEPTEMBER_ACCEPTANCE.md) | Both report orders, overlap/repeat rehearsal and accepted recovery |
+| [September bank duplicate acceptance](SEPTEMBER_BANK_DUPLICATE_ACCEPTANCE.md) | Accepted overlap recovery and real-source duplicate audit |
+| [Operational access validation](OPERATIONAL_ACCESS_VALIDATION.md) | Automated permission matrix and remaining real-profile acceptance |
 | [Business rules](BUSINESS_RULES.md) | Accepted behavior, source facts, and outstanding definitions |
 | [Architecture](ARCHITECTURE.md) | Module boundaries, proposed records, integration, and access design |
 | [Field dictionary](FIELD_DICTIONARY.md) | Ownership, source/assigned fields, provenance, and calculation definitions |

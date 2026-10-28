@@ -871,3 +871,18 @@ nested manual-facts editor already closes its parent on successful save. Changed
 file frontend lint and diff checks passed. Client test: edit a legitimate income
 assignment in Records and Save; confirm return to refreshed table and persistence
 on reopening. No working financial writes, schema change, reset or deployment.
+
+
+2026-10-28 client accepts automatic close after saving Records income. Continued
+DR V1 readiness with a consistent read-only SQLite snapshot and query_only audit.
+September21 Cierre82,025.00 expected/actual is currently Checked; Link4,750.00 also
+matches. Cash4,500.00 and transfer6,000.00 expected have no actual receipts assigned
+to those method/day combinations. These are next evidence-based validation cases,
+not assertions of lost money or instructions to create balancing entries. September
+still has144 missing operation dates,127 debits needing classification and10 saved
+bank20 decisions; sales/payment pending decisions remain0. Recorded current scope,
+configuration, queue denominators and next cash/transfer/expense tests in
+DR_V1_ACCEPTANCE_STATUS.md. Updated stale finance README handover to current delivery
+and accepted tests, retaining historical document index. No application code or
+working financial/profile data changed. No new regression run needed for docs/audit;
+existing333-test/lint/build evidence remains linked. No merge/push/deployment/reset.
