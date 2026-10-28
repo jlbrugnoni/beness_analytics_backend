@@ -11,7 +11,7 @@ from .mapping import resolve_source_values
 from .legacy_text import customer_equal
 from .models import FinancialReceipt, FinancialSale, PaymentPosting, PaymentDecision, PaymentEvent
 
-VERSION='alegra-receipts-v2'
+VERSION='alegra-receipts-v3'
 CHANNELS={'cierre':'card_terminal','recurrente':'recurring','link':'payment_link','transferencia':'transfer','efectivo':'cash'}
 FATAL={'currency_review','invalid_date','invalid_amount','missing_payment_number','invalid_payment_number','duplicate_payment_number',
        'unsupported_payment_kind','payment_status_review','invoice_reference_review','invoice_reference_conflict'}
@@ -87,34 +87,36 @@ def plan(batch,company):
 
 
 def refresh_links(company,actor,posting=None,legacy_codes=()):
-    """Exact invoice links; no bank matching, synthetic sale or revenue change."""
-    receipts=list(FinancialReceipt.objects.filter(company=company,active=True).select_related('sale','created_from__batch').order_by('pk'))
-    sales={(s.provider,s.code):s for s in FinancialSale.objects.filter(company=company,active=True).select_related('created_from__batch')}
-    legacy_codes=set(legacy_codes)
-    totals=defaultdict(Decimal)
-    # Existing allocations take priority; a new overpayment cannot detach them.
+    """Exact invoice references; amount/name differences require scoped approval."""
+    from .payment_matching import context
+    receipts=list(FinancialReceipt.objects.filter(company=company,active=True).select_related('sale__company','created_from__batch').defer('created_from__batch__original_file').order_by('pk'))
+    sales={(s.provider,s.code):s for s in FinancialSale.objects.filter(company=company,active=True).select_related('created_from__batch','company').defer('created_from__batch__original_file')}
+    grouped=defaultdict(list)
+    for r in receipts:grouped[(r.provider,r.source.get('invoice_code'))].append(r)
+    comparisons={key:context(sales[key],rows) for key,rows in grouped.items() if key in sales}
+    legacy_codes=set(legacy_codes);changed=0
     for r in receipts:
-        if r.sale_id:totals[r.sale_id]+=Decimal(r.source['amount'])
-    changed=False
-    for r in receipts:
-        before=state(r);sale=r.sale
-        if sale:
-            issue='invoice_inactive' if not sale.active else 'invoice_cancelled' if sale.source.get('status_kind')=='cancelled' else 'invoice_status_review' if sale.source.get('status_kind')!='paid' else 'overallocated' if totals[sale.pk]>Decimal(sale.source['invoice_total']) else ''
-        else:
-            candidate=sales.get((r.provider,r.source['invoice_code']))
-            if not candidate:issue='invoice_missing'
-            elif candidate.source.get('status_kind')!='paid':issue='invoice_cancelled' if candidate.source.get('status_kind')=='cancelled' else 'invoice_status_review'
-            elif r.source.get('customer') and candidate.source.get('customer') and normalized(r.source['customer'])!=normalized(candidate.source['customer']) and not (
-                    candidate.code in legacy_codes and
-                    (r.created_from.batch.migration_batch_id or candidate.created_from.batch.migration_batch_id) and
-                    customer_equal(r.source['customer'],candidate.source['customer'])):issue='customer_conflict'
-            elif totals[candidate.pk]+Decimal(r.source['amount'])>Decimal(candidate.source['invoice_total']):issue='overallocated'
-            else:r.sale=candidate;totals[candidate.pk]+=Decimal(r.source['amount']);issue=''
+        before=state(r);key=(r.provider,r.source.get('invoice_code'));candidate=r.sale or sales.get(key)
+        comparison=comparisons.get(key)
+        if not candidate:issue='invoice_missing'
+        elif not candidate.active:issue='invoice_inactive'
+        elif candidate.source.get('status_kind')!='paid':issue='invoice_cancelled' if candidate.source.get('status_kind')=='cancelled' else 'invoice_status_review'
+        elif comparison and not comparison['currency_matches']:issue='currency_conflict'
+        elif comparison and comparison['approved']:issue=''
+        elif comparison and not comparison['amounts_equal']:
+            issue='overallocated' if Decimal(comparison['difference'])>0 else 'amount_mismatch'
+        elif r.source.get('customer') and candidate.source.get('customer') and normalized(r.source['customer'])!=normalized(candidate.source['customer']) and not (
+                (r.sale_id or candidate.code in legacy_codes) and
+                (r.created_from.batch.migration_batch_id or candidate.created_from.batch.migration_batch_id) and
+                customer_equal(r.source['customer'],candidate.source['customer'])):issue='customer_conflict'
+        else:issue=''
+        if not issue and not r.sale_id:r.sale=candidate
         r.link_issue=issue
         if before['sale']!=r.sale_id or before['link_issue']!=issue:
             r.revision+=1;r.save(update_fields=['sale','link_issue','revision'])
-            event(posting,actor,'invoice_link_review' if issue else 'invoice_link',r,before);changed=True
+            event(posting,actor,'invoice_link_review' if issue else 'invoice_link',r,before);changed+=1
     if changed:advance(company)
+    return changed
 
 
 def commit(batch,company,actor,expected):

@@ -453,3 +453,13 @@ reopening/rechecking remains audited. Existing missing-data queues stay open.
 Historical cash undo/restore retains source keys/history and protects later edits,
 checked/linked/reconciled records, ownership/scope and possible duplicate restores.
 See DR_OPERATIONAL_RELEASE.md; implementation awaits client acceptance.
+
+
+## Invoice/payment consolidation — D-091
+
+Exact invoice reference is scoped to company/provider. Compare invoice total against all
+active associated payments, including split payments. Matching names and totals link
+automatically; name differences require confirmation; amount differences require a
+manual source correction or a reasoned exception. Preserve both names and all amounts.
+Approval binds current source evidence and is invalidated by later changes. No inferred
+balancing entry, write-off or daily closure check. See INVOICE_PAYMENT_REVIEW.md.

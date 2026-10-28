@@ -33,7 +33,7 @@ def state(sale):
         'studio': sale.studio_id, 'channel': sale.channel, 'assignments': sale.assignments,
         'cancellation_treatment': sale.cancellation_treatment, 'replacement': sale.replacement_id,
         'cancellation_note': sale.cancellation_note, 'revision': sale.revision, 'active': sale.active,
-        'reconciled': sale.reconciled}
+        'reconciled': sale.reconciled, 'payment_link_review':sale.payment_link_review}
 
 
 def event(posting, actor, action, sale=None, before=None, note='', after=None):

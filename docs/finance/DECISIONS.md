@@ -133,6 +133,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-090 | 2026-10-28 | Restart local finance with a supervised January–August baseline | Owner requests clearing current local finance test data and uploading supervised history from January1 through August31,2026, followed by routine September bank/Alegra reports and legitimate manual records. Preserve configuration/users/analytics; make a complete backup first. Explicitly declared supervised migration accepts complete mapped classifications without redundant review; unresolved mappings, invalid facts, source conflicts and genuine studio conflicts still need correction. Routine reports retain normal review rules. Reviewed does not mark daily/monthly reconciliation. See RESET_JAN_AUG_2026.md. |
 
+| D-091 | 2026-10-28 | Permanent exact-reference and aggregate-payment review | Client confirms invoice number and amount are primary facts; contact/company name differences may arise across Alegra reports. Exact company/provider/invoice reference plus combined active payment total and matching names links automatically. Different names with matching total require explicit confirmation. Different total requires manual source correction or explicit acceptance with a reason. Keep original facts, full split-payment group, audit and stale-decision protection; no prefix-based fiscal inference or automatic balancing. See INVOICE_PAYMENT_REVIEW.md. |
+
 ## Open policy decisions
 
 Implementation note D-089 (2026-10-28): fulfill the existing source-preservation and

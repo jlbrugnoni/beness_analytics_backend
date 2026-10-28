@@ -126,7 +126,7 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
             get_object_or_404(sales_preview_companies(request.user),pk=company.pk)
             trouble=FinancialReceipt.objects.filter(sale_id=OuterRef('pk'),active=True).filter(~Q(link_issue='')|Q(assignments__channel_review=True)|Q(assignments__studio_origin='manual_pending'))
             counts=FinancialReceipt.objects.filter(sale_id=OuterRef('pk'),active=True).values('sale_id').annotate(n=Count('pk')).values('n')
-            qs=FinancialSale.objects.filter(company=company,active=True).select_related('studio','created_from__batch').annotate(payment_count=Coalesce(Subquery(counts,output_field=IntegerField()),0),payment_review=Exists(trouble))
+            qs=FinancialSale.objects.filter(company=company,active=True).select_related('studio','created_from__batch').defer('created_from__batch__original_file').annotate(payment_count=Coalesce(Subquery(counts,output_field=IntegerField()),0),payment_review=Exists(trouble))
             if can_use_finance(request.user,'can_view_finance_bank_accounts'):
                 qs=qs.prefetch_related(Prefetch('receipts',queryset=FinancialReceipt.objects.filter(active=True).only('id','sale_id','channel'),to_attr='workspace_receipts'))
             date_key='date';amount_key='invoice_total';number_key=None
@@ -146,7 +146,7 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
                 from rest_framework.exceptions import PermissionDenied
                 raise PermissionDenied()
             get_object_or_404(sales_preview_companies(request.user),pk=company.pk)
-            qs=FinancialReceipt.objects.filter(company=company,active=True,sale__isnull=True).select_related('studio','sale','created_from__batch')
+            qs=FinancialReceipt.objects.filter(company=company,active=True).filter(Q(sale__isnull=True)|~Q(link_issue='')).select_related('studio','sale__company','created_from__batch').defer('created_from__batch__original_file')
             date_key='date';amount_key='amount';number_key=None
             if f.get('search'):qs=qs.filter(Q(number__icontains=f['search'])|Q(source__customer__icontains=f['search'])|Q(source__invoice_code__icontains=f['search']))
             if f.get('studio'):qs=qs.filter(studio_id=f['studio'])

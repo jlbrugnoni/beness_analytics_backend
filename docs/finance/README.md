@@ -3,11 +3,12 @@
 Updated2026-10-28. Backend/frontend work is on `feature/finance-phase-2`.
 **Current phase: DR operational V1 acceptance and release preparation.**
 
-Current local dataset was reset at the owner's request2026-10-28. It is empty and
-ready for the supervised Jan1–Aug31,2026 workbook, then September routine reports.
-Configuration/users/analytics were preserved and a complete private backup verified.
-See [Supervised baseline reset](RESET_JAN_AUG_2026.md). Earlier audit counts and checked
-days below describe the backed-up previous test dataset, not current finance records.
+Current Jan–Aug supervised workbook is imported:4,881 invoices,4,984 receipts and
+2,351 movements. Permanent invoice/payment matching and explicit name/amount review
+is delivered locally; client acceptance pending. See [Invoice/payment review](INVOICE_PAYMENT_REVIEW.md)
+and [Baseline source audit](SUPERVISED_BASELINE_LINK_AUDIT.md). Original facts and
+classifications are preserved; source defects and manual exception decisions remain.
+The earlier [reset](RESET_JAN_AUG_2026.md) is completed and backed up.
 Spain is V2; financial analytics follows Spain. Do not treat older phase plans or
 pending-acceptance statements as the current delivery status. Current readiness and
 remaining gates are in [DR operational release](DR_OPERATIONAL_RELEASE.md) and

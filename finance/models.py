@@ -549,6 +549,7 @@ class SalesPosting(models.Model):
 
 
 class FinancialSale(models.Model):
+    payment_link_review = models.JSONField(default=dict)
     company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name='financial_sales')
     provider = models.CharField(max_length=16, default='alegra')
     code = models.CharField(max_length=64)

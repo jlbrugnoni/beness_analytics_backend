@@ -2,7 +2,7 @@ import hashlib
 import io
 from contextlib import contextmanager
 from django.db import transaction
-from django.db.models import Min, Max
+from django.db.models import Min, Max, Q
 from django.db.models.fields.json import KeyTextTransform
 from django.http import FileResponse
 from django.shortcuts import get_object_or_404
@@ -195,7 +195,7 @@ class PaymentImportViewSet(PrivatePayments):
 
 class FinancialReceiptViewSet(PrivatePayments):
     def get_queryset(self):
-        qs=FinancialReceipt.objects.filter(company__in=migration_companies(self.request.user)).select_related('sale__studio','studio','created_from__batch')
+        qs=FinancialReceipt.objects.filter(company__in=migration_companies(self.request.user)).select_related('sale__studio','studio','created_from__batch').defer('created_from__batch__original_file')
         company=self.request.query_params.get('company')
         if company:
             if not company.isdecimal():raise serializers.ValidationError('Use a company ID.')
@@ -203,7 +203,9 @@ class FinancialReceiptViewSet(PrivatePayments):
         sale=self.request.query_params.get('sale')
         if sale:
             if not sale.isdecimal():raise serializers.ValidationError('Use an invoice ID.')
-            qs=qs.filter(sale_id=sale)
+            from .models import FinancialSale
+            invoice=get_object_or_404(FinancialSale,pk=sale,company__in=migration_companies(self.request.user))
+            qs=qs.filter(company_id=invoice.company_id,provider=invoice.provider).filter(Q(sale_id=invoice.pk)|Q(sale__isnull=True,source__invoice_code=invoice.code))
         return qs
 
     @staticmethod
@@ -212,7 +214,32 @@ class FinancialReceiptViewSet(PrivatePayments):
         inherited=receipt.sale.studio_id if receipt.sale_id and receipt.assignments.get('studio_origin')=='invoice' else receipt.studio_id
         studio_name=(receipt.sale.studio.name if receipt.sale_id and receipt.sale.studio_id else None) if receipt.assignments.get('studio_origin')=='invoice' else receipt.studio.name if receipt.studio_id else None
         result.update(file_name=receipt.created_from.batch.file_name,batch=receipt.created_from.batch_id,company=receipt.company_id,effective_studio=inherited,effective_studio_name=studio_name,invoice_code=receipt.source['invoice_code'])
+        if receipt.link_issue or (receipt.sale_id and receipt.sale.payment_link_review):
+            from .payment_matching import for_receipt
+            comparison=for_receipt(receipt)
+            if comparison and (receipt.link_issue or comparison['approved'] or not comparison['amounts_equal'] or comparison['names_differ']):
+                result['matching_review']=comparison
         return result
+
+    @action(detail=False,methods=['post'],url_path='refresh-links')
+    def refresh_matching(self,request):
+        class Input(serializers.Serializer):company=serializers.IntegerField(min_value=1)
+        data=Input(data=request.data);data.is_valid(raise_exception=True)
+        with locked(request.user,data.validated_data['company'],['can_reconcile_finance']) as company:
+            return Response({'updated':operations.refresh_links(company,request.user)})
+
+    @action(detail=True,methods=['post'],url_path='review-link')
+    def review_link(self,request,pk=None):
+        from .payment_matching import review
+        class Input(serializers.Serializer):
+            expected_token=serializers.CharField(min_length=64,max_length=64)
+            decision=serializers.ChoiceField(choices=['accept_names','accept_difference','reopen'])
+            note=serializers.CharField(max_length=2000,allow_blank=True,required=False,default='')
+        if set(request.data)-{'expected_token','decision','note'}:raise serializers.ValidationError('Source facts are read-only.')
+        original=self.get_object();data=Input(data=request.data);data.is_valid(raise_exception=True);v=data.validated_data
+        with locked(request.user,original.company_id,['can_reconcile_finance']) as company:
+            receipt=get_object_or_404(self.get_queryset(),pk=original.pk,active=True)
+            return Response(review(receipt,company,request.user,v['expected_token'],v['decision'],v['note']))
 
     def list(self,request):
         qs=self.get_queryset();view=request.query_params.get('state','active')

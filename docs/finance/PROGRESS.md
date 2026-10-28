@@ -1,8 +1,13 @@
 # Finance delivery progress
 
-Updated: 2026-10-25.
+Updated: 2026-10-28.
 
 ## Current checkpoint
+
+Latest: D-091 permanent invoice/payment comparison and explicit review delivered;
+client acceptance pending. Current Jan–Aug workbook is imported (4,881 sales/4,984
+receipts/2,351 movements). New source audit/review supersedes old empty/reset wording
+and older phase checkpoint statements below. See INVOICE_PAYMENT_REVIEW.md.
 
 - Format correction D-069: normal Alegra payment uploads support original XLSX directly. See PAYMENT_XLSX_CORRECTION.md; client retest pending.
 
@@ -970,3 +975,13 @@ item arithmetic; no client workbook, financial record, link or app logic changed
 Private evidence .local-backups/supervised-baseline-link-audit-20261028/. No reset,
 permissions change, source-fact rewriting, merge/push/deployment. Consolidation remains
 a proposed scoped/audited workflow, not applied identity relaxation.
+
+
+2026-10-28 D-091: permanent invoice-number/aggregate-payment identity rule, audited
+name/difference confirmation and reopen; source-digest invalidation and reconcile
+permission gate. Invoice detail includes unlinked candidates; payment review includes
+linked warnings. Added0020 payment_link_review; local snapshot/rehearsal/refresh
+preserved all source facts/assignments/counts, updated3 warnings, repeat0. No financial
+exceptions accepted.350 finance PostgreSQL tests and16 final workspace/matching tests
+passed; changed frontend lint/build passed. Browser name/amount comparison verified.
+See INVOICE_PAYMENT_REVIEW.md for business logic, limitations and owner test cases.

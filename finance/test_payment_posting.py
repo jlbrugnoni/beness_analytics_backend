@@ -144,10 +144,10 @@ class ReceiptPostingTests(APITestCase):
     def test_overpayment_cancelled_invoice_and_provider_scope(self):
         sale=self.sale(total='1200.00');batch=self.csv_batch();self.commit(batch)
         a=FinancialReceipt.objects.get(number='101');b=FinancialReceipt.objects.get(number='102')
-        self.assertEqual(a.sale_id,sale.pk);self.assertEqual(b.link_issue,'overallocated');self.assertIsNone(b.sale_id)
+        self.assertIsNone(a.sale_id);self.assertEqual(a.link_issue,'overallocated');self.assertEqual(b.link_issue,'overallocated');self.assertIsNone(b.sale_id)
         sale.source['status_kind']='cancelled';sale.save()
         self.company.refresh_from_db();ops.refresh_links(self.company,self.user)
-        a.refresh_from_db();self.assertEqual(a.link_issue,'invoice_cancelled');self.assertEqual(a.sale_id,sale.pk)
+        a.refresh_from_db();self.assertEqual(a.link_issue,'invoice_cancelled');self.assertIsNone(a.sale_id)
         self.assertEqual(FinancialSale.objects.count(),1)
 
     def test_other_provider_invoice_does_not_link_and_stale_sales_revision_blocks_commit(self):
