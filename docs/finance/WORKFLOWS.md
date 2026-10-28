@@ -154,6 +154,13 @@ PHASE_3_1_DELIVERY.md for boundaries and the next step.
 
 ## Implemented transaction import/review/undo flow (Phase 3.2)
 
+D-088 update (2026-10-27): the daily Upload reports page now has **Review pending**
+beside the pending count. Use its pending-only table and side-by-side comparison;
+select link-existing, separate-new or protected source-correction explicitly.
+**Apply ready rows** previews and confirms the global new/recognized counts, then
+applies only unambiguous pending rows with audit. Conflicts stay pending; prior work
+is preserved. See BANK_MATCHING_V4_DELIVERY.md for identity rules and recovery tests.
+
 Open a bank preview -> Transaction import and review -> inspect counts/decisions
 -> Import transactions -> confirm the concrete plan. New unambiguous movements
 post; recognized occurrences link; invalid and ambiguous/correction rows remain

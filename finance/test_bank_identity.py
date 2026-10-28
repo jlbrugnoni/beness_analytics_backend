@@ -41,6 +41,12 @@ class BankIdentityTests(APITestCase):
         self.commit(batch);self.assertEqual(list(BankMovement.objects.order_by('pk').values()),before)
         self.assertEqual(list(BankMovementClassification.objects.order_by('pk').values()),classifications)
 
+    def test_historical_overlap_without_balance_cannot_be_confirmed_by_terminal_serial_alone(self):
+        self.history([{'bank_date':'2026-09-01','amount':100,'original_description':'AZUL'}])
+        movement=BankMovement.objects.get();movement.source['serial']='TERMINAL';movement.save()
+        batch=self.raw(['01/09/2026,Crédito Transferencia,100.00,,,TERMINAL,AZUL'])
+        self.assertEqual(self.plan(batch)['counts'],{'correction':1})
+
     def test_equal_amount_occurrences_use_distinct_balances_and_substantive_changes_stay_reviewable(self):
         self.history([{'bank_date':'2026-09-01','amount':6800,'balance':10000,'original_description':'Client transfer'},
             {'bank_date':'2026-09-01','amount':6800,'balance':16800,'original_description':'Client transfer'}])

@@ -774,3 +774,19 @@ does not prevent weak identifier-only candidates for genuinely new transactions.
 Daily upload lacks direct review controls; older BankPostingPanel contains them.
 Recorded source examples, counts and safe correction recommendation in
 SEPTEMBER_SECOND_OVERLAP_AUDIT.md. No code/decision/data mutation in this investigation.
+
+2026-10-27 D-088 delivery: implemented primary date/amount/description/balance matching,
+Popular serial/generic reference guards, distinct balance handling, metadata/occurrence
+review safeguards and v4 preview tokens. Added pending-only queue and audited atomic
+apply-pending action using existing import/edit/account/sensitive gates. Daily upload
+now exposes Review pending with ready-row confirmation and explicit side-by-side
+link/create/source-correction decisions; no default candidate/action. Create/link use
+standard audit notes; source correction/ignore retain required reasons.322 PostgreSQL
+finance tests, changed-file frontend lint, production build and migration drift passed.
+In a consistent disposable working-data copy, recovered85 report21 rows, preserving
+all525 earlier movements/classifications,1214 invoices,1219 payments and6 checks/8
+events. Repeat original CSV recognized170 rows and created0 new movements. Browser
+verified preview and protected source-correction dialog without submitting real
+decisions. Working report21 retains85 pending; report20 retains8 recognized/2 true
+conflicts. Routine Alegra invoice/payment10 now available for full-period acceptance.
+See BANK_MATCHING_V4_DELIVERY.md. No working financial writes/reset/grants/push/deploy.

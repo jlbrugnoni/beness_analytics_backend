@@ -214,12 +214,13 @@ class BankPostingTests(APITestCase):
         self.assertEqual(self.client.get('/api/finance/bank-movements/?state=reversed').data['count'], 2)
         self.assertEqual(self.client.get('/api/finance/bank-movements/?state=wrong').status_code, 400)
 
-    def test_missing_identifiers_amount_or_date_change_is_proposed_for_review(self):
+    def test_changed_amount_and_balance_are_new_but_shared_balance_date_change_is_reviewed(self):
         initial = SINGLE.replace(',,123,', ',,,')
         self.post(initial)
-        for changed in [initial.replace('100.00','110.00').replace('200.00','210.00'), initial.replace('01/09/2026,','02/09/2026,')]:
+        for changed, outcome in [(initial.replace('100.00','110.00').replace('200.00','210.00'),'new'),
+                                 (initial.replace('01/09/2026,','02/09/2026,'),'correction')]:
             batch = self.preview(changed)
-            self.assertEqual(self.processing(batch)['counts'], {'correction': 1})
+            self.assertEqual(self.processing(batch)['counts'], {outcome: 1})
 
     def test_resolution_rejects_stale_plan_and_missing_edit_permission(self):
         self.post()

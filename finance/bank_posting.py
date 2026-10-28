@@ -5,7 +5,7 @@ from collections import Counter, defaultdict
 from django.utils import timezone
 from rest_framework import serializers
 from .configuration import ConfigurationConflict
-from .bank_identity import comparable_source
+from .bank_identity import comparable_source, transaction_facts, identity_fields
 from .bank_classification import recognize_terminal, terminal_patterns, initialize_classification
 from .models import BankDecision, BankEvent, BankMovement, BankPosting
 
@@ -26,7 +26,7 @@ def token(account, batch, purpose='commit', revision=0):
         origin_state=list(BankDecision.objects.filter(posting__status__in=['active','partial_undo'],
             row__batch__migration_batch__isnull=False,row__batch__file_hash=batch.file_hash,
             movement__account__company_id=account.company_id,movement__active=True).order_by('pk').values_list('pk','movement_id','movement__revision','posting__revision'))
-    return hashlib.sha256(f'bank-plan-v3:{account.pk}:{account.ledger_revision}:{batch.pk}:{purpose}:{revision}:{origin_state}'.encode()).hexdigest()
+    return hashlib.sha256(f'bank-plan-v4:{account.pk}:{account.ledger_revision}:{batch.pk}:{purpose}:{revision}:{origin_state}'.encode()).hexdigest()
 
 
 def advance(account):
@@ -44,13 +44,14 @@ def plan(batch, account):
     from django.db.models import Q
     movements = list(BankMovement.objects.filter(Q(provider=batch.provider)|Q(provider='manual',manual_key__isnull=False),account=account,active=True).select_related('classification','created_from__batch'))
     normalized_exact = defaultdict(list); identifiers = defaultdict(set); balances = defaultdict(set); weak = defaultdict(set); day_description = defaultdict(set); balance_description = defaultdict(set)
-    historical=defaultdict(set)
+    historical=defaultdict(set); facts=defaultdict(set)
     by_id = {m.pk: m for m in movements}
     for m in movements:
         data = m.source
         normalized_exact[fingerprint(comparable_source(data))].append(m.pk)
+        facts[transaction_facts(data)].add(m.pk)
         if not m.created_from_id or m.created_from.batch.migration_batch_id:historical[(data['bank_date'],data['amount'])].add(m.pk)
-        for key in ('reference', 'serial'):
+        for key in identity_fields(data,batch.provider):
             if data.get(key): identifiers[(key, data[key])].add(m.pk)
         if data.get('balance') is not None:
             balances[(data['bank_date'], data['balance'])].add(m.pk)
@@ -63,10 +64,11 @@ def plan(batch, account):
     for decision in linked:
         original=by_id[decision.movement_id]
         if original.created_from_id and not original.created_from.batch.migration_batch_id:continue
-        for key in ('reference','serial'):
+        for key in identity_fields(decision.row.parsed,batch.provider):
             value=decision.row.parsed.get(key)
             if value:identifiers[(key,value)].add(decision.movement_id)
     counts = Counter(fingerprint(comparable_source(r.parsed)) for r in rows if not r.issues)
+    fact_counts = Counter((transaction_facts(r.parsed),r.parsed.get('balance')) for r in rows if not r.issues)
     prior = defaultdict(set);prior_sources=defaultdict(list)
     evidence = BankDecision.objects.filter(posting__status__in=['active', 'partial_undo'], row__batch__account=account,
         row__batch__provider=batch.provider, row__batch__file_hash=batch.file_hash,
@@ -94,24 +96,42 @@ def plan(batch, account):
                     outcome = 'unchanged'; target = next(iter(known))
                 else:
                     outcome = 'correction' if len(known) == 1 else 'ambiguous'
-            elif len(same) == 1 and counts[fp] == 1 and any(data.get(key) is not None and data.get(key) != '' for key in ('balance','reference','serial')):
+            elif len(same) == 1 and counts[fp] == 1 and any(data.get(key) is not None and data.get(key) != '' for key in ('balance',*identity_fields(data,batch.provider))):
                 outcome = 'unchanged'; target = same[0]; ids = set(same)
             elif same:
                 outcome = 'ambiguous'; ids = set(same)
             else:
                 ids |= known
                 ids |= historical[(data['bank_date'],data['amount'])]
-                for key in ('reference', 'serial'):
+                ids |= {pk for pk in facts[transaction_facts(data)] if data.get('balance') is None or
+                        by_id[pk].source.get('balance') is None or by_id[pk].source.get('balance')==data['balance']}
+                for key in identity_fields(data,batch.provider):
                     if data.get(key): ids |= identifiers[(key, data[key])]
                 if data.get('balance') is not None:
                     ids |= balances[(data['bank_date'], data['balance'])]
                     ids |= balance_description[(data['balance'], data['description'])]
-                if not data.get('reference') and not data.get('serial'):
-                    ids |= day_description[(data['bank_date'], data['description'])]
+                if not identity_fields(data,batch.provider) or not any(data.get(k) for k in identity_fields(data,batch.provider)):
+                    ids |= {pk for pk in day_description[(data['bank_date'], data['description'])]
+                            if data.get('balance') is None or by_id[pk].source.get('balance') is None or by_id[pk].source.get('balance')==data['balance']}
                 # Missing balance cannot distinguish otherwise equal bank occurrences.
                 ids |= {pk for pk in weak[(data['bank_date'], data['amount'], data['description'])]
                         if data.get('balance') is None or by_id[pk].source.get('balance') is None}
+                ids = {pk for pk in ids if by_id[pk].source.get('currency')==data.get('currency') and
+                       by_id[pk].source.get('direction')==data.get('direction') and not (
+                           transaction_facts(by_id[pk].source)==transaction_facts(data) and
+                           data.get('balance') is not None and by_id[pk].source.get('balance') is not None and
+                           by_id[pk].source['balance']!=data['balance'])}
                 outcome = 'correction' if len(ids) == 1 else 'ambiguous' if ids else 'new'
+                # Added or missing metadata may support the same four bank facts;
+                # conflicting nonempty reference/serial values still require review.
+                exact_facts=[pk for pk in ids if transaction_facts(by_id[pk].source)==transaction_facts(data) and
+                             data.get('balance') is not None and by_id[pk].source.get('balance')==data['balance'] and
+                             not any(by_id[pk].source.get(k) not in (None,'') and data.get(k) not in (None,'') and
+                                     by_id[pk].source[k]!=data[k] for k in ('reference','serial'))]
+                if len(exact_facts)==1 and fact_counts[(transaction_facts(data),data.get('balance'))]==1:
+                    outcome='unchanged';target=exact_facts[0];ids={target}
+                elif exact_facts and fact_counts[(transaction_facts(data),data.get('balance'))]>1:
+                    outcome='ambiguous'
         # A reused AZUL terminal/serial is weak evidence across days. Prefer a
         # unique compatible same-day amount/balance identity, without discarding
         # substantive description or identifier conflicts.
@@ -133,6 +153,8 @@ def plan(batch, account):
             conflicts=assignment_conflicts(by_id[target],row)
             if conflicts:outcome='assignment_conflict'
         decision = decisions.get(row.pk)
+        if outcome=='unchanged' and any(d.movement_id==target and d.row_id!=row.pk for d in decisions.values()):
+            outcome='ambiguous';target=None
         item = {'row_id': row.pk, 'source_line': row.source_line, 'source': data, 'issues': row.issues,
                 'outcome': outcome, 'target': target, 'candidate_count': len(ids),
                 'candidates': [movement_data(by_id[pk]) for pk in sorted(ids,key=lambda pk:(
@@ -145,8 +167,30 @@ def plan(batch, account):
                         movement_id=decision.movement_id)
             if decision.resolution != 'pending': item['outcome'] = decision.resolution
         result.append(item)
+    claimed=Counter(item['target'] for item in result if item['outcome']=='unchanged')
+    for item in result:
+        if item['outcome']=='unchanged' and claimed[item['target']]>1:
+            item['outcome']='ambiguous';item['target']=None
     return {'token': token(account, batch), 'counts': dict(Counter(r['outcome'] for r in result)),
             'rows': result, 'posting': posting}
+
+
+def apply_pending(batch, account, actor, expected):
+    """Apply only freshly unambiguous pending rows; retain all previous decisions."""
+    current=plan(batch,account)
+    if current['token']!=expected:raise ConfigurationConflict('The ledger changed. Refresh the pending review.')
+    posting=current['posting']
+    if not posting or posting.status!='active':raise ConfigurationConflict('Choose an active imported report.')
+    changed=Counter()
+    for item in current['rows']:
+        if item.get('resolution')!='pending' or item['outcome'] not in ('new','unchanged'):continue
+        decision=posting.decisions.select_related('posting__batch','row').get(pk=item['decision_id'])
+        target=BankMovement.objects.get(pk=item['target']) if item['outcome']=='unchanged' else None
+        action='link' if target else 'create'
+        resolve(decision,account,actor,action,item['revision'],
+                'Applied refreshed date, amount, description and balance matching',target,target.revision if target else None)
+        changed[action]+=1
+    return dict(changed)
 
 
 def commit(batch, account, actor, expected):

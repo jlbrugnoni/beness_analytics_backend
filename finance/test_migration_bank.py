@@ -106,7 +106,7 @@ class HistoricalBankTests(APITestCase):
         self.assertEqual(str(credit.classification.operation_date),'2026-09-02')
         self.assertEqual(credit.classification.studio_id,self.studio.pk)
         self.assertEqual(credit.classification.channel,'card_terminal')
-        changed=self.native(amount='201.00',balance='1001.00')
+        changed=self.native(amount='201.00',balance='1000.00')
         self.assertEqual(self.plan(changed)['counts'],{'correction':1})
         self.commit(changed);self.assertEqual(BankMovement.objects.count(),2)
 

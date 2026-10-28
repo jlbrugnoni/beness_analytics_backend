@@ -22,6 +22,11 @@ customer collections remain mandatory. No multi-day deposit splitting is introdu
 
 ### O-1: bank overlap recognition
 
+Superseded/extended by D-088: use bank date, amount, description and balance as
+primary evidence; Popular terminal/party serials and generic references no longer
+independently imply identity. See BANK_MATCHING_V4_DELIVERY.md for the currentv4
+matcher, direct pending-review UI and safe recovery of already imported reports.
+
 Comparison-only whitespace normalization leaves raw descriptions and original ledger
 facts unchanged. Unique compatible same-day amount/balance historical evidence can
 outrank weak serial/terminal reuse across days. Separate equal receipts with different
@@ -134,12 +139,15 @@ verified permission matrix and real-profile acceptance steps. Actual partner pro
 acceptance and the other gates below remain pending.
 
 - Client acceptance of O-1/O-2/O-3 and representative create/edit/void/review workflows.
-- Normal September invoice/items CSV and transaction/payments XLSX are not present
-  in the working database at the start of this increment. Obtain the real uploads,
-  replay both arrival orders/overlaps and compare amounts, cancellations, fractional
+- Normal September invoice/items CSV and transaction/payments XLSX are now uploaded
+  as sales10/payments10. Replay both arrival orders/overlaps in an isolated copy and
+  compare amounts, cancellations, fractional
   payments and manual decisions with the client's current document.
-- Obtain September14–30 bank report and test overlapping September14/15 against
-  September1–15. Resolve the2 remaining historical debit identities and saved pending
+- September14–30 bank report21 is now present. Its53 overlap links are correct;
+  D-088 corrects85 false holds caused by recurring identifiers. Disposable-copy recovery
+  preserved prior work and a repeat upload recognized170 rows without new money.
+  Client acceptance of the new pending-review recovery remains. Resolve the2 remaining
+  historical debit identities and saved pending
   decisions through normal review; do not treat improved candidates as completed decisions.
 - Validate a full DR operating cycle and month against Excel, including real cash,
   fees, internal movements, refunds/reimbursements and missing-data queues.
@@ -158,3 +166,6 @@ acceptance and the other gates below remain pending.
   or erase financial records as a rollback shortcut. Merge/push/deploy only when requested.
 
 After these gates, V1 can be released without waiting for Spain or analytics.
+
+See [BANK_MATCHING_V4_DELIVERY.md](BANK_MATCHING_V4_DELIVERY.md) for D-088 matching
+rules, audited recovery, verification and client acceptance steps.

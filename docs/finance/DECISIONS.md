@@ -129,6 +129,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-087 | 2026-10-27 | Release DR operations first, Spain second, analytics afterward | Client accepts separate operational and analytical deliveries and explicitly removes Spain as a V1 priority. V1 focuses on DR imports, bank/cash records, classifications, closures/checks and correction/recovery with a tested release rehearsal. V2 adds Spain. Financial analytics/results/dashboard work starts after Spain is included. Preserve current data; no deployment/reset is implied by proceeding with development. |
 
+| D-088 | 2026-10-27 | Match bank facts and make pending review accessible | Client approves bank date, amount, description and balance as primary matching evidence within an account. Different known balances distinguish separate equal-value occurrences. Missing balance or indistinguishable occurrences require review when uncertain. Popular terminal/party serials and generic references do not independently imply duplicates. Keep manual source-change review and occurrence counts. Add daily-upload pending review, side-by-side comparison, explicit link/create/correct choices and previewed audited recovery of unambiguous pending rows without undoing prior work. |
+
 ## Open policy decisions
 
 

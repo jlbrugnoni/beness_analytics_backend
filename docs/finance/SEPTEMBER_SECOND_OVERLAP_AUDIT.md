@@ -65,3 +65,6 @@ when the candidates themselves arose from weak identifiers.
    the client to manually resolve85 rows caused by this defect.
 
 This investigation does not change matching code or resolve the saved85 rows.
+
+Follow-up: D-088 is implemented and tested in BANK_MATCHING_V4_DELIVERY.md. The
+working pending rows remain for client confirmation through the new daily review UI.

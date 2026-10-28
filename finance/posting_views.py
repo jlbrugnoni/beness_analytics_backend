@@ -47,7 +47,12 @@ class BankPostingImportViewSet(BankImportViewSet):
         with locked_account(request.user, batch.account_id, active=False) as account:
             result = operations.plan(batch, account)
             posting = result.pop('posting')
-            page = self.paginate_queryset(result.pop('rows'))
+            rows=result.pop('rows')
+            pending=[row for row in rows if row.get('resolution')=='pending']
+            result['pending_count']=len(pending)
+            result['ready_counts']={key:sum(row['outcome']==key for row in pending) for key in ('new','unchanged')}
+            if request.query_params.get('pending')=='1':rows=pending
+            page = self.paginate_queryset(rows)
             result['rows'] = self.get_paginated_response(page).data
             result['posting'] = {'id': posting.pk, 'status': posting.status, 'revision': posting.revision,
                 'actor': posting.actor_id} if posting else None
@@ -77,8 +82,10 @@ class BankPostingImportViewSet(BankImportViewSet):
             action = serializers.ChoiceField(choices=['create', 'link', 'correct', 'ignore'])
             movement_id = serializers.IntegerField(min_value=1, required=False)
             expected_movement_revision = serializers.IntegerField(min_value=1, required=False)
-            note = serializers.CharField(max_length=2000, allow_blank=False)
+            note = serializers.CharField(max_length=2000, allow_blank=True, required=False, default='')
         data = Input(data=request.data); data.is_valid(raise_exception=True); values = data.validated_data
+        if values['action'] in ('correct','ignore') and not values['note'].strip():
+            raise serializers.ValidationError({'note':'Explain a source correction or ignored row.'})
         batch = self.get_object()
         with locked_account(request.user, batch.account_id, ['can_import_finance', 'can_edit_finance']) as account:
             if values['expected_plan'] != operations.token(account, batch):
@@ -86,9 +93,20 @@ class BankPostingImportViewSet(BankImportViewSet):
             decision = get_object_or_404(BankDecision.objects.select_related('posting__batch', 'row'),
                 pk=values['decision_id'], posting__batch=batch)
             target = BankMovement.objects.filter(pk=values.get('movement_id'), account=account).first()
-            operations.resolve(decision, account, request.user, values['action'], values['expected_revision'], values['note'],
+            operations.resolve(decision, account, request.user, values['action'], values['expected_revision'], values['note'] or
+                ('Confirmed separate transaction' if values['action']=='create' else 'Confirmed already recorded'),
                 target, values.get('expected_movement_revision'))
             return Response({'decision_id': decision.pk, 'resolution': decision.resolution})
+
+    @action(detail=True,methods=['post'],url_path='apply-pending')
+    def apply_pending(self,request,pk=None):
+        class Input(serializers.Serializer):
+            expected_plan=serializers.CharField(min_length=64,max_length=64)
+        data=Input(data=request.data);data.is_valid(raise_exception=True)
+        batch=self.get_object()
+        with locked_account(request.user,batch.account_id,['can_import_finance','can_edit_finance']) as account:
+            changed=operations.apply_pending(batch,account,request.user,data.validated_data['expected_plan'])
+        return Response({'changed':changed,'status':'active'})
 
     @action(detail=True, methods=['get'], url_path='undo-preview')
     def undo_preview(self, request, pk=None):
