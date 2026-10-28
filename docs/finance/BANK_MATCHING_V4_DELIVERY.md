@@ -1,5 +1,10 @@
 # Bank matching and accessible pending review — D-088
 
+Follow-up 2026-10-28: client completed recovery and repeat upload successfully.
+Read-only validation found no duplicate creation; see
+[SEPTEMBER_BANK_DUPLICATE_ACCEPTANCE.md](SEPTEMBER_BANK_DUPLICATE_ACCEPTANCE.md)
+for saved results and the separate historical-data limitation.
+
 Delivered 2026-10-27 local date on `feature/finance-phase-2` in both repositories.
 Development only; no merge, push, production deployment or working-data reset.
 

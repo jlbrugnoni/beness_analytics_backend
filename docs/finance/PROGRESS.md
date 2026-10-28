@@ -790,3 +790,14 @@ verified preview and protected source-correction dialog without submitting real
 decisions. Working report21 retains85 pending; report20 retains8 recognized/2 true
 conflicts. Routine Alegra invoice/payment10 now available for full-period acceptance.
 See BANK_MATCHING_V4_DELIVERY.md. No working financial writes/reset/grants/push/deploy.
+
+2026-10-28 client reports D-088 recovery worked; audited real saved imports in a
+consistent read-only snapshot. Report21 now has117 creations/53 links to170 unique
+movements,0 pending;53 overlaps all reuse report20 records. Repeat report22 links the
+same170 row-to-movement identities and creates0 movements. Reparsed originals/hash
+and all four bank facts match; unique ledger income/expense totals equal the CSV.
+No duplicate group includes report21 creations. Repeated-looking September expenses
+have different balances. Broader historical scan found one old four-row payroll group
+without enough identity metadata to distinguish from source alone; retained unchanged.
+Recorded acceptance and limits in SEPTEMBER_BANK_DUPLICATE_ACCEPTANCE.md. Report20
+still has10 pending decisions. This audit made no working financial or permission writes.

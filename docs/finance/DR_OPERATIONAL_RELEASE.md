@@ -146,7 +146,9 @@ acceptance and the other gates below remain pending.
 - September14–30 bank report21 is now present. Its53 overlap links are correct;
   D-088 corrects85 false holds caused by recurring identifiers. Disposable-copy recovery
   preserved prior work and a repeat upload recognized170 rows without new money.
-  Client acceptance of the new pending-review recovery remains. Resolve the2 remaining
+  Client recovery/repeat upload accepted and audited2026-10-28: report21 has117
+  creations/53 reused overlaps; report22 links the same170 movements and creates0.
+  See SEPTEMBER_BANK_DUPLICATE_ACCEPTANCE.md. Resolve the2 remaining
   historical debit identities and saved pending
   decisions through normal review; do not treat improved candidates as completed decisions.
 - Validate a full DR operating cycle and month against Excel, including real cash,
