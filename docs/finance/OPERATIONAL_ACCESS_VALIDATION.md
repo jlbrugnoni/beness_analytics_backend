@@ -49,3 +49,11 @@ the owner chooses that change through existing user/group administration.
 Remaining release gates are in [DR_OPERATIONAL_RELEASE.md](DR_OPERATIONAL_RELEASE.md):
 real report overlaps, both Alegra arrival orders, complete-period comparison, source
 identity decisions, recovery acceptance and production cutover rehearsal.
+
+
+2026-10-28 restored-dataset follow-up:18 additional API access scenarios passed on a
+separate copy of current local data, using a synthetic user/group. Verified viewer/
+operator/reconcile separation, visibility revocation, company/studio restriction,
+group grant, feature disable and inactive user. Denied calls preserve financial and
+check audit records. No working grants changed. See DR_V1_CUTOVER_RUNBOOK.md for
+private evidence and limits; actual partner-profile owner acceptance is still pending.

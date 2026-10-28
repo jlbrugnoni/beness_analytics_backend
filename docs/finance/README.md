@@ -50,6 +50,7 @@ audit documents below describe evidence at their own dates, not current queue co
 | Document | Purpose |
 | --- | --- |
 | [DR V1 acceptance status](DR_V1_ACCEPTANCE_STATUS.md) | Current saved results, unresolved queues and next real-cycle tests |
+| [Cutover and recovery runbook](DR_V1_CUTOVER_RUNBOOK.md) | Staging/production sequence, local restore/access evidence and outstanding owner decisions |
 | [DR operational release](DR_OPERATIONAL_RELEASE.md) | Agreed V1/V2 sequence and deployment gates |
 | [Closure review workflow](CLOSURE_REVIEW_WORKFLOW.md) | Issue filters and direct supporting-record editors |
 | [Alegra September acceptance](ALEGRA_SEPTEMBER_ACCEPTANCE.md) | Both report orders, overlap/repeat rehearsal and accepted recovery |

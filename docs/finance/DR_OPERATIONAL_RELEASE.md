@@ -131,6 +131,13 @@ cash import was undone by the developing agent during this delivery.
 
 ## Remaining V1 release gates
 
+2026-10-28 cutover preparation: local SQLite backup/restore preserves80 tables and
+8 finance API responses; restored-copy internal/refund/extraordinary/manual retry/
+expense-void scenarios and18 synthetic-profile access checks passed. See
+DR_V1_CUTOVER_RUNBOOK.md for the concrete staging/production/recovery procedure.
+This does not close production PostgreSQL restore, cutoff/mapping or real-profile
+acceptance gates. Historical cutoff and launch-group intentions requested from owner.
+
 2026-10-28 follow-up: client completed representative cash/transfer/expense tests.
 Saved September21 totals now match for Cierre,Link,transfer,cash; Cierre/cash Checked.
 Core operational workflows are implemented. Remaining work groups into full-month

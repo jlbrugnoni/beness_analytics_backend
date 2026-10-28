@@ -909,3 +909,23 @@ January2026 back to December2025. No client assignment was saved during these ch
 Frontend restarted on3037; existing backend8027 retained. UI screenshots:
 /private/tmp/finance-expense-month-selector.png and
 /private/tmp/finance-income-date-picker.png. September closures left ready for client.
+
+
+2026-10-28 continued release preparation after date-selector delivery. Requested owner
+historical cutoff/routine start and intended launch group capability matrix (pending).
+Performed consistent local SQLite backup/restore in a private directory; integrity/FK
+checks,80 full-table row/schema digests and8 read-only API response hashes match.
+Only restored copies received synthetic internal/refund/extraordinary credits and
+cash expense: collections unchanged, retries reuse IDs, conflicting retries409,
+expense period preserved and void audited without deletion. A separate restored
+copy passed18 viewer/operator/group-reconciler/scope/revocation/disabled access
+scenarios; denied requests left money/classification/check audit unchanged. Working
+database, original backup and actual user grants untouched. Evidence/scripts retained
+under .local-backups/dr-v1-restore-20261028T162036Z with private permissions.
+Documented concrete staging/cutover/backup/recovery runbook, including verified
+Procfile automatic migration, production engine/flag/frontend target concerns and
+prohibition on copying QA IDs/database into production. Local rehearsal explicitly
+not production PostgreSQL restore certification. Existing333-test regression remains;
+no application code changed and no redundant suite rerun. Full-month review, real
+partner acceptance, owner cutoff/access decisions and production rehearsal/release
+remain open. No reset, merge, push or deployment.
