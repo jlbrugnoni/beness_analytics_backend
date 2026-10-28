@@ -131,6 +131,12 @@ cash import was undone by the developing agent during this delivery.
 
 ## Remaining V1 release gates
 
+2026-10-28 follow-up: client completed representative cash/transfer/expense tests.
+Saved September21 totals now match for Cierre,Link,transfer,cash; Cierre/cash Checked.
+Core operational workflows are implemented. Remaining work groups into full-month
+acceptance, edge-case/real-profile validation, cutover rehearsal and authorized release.
+See DR_V1_ACCEPTANCE_STATUS.md for refreshed evidence and date/period selector changes.
+
 2026-10-28: client accepted actionable closure review (issue filters and direct
 supporting-record editors). See CLOSURE_REVIEW_WORKFLOW.md. This acceptance does
 not certify that every September assignment or monthly difference is resolved.

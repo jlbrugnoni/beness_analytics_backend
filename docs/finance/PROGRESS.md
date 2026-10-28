@@ -886,3 +886,26 @@ DR_V1_ACCEPTANCE_STATUS.md. Updated stale finance README handover to current del
 and accepted tests, retaining historical document index. No application code or
 working financial/profile data changed. No new regression run needed for docs/audit;
 existing333-test/lint/build evidence remains linked. No merge/push/deployment/reset.
+
+
+2026-10-28 client confirms completing cash/transfer/expense tests. Read-only snapshot
+confirms all September21 method totals match (Cierre82,025.00,transfer6,000.00,
+cash4,500.00,Link4,750.00); Cierre/cash Checked,other methods Open. Client requests
+easier date entry. Replaced free-text income assignment date with native calendar
+input; extracted shared localized MonthSelector from Closures and reused it for
+expense assignment and manual expense create/edit. Preserved blank periods, required
+markers/edit permission gates, ISO payloads and original bank dates. Browser checked
+empty imported period, month selection/previous arrow, unsaved close and native
+calendar popup without writing any client records. Changed-file lint passed; frontend
+production build verification recorded below. No backend code/schema/data changes.
+Updated DR_V1_ACCEPTANCE_STATUS.md with accepted tests, refreshed evidence and four
+remaining release stages; first-step core operations implemented, full-month/edge-case/
+profile acceptance and production cutover/release remain. No Spain/analytics scope,
+reset, grant, merge, push or deployment.
+
+Validation complete: changed-file frontend lint and optimized production build passed.
+Browser also verified shared Closures selector changes September to August and rolls
+January2026 back to December2025. No client assignment was saved during these checks.
+Frontend restarted on3037; existing backend8027 retained. UI screenshots:
+/private/tmp/finance-expense-month-selector.png and
+/private/tmp/finance-income-date-picker.png. September closures left ready for client.

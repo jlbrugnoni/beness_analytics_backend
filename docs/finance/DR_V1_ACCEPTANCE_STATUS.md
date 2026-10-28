@@ -106,3 +106,56 @@ already documented; do not manipulate production-like records just to manufactur
 those scenarios. Production mapping, separate-dataset cutover rehearsal and approved
 backup/restore remain in DR_OPERATIONAL_RELEASE.md. No new analytics or Spain scope
 is introduced by this checkpoint.
+
+
+## Follow-up: cash/transfer acceptance and date controls
+
+2026-10-28: client confirms completing the requested cash/transfer/expense tests.
+A new consistent read-only audit confirms September21 transfer6,000.00 and cash
+4,500.00 now both match expected; Cierre82,025.00 and Link4,750.00 still match.
+Cierre and cash are Checked; transfer and Link remain Open (numeric equality is not
+an automatic check). Some underlying assignment/review flags remain. Previous audit
+figures above are retained as a dated checkpoint, not the current day comparison.
+Private refreshed evidence:
+`/var/folders/4b/zlc0b2vd2_b9207mqqssy6l80000gn/T/finance-readiness-3cte7egu/audit.json`.
+
+Current September queues still include143 missing operation dates,45 missing payment
+methods and10 old bank20 decisions. Invoice/payment pending decisions remain0.
+These counts overlap and reflect unfinished real-period review, not missing features.
+
+Client requested easier operation-date/expense-period entry. Income assignment now
+uses the native date/calendar input already used by record filters. A shared
+MonthSelector provides localized month names, year dropdowns and previous/next-month
+arrows for expense assignment, manual expense creation/editing and Closures. Missing
+expense periods remain Unassigned until explicitly selected; either dropdown can
+clear them. Selecting a month in an empty field uses the bank/entry date's year as a
+reference; selecting a year uses its reference month. Existing saved values remain
+unchanged on opening. The year range follows the current/reference year, as closures
+previously did, and year boundaries are constrained to0001–9999. API values remain
+YYYY-MM-DD dates / first-of-month expense periods; original bank dates are unchanged.
+
+Browser verified an unassigned imported expense stays empty, selecting September2026
+then the previous arrow displays August2026, and closing discards those unsaved
+changes. Income date displays21/09/2026 with a working calendar popup. No assignment
+was saved by the agent. Updated controls remain subject to existing edit/review gates.
+
+### What remains before completing step1
+
+Core DR operational workflows are implemented and representative imports, overlaps,
+manual income/expenses, daily comparison and check/correction workflows are accepted.
+There is no new large operational feature planned. Completion still requires:
+
+1. Full-period acceptance: finish relevant classifications/coverage and compare a
+   complete month with the source document; resolve legitimate bank20 decisions.
+2. Remaining edge-case/access acceptance: representative refund/internal movements,
+   cancellations/recovery where suitable examples exist, and real partner profiles.
+   Automated tests cover these paths; representative client acceptance is separate.
+3. Production cutover rehearsal and setup: choose historical cutoff and actual company,
+   studio/account/terminal mappings, identify QA/test entries, verify backup/restore
+   and repeat-upload preservation in a separate dataset.
+4. Authorized release: compatible backend/frontend/migrations, health/access checks
+   and first production cycle. Merge/push/deploy is not authorized by routine testing.
+
+This is a release-validation stage, not an accurate percentage or fixed-duration
+estimate. The remaining effort depends on unresolved source/classification decisions
+and production setup, rather than building Spain or financial analytics.
