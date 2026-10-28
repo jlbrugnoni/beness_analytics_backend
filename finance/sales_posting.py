@@ -173,6 +173,8 @@ def commit(batch, company, actor, expected):
         resolution = 'pending'
         if status == 'new':
             mapping = resolve_source_values(company, 'alegra', snapshot['source'])
+            from .migration_review import supervised,approve_sale
+            if supervised(batch):mapping=approve_sale(mapping)
             sale = FinancialSale.objects.create(company=company, provider=batch.provider, code=invoice.code,
                 source=snapshot['source'], items=snapshot['items'], created_from=invoice,
                 studio_id=mapping['studio'], channel=mapping['channel'] or '', assignments=mapping)

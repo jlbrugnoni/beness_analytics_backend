@@ -929,3 +929,27 @@ not production PostgreSQL restore certification. Existing333-test regression rem
 no application code changed and no redundant suite rerun. Full-month review, real
 partner acceptance, owner cutoff/access decisions and production rehearsal/release
 remain open. No reset, merge, push or deployment.
+
+
+2026-10-28 D-090: owner explicitly requests fresh local finance reset, supervised
+Jan1–Aug31 historical baseline then September routine bank/Alegra/manual replay.
+Added immutable MigrationImportBatch.supervised flag (0019,existing/API defaultfalse),
+explicit historical-upload checkbox defaulttrue/badge and preserved flag on preview
+copy. Complete historical bank/cash assignments now Reviewed despite missing/false
+legacy checkbox. Supervised historical Alegra resolved assignment ambiguity accepted;
+unknown fields/genuine studio conflicts, source/link/amount validation retained.
+Routine imports unchanged. Selected company now carries into Initial setup.7 new
+PostgreSQL tests cover bank/cash/supervised versus unsupervised Alegra and genuine
+studio conflict;340-test full suite passed, frontend lint/build and drift passed.
+Stopped servers, made consistent full private SQLite backup, rehearsed reset on a
+copy, verified working table hashes still matched the backup, then applied0019/reset.
+24 finance transaction/import/check tables empty; all55 other application/config/
+access/analytics tables unchanged by full-row hash; integrity/FK checks passed.
+Removed612 movements,1,214 invoices,1,219 receipts and9 checks plus associated source/
+decision/event history; all original state retained in private backup. Evidence/script:
+.local-backups/before-january-august-reset-20261028T165016Z/. No production/reset of
+analytics/configuration/users/grants or external workbooks. Browser confirms company1
+migration history empty and supervision selected; replacement workbook not yet supplied.
+Updated handover/release/status/cutover docs so prior queues and checks are historical.
+Local backend8027/frontend3037 restarted; test PostgreSQL stopped. Screenshot:
+/private/tmp/finance-supervised-reset-ready.png. No merge, push or deployment.

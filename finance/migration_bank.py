@@ -83,11 +83,11 @@ def map_assignments(movement,row):
     terminal=Terminal.objects.filter(account=movement.account,identifier=identifier,active=True).first() if identifier else None
     if terminal and (not item.studio_id or item.studio_id==terminal.studio_id) and (not item.channel or item.channel==terminal.channel) and not item.administration:
         item.terminal=terminal;item.studio_id=terminal.studio_id;item.channel=terminal.channel
-    # A legacy checkbox is recognition only, and cannot certify incomplete mappings.
+    # Supervised historical assignments are approved, but missing mappings still need review.
     values={'movement_kind':item.movement_kind,'studio':item.studio_id,'administration':item.administration,
         'category':item.category_id,'subcategory':item.subcategory_id,'expense_period':item.expense_period,
         'channel':item.channel,'operation_date':item.operation_date}
-    item.reviewed=bool(raw.get('legacy_reviewed') is True and not missing_fields(row.migration_row.kind,values,
+    item.reviewed=bool((row.migration_row.batch.supervised or raw.get('legacy_reviewed') is True) and not missing_fields(row.migration_row.kind,values,
         bool(item.category_id and item.category.children.filter(active=True).exists())))
     movement.classification=item
     return snapshot(movement)

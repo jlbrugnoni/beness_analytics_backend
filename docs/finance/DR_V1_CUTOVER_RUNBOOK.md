@@ -6,8 +6,9 @@ Spain and financial analytics remain separate releases.
 
 ## Decisions still needed from the owner
 
-- Last historical-workbook date and first routine-report date. Overlaps are supported,
-  but the source versions and intended coverage must be recorded.
+- Historical cutoff settled by owner2026-10-28: workbook2026-01-01 through2026-08-31;
+  routine reports from2026-09-01. Local test records reset under the backed-up procedure
+  in RESET_JAN_AUG_2026.md. Production source versions/coverage still need verification.
 - Existing launch groups and their intended view/import/edit/reconcile/settings
   capabilities. These are independent permissions, resolved through existing user/
   group grants and site/studio scope. No new production roles are assumed.

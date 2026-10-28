@@ -130,6 +130,10 @@ def commit(batch,company,actor,expected):
         status=outcome(source,receipt);resolution='pending'
         if status=='new':
             mapping=assignments(company,source)
+            from .migration_review import supervised
+            if supervised(batch):
+                mapping['review_basis']='supervised_migration'
+                if mapping['channel']:mapping['channel_review']=False
             # Keep compact original normalized evidence, separately from current assignments.
             snapshot={k:v for k,v in source.items() if k not in ('cells','invoice_payment_total','invoice_payment_rows')}
             receipt=FinancialReceipt.objects.create(company=company,provider=batch.provider,number=source['number'],

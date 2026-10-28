@@ -1,5 +1,9 @@
 # DR operational V1 — acceptance checkpoint
 
+**Dataset superseded by owner-authorized local reset2026-10-28.** Current records
+are empty, ready for the supervised Jan–Aug baseline and September replay. See
+RESET_JAN_AUG_2026.md. Values/queues below are evidence of the backed-up prior tests.
+
 Date2026-10-28. This is a saved-data audit and client acceptance checkpoint, not
 production approval, a financial statement or certification of full-month coverage.
 

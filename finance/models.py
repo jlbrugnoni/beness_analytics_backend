@@ -597,6 +597,7 @@ class SalesEvent(models.Model):
 
 
 class MigrationImportBatch(models.Model):
+    supervised = models.BooleanField(default=False)
     company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name='migration_previews')
     selected_month = models.DateField()
     file_name = models.CharField(max_length=255)

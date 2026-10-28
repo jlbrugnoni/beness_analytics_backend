@@ -38,7 +38,7 @@ class MigrationBatchSerializer(serializers.ModelSerializer):
     class Meta:
         model=MigrationImportBatch
         fields=['id','company','company_name','selected_month','file_name','byte_size','parser_version','status',
-            'summary','file_issues','sheets','mappings','bank_imports','duplicate_of','uploaded_by','created_at']
+            'summary','file_issues','sheets','mappings','supervised','bank_imports','duplicate_of','uploaded_by','created_at']
         read_only_fields=fields
 
 
@@ -54,6 +54,7 @@ class MigrationRowSerializer(serializers.ModelSerializer):
 
 
 class MigrationUploadSerializer(serializers.Serializer):
+    supervised=serializers.BooleanField(default=False)
     company=serializers.PrimaryKeyRelatedField(queryset=Company.objects.none())
     month=serializers.RegexField(r'^\d{4}-(?:0[1-9]|1[0-2])$',required=False)
     file=serializers.FileField(max_length=255,allow_empty_file=False)
@@ -110,7 +111,7 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
                 raise PermissionDenied('Migration access changed. Reload before uploading.')
             if not company.active:raise serializers.ValidationError({'company':'Activate the company before uploading.'})
             prior=MigrationImportBatch.objects.filter(company=company,file_hash=digest).order_by('pk').first()
-            batch=MigrationImportBatch.objects.create(company=company,selected_month=month+'-01',
+            batch=MigrationImportBatch.objects.create(company=company,selected_month=month+'-01',supervised=values['supervised'],
                 file_name=name,file_hash=digest,byte_size=len(content),original_file=content,
                 parser_version=parsed['parser_version'],status='failed' if parsed['file_issues'] else 'preview',
                 summary=parsed['summary'],file_issues=parsed['file_issues'],sheets=parsed['sheets'],mappings=parsed['mappings'],
@@ -131,7 +132,7 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
             if not migration_companies(request.user).filter(pk=company.pk).exists() or not migration_companies(request.user).filter(pk=source.company_id).exists() or not can_use_finance(request.user,'can_import_finance'):raise PermissionDenied()
             if not company.active or company.pk==source.company_id:raise serializers.ValidationError('Choose another active company.')
             prior=MigrationImportBatch.objects.filter(company=company,file_hash=source.file_hash).order_by('pk').first()
-            batch=MigrationImportBatch.objects.create(company=company,selected_month=source.selected_month,
+            batch=MigrationImportBatch.objects.create(company=company,selected_month=source.selected_month,supervised=source.supervised,
                 file_name=source.file_name,file_hash=source.file_hash,byte_size=source.byte_size,original_file=source.original_file,
                 parser_version=source.parser_version,status=source.status,summary={**source.summary,'copied_from_preview':source.pk},
                 file_issues=source.file_issues,sheets=source.sheets,mappings=source.mappings,duplicate_of=prior,uploaded_by=request.user)

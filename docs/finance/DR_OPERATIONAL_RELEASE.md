@@ -131,6 +131,13 @@ cash import was undone by the developing agent during this delivery.
 
 ## Remaining V1 release gates
 
+Current local finance dataset reset at owner request2026-10-28, after verified backup.
+Historical baseline is nowJan1–Aug31, routine reportsSep1 onward. Supervised upload
+accepts complete mapped classifications as Reviewed; invalid/unresolved/conflicting
+entries retain review. See RESET_JAN_AUG_2026.md. Prior September pending decisions
+and checks below refer to backed-up test history, not current empty records. Repeat
+month/full-period acceptance on the new supervised baseline; production gates remain.
+
 2026-10-28 cutover preparation: local SQLite backup/restore preserves80 tables and
 8 finance API responses; restored-copy internal/refund/extraordinary/manual retry/
 expense-void scenarios and18 synthetic-profile access checks passed. See

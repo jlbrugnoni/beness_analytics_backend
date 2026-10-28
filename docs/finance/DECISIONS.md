@@ -131,6 +131,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-088 | 2026-10-27 | Match bank facts and make pending review accessible | Client approves bank date, amount, description and balance as primary matching evidence within an account. Different known balances distinguish separate equal-value occurrences. Missing balance or indistinguishable occurrences require review when uncertain. Popular terminal/party serials and generic references do not independently imply duplicates. Keep manual source-change review and occurrence counts. Add daily-upload pending review, side-by-side comparison, explicit link/create/correct choices and previewed audited recovery of unambiguous pending rows without undoing prior work. |
 
+| D-090 | 2026-10-28 | Restart local finance with a supervised January–August baseline | Owner requests clearing current local finance test data and uploading supervised history from January1 through August31,2026, followed by routine September bank/Alegra reports and legitimate manual records. Preserve configuration/users/analytics; make a complete backup first. Explicitly declared supervised migration accepts complete mapped classifications without redundant review; unresolved mappings, invalid facts, source conflicts and genuine studio conflicts still need correction. Routine reports retain normal review rules. Reviewed does not mark daily/monthly reconciliation. See RESET_JAN_AUG_2026.md. |
+
 ## Open policy decisions
 
 Implementation note D-089 (2026-10-28): fulfill the existing source-preservation and
