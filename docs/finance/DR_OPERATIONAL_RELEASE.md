@@ -131,6 +131,10 @@ cash import was undone by the developing agent during this delivery.
 
 ## Remaining V1 release gates
 
+2026-10-28: client accepted actionable closure review (issue filters and direct
+supporting-record editors). See CLOSURE_REVIEW_WORKFLOW.md. This acceptance does
+not certify that every September assignment or monthly difference is resolved.
+
 2026-10-27 follow-up: client confirms daily check/reopen works; requested history
 presentation refinements are complete. Seven additional closure access tests plus
 the existing closure/check suites passed (20 tests) in disposable PostgreSQL.

@@ -63,3 +63,7 @@ counts at that time, not fixed targets. Actual operation dates, transfer identit
 cash completeness and recurring-versus-terminal distinctions need owner review.
 The old bank20 queue still had10 pending decisions; no automatic resolution is added.
 Spain and analytical reporting remain later releases.
+
+
+Client acceptance2026-10-28: client reports this workflow worked. Full September
+classification and source-document reconciliation remain separate acceptance work.

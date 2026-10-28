@@ -848,3 +848,13 @@ old bank20 decisions, partner profiles and cutover remain release gates. No work
 reset, permission changes, merge, push or deployment. Local backend8027/frontend3037
 left running; disposable PostgreSQL stopped. Screenshot evidence saved privately at
 /private/tmp/finance-closure-review-queue.png.
+
+
+2026-10-28 client confirms the actionable closure review workflow worked. Record-level
+issue filters and opening/editing/closing supporting records are accepted for this
+increment. This confirms the UI workflow, not completion of all September assignments
+or agreement of the full month against Excel. Next acceptance step is a representative
+DR operating cycle: confirm known operation dates/methods, cash receipts and expenses,
+internal movements/refunds, and compare resulting daily/monthly totals with the
+client's complete source document. Partner-profile validation and cutover preparation
+remain outstanding. No financial records, permissions or deployment state changed.
