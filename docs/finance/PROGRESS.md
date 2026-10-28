@@ -811,3 +811,18 @@ verified imported expense/income Close returns to the table, nested manual expen
 income Close preserves the parent, and Escape dismisses the manual-expense parent.
 No runtime error on these paths; changed-file lint passed. No financial writes or
 backend/schema changes. The records screen remains open for client acceptance.
+
+2026-10-28 client accepts editor-close fix; continued DR operational acceptance with
+native sales10/payment10. Found138 false September1 invoice anomalies caused entirely
+by legacy text encoding, plus6 September customer links with the same cause. Added
+comparison-only, historical-provenance-gated encoding recognition with complete fact
+equality; raw/current source text, amounts/items and manual assignments stay intact.
+Added audited recognized-invoice recovery and daily-upload confirmation button;
+legacy payment-link refresh is scoped to involved invoice codes. Working138 decisions
+and6 links were not applied by the agent. In a consistent disposable copy, recovery
+clears138 decisions and exactly6 September links; unrelated August links and all
+bank/check records remain unchanged. Both native upload orders and repeats yield611
+invoices/654 items/615 payments/4 split invoices,3,555,130.80DOP totals, identical
+final links/assignments and0 duplicate creations on repeats.332 PostgreSQL finance
+tests, frontend lint/build and migration drift passed. See ALEGRA_SEPTEMBER_ACCEPTANCE.md.
+No schema change, financial writes to the working dataset, grants, reset or deployment.

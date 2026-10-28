@@ -8,9 +8,10 @@ from core_data.models import Studio
 from .bank_readers import normalized
 from .configuration import ConfigurationConflict
 from .mapping import resolve_source_values
+from .legacy_text import customer_equal
 from .models import FinancialReceipt, FinancialSale, PaymentPosting, PaymentDecision, PaymentEvent
 
-VERSION='alegra-receipts-v1'
+VERSION='alegra-receipts-v2'
 CHANNELS={'cierre':'card_terminal','recurrente':'recurring','link':'payment_link','transferencia':'transfer','efectivo':'cash'}
 FATAL={'currency_review','invalid_date','invalid_amount','missing_payment_number','invalid_payment_number','duplicate_payment_number',
        'unsupported_payment_kind','payment_status_review','invoice_reference_review','invoice_reference_conflict'}
@@ -85,10 +86,11 @@ def plan(batch,company):
     return {'token':token(company,batch),'counts':dict(counts),'rows':rows,'posting':posting}
 
 
-def refresh_links(company,actor,posting=None):
+def refresh_links(company,actor,posting=None,legacy_codes=()):
     """Exact invoice links; no bank matching, synthetic sale or revenue change."""
-    receipts=list(FinancialReceipt.objects.filter(company=company,active=True).select_related('sale').order_by('pk'))
-    sales={(s.provider,s.code):s for s in FinancialSale.objects.filter(company=company,active=True)}
+    receipts=list(FinancialReceipt.objects.filter(company=company,active=True).select_related('sale','created_from__batch').order_by('pk'))
+    sales={(s.provider,s.code):s for s in FinancialSale.objects.filter(company=company,active=True).select_related('created_from__batch')}
+    legacy_codes=set(legacy_codes)
     totals=defaultdict(Decimal)
     # Existing allocations take priority; a new overpayment cannot detach them.
     for r in receipts:
@@ -102,7 +104,10 @@ def refresh_links(company,actor,posting=None):
             candidate=sales.get((r.provider,r.source['invoice_code']))
             if not candidate:issue='invoice_missing'
             elif candidate.source.get('status_kind')!='paid':issue='invoice_cancelled' if candidate.source.get('status_kind')=='cancelled' else 'invoice_status_review'
-            elif r.source.get('customer') and candidate.source.get('customer') and normalized(r.source['customer'])!=normalized(candidate.source['customer']):issue='customer_conflict'
+            elif r.source.get('customer') and candidate.source.get('customer') and normalized(r.source['customer'])!=normalized(candidate.source['customer']) and not (
+                    candidate.code in legacy_codes and
+                    (r.created_from.batch.migration_batch_id or candidate.created_from.batch.migration_batch_id) and
+                    customer_equal(r.source['customer'],candidate.source['customer'])):issue='customer_conflict'
             elif totals[candidate.pk]+Decimal(r.source['amount'])>Decimal(candidate.source['invoice_total']):issue='overallocated'
             else:r.sale=candidate;totals[candidate.pk]+=Decimal(r.source['amount']);issue=''
         r.link_issue=issue
@@ -133,7 +138,9 @@ def commit(batch,company,actor,expected):
         elif status=='unchanged':resolution='linked';event(posting,actor,'source_link',receipt)
         elif status=='invalid':resolution='invalid';receipt=None
         PaymentDecision.objects.create(posting=posting,row=row,receipt=receipt,resolution=resolution)
-    refresh_links(company,actor,posting);event(posting,actor,'commit',after={'version':VERSION});advance(company)
+    legacy_codes=set(FinancialReceipt.objects.filter(decisions__posting=posting,
+        decisions__resolution__in=['created','linked'],active=True).values_list('source__invoice_code',flat=True))
+    refresh_links(company,actor,posting,legacy_codes=legacy_codes);event(posting,actor,'commit',after={'version':VERSION});advance(company)
     return posting
 
 

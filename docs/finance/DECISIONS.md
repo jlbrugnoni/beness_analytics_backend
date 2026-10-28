@@ -133,6 +133,14 @@ client-approved. Detailed behavior belongs in Business rules.
 
 ## Open policy decisions
 
+Implementation note D-089 (2026-10-28): fulfill the existing source-preservation and
+dual-report overlap policy by recognizing the observed historical Mac Roman text
+variation only after complete invoice facts agree. Preserve original text/assignments;
+scope legacy customer-link refresh to invoice codes in the selected import/recovery.
+Audited confirmation for already-pending recognized invoices; no acceptance of actual
+source changes/cancellations by this path. Technical delivery/client acceptance pending,
+not a new permission grant or production approval. See ALEGRA_SEPTEMBER_ACCEPTANCE.md.
+
 
 | Topic | Discovery reference | Dependency |
 | --- | --- | --- |

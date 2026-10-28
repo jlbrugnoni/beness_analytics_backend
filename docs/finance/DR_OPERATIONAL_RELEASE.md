@@ -140,9 +140,13 @@ acceptance and the other gates below remain pending.
 
 - Client acceptance of O-1/O-2/O-3 and representative create/edit/void/review workflows.
 - Normal September invoice/items CSV and transaction/payments XLSX are now uploaded
-  as sales10/payments10. Replay both arrival orders/overlaps in an isolated copy and
-  compare amounts, cancellations, fractional
-  payments and manual decisions with the client's current document.
+  as sales10/payments10. Both arrival orders/overlaps/repeats passed isolated actual-
+  source rehearsal on2026-10-28:611 invoices,615 payments,4 split invoices and equal
+  gross totals. D-089 corrects138 false legacy-text overlap anomalies and6 exact
+  September customer links through scoped, audited recovery; client acceptance remains.
+  See ALEGRA_SEPTEMBER_ACCEPTANCE.md. Actual sample has no cancelled invoices;
+  cancellations remain regression-covered and need representative owner acceptance.
+  Compare final monthly closures/classifications with the client's current document.
 - September14–30 bank report21 is now present. Its53 overlap links are correct;
   D-088 corrects85 false holds caused by recurring identifiers. Disposable-copy recovery
   preserved prior work and a repeat upload recognized170 rows without new money.

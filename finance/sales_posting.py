@@ -9,7 +9,7 @@ from .configuration import ConfigurationConflict
 from .mapping import resolve_source_values
 from .models import FinancialSale, SalesPosting, SalesDecision, SalesEvent
 
-VERSION = 'alegra-posting-v2'
+VERSION = 'alegra-posting-v3'
 
 
 def digest(value):
@@ -91,12 +91,24 @@ def facts(source, items):
     return digest([header, sorted(items, key=lambda item: json.dumps(item, sort_keys=True))])
 
 
+def legacy_equivalent(snapshot,sale):
+    """Recognize the observed legacy encoding only when all other facts agree."""
+    old_legacy=bool(sale.created_from.batch.migration_batch_id)
+    new_legacy=bool(snapshot['invoice'].batch.migration_batch_id)
+    if old_legacy==new_legacy:return False
+    from .legacy_text import comparison_copy
+    old=[sale.source,sale.items];new=[snapshot['source'],snapshot['items']]
+    if old_legacy:old=comparison_copy(old,new)
+    else:new=comparison_copy(new,old)
+    return facts(*old)==facts(*new)
+
+
 def outcome(snapshot, sale):
     if snapshot['issues']:
         return 'invalid'
     if not sale:
         return 'new'
-    if facts(snapshot['source'], snapshot['items']) != facts(sale.source, sale.items):
+    if facts(snapshot['source'], snapshot['items']) != facts(sale.source, sale.items) and not legacy_equivalent(snapshot,sale):
         return 'anomaly'
     if snapshot['source']['status_kind'] != sale.source['status_kind']:
         return 'cancellation' if snapshot['source']['status_kind'] == 'cancelled' else 'stale_paid'
@@ -105,7 +117,7 @@ def outcome(snapshot, sale):
 
 def plan(batch, company):
     posting = SalesPosting.objects.filter(batch=batch).first()
-    sales = {sale.code: sale for sale in FinancialSale.objects.filter(company=company, provider=batch.provider, active=True)}
+    sales = {sale.code: sale for sale in FinancialSale.objects.filter(company=company, provider=batch.provider, active=True).select_related('created_from__batch')}
     decisions = {decision.invoice_id: decision for decision in posting.decisions.select_related('sale')} if posting else {}
     rows = []; counts = Counter()
     for snapshot in snapshots(batch):
@@ -118,6 +130,30 @@ def plan(batch, company):
             'decision_id': decision.pk if decision else None, 'decision_revision': decision.revision if decision else None,
             'resolution': decision.resolution if decision else None, 'sale': state(sale) if sale else None})
     return {'token': token(company, batch), 'interpretation_version': VERSION, 'counts': dict(counts), 'rows': rows, 'posting': posting}
+
+
+def apply_pending(batch,company,actor,expected):
+    current=plan(batch,company)
+    if current['token']!=expected:raise ConfigurationConflict('Sales changed. Reload the recognition preview.')
+    posting=current['posting']
+    if not posting or posting.status!='active':raise ConfigurationConflict('Choose an active imported report.')
+    count=0;linked_codes=set()
+    for row in current['rows']:
+        if row['resolution']!='pending' or row['outcome']!='unchanged':continue
+        decision=posting.decisions.get(pk=row['decision_id'])
+        before={'resolution':decision.resolution,'sale':decision.sale_id}
+        decision.sale_id=row['sale']['id'];decision.resolution='linked';decision.revision+=1
+        decision.save(update_fields=['sale','resolution','revision'])
+        event(posting,actor,'link',FinancialSale.objects.get(pk=decision.sale_id),before,
+              'Recognized historical invoice text encoding; original source and assignments retained')
+        linked_codes.add(row['code'])
+        count+=1
+    if count:
+        posting.revision+=1;posting.save(update_fields=['revision'])
+        from .payment_posting import refresh_links
+        refresh_links(company,actor,legacy_codes=linked_codes)
+        advance(company)
+    return count
 
 
 def commit(batch, company, actor, expected):
@@ -147,7 +183,7 @@ def commit(batch, company, actor, expected):
             resolution = 'invalid'
         SalesDecision.objects.create(posting=posting, invoice=invoice, sale=sale, resolution=resolution)
     from .payment_posting import refresh_links
-    refresh_links(company,actor)
+    refresh_links(company,actor,legacy_codes=set(batch.invoices.values_list('code',flat=True)))
     event(posting, actor, 'commit', after={'interpretation_version': VERSION})
     advance(company)
     return posting

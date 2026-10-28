@@ -42,6 +42,9 @@ class SalesPostingImportViewSet(SalesImportViewSet):
         batch = self.get_object()
         with locked_company(request.user, batch.company_id, active=False) as company:
             result = operations.plan(batch, company); posting = result.pop('posting')
+            pending=[row for row in result['rows'] if row['resolution']=='pending']
+            result['pending_count']=len(pending)
+            result['ready_count']=sum(row['outcome']=='unchanged' for row in pending)
             result['rows'] = self.get_paginated_response(self.paginate_queryset(result.pop('rows'))).data
             result['posting'] = {'id': posting.pk, 'status': posting.status, 'revision': posting.revision, 'actor':posting.actor_id} if posting else None
             result['can_commit'] = bool(not posting and batch.status == 'preview' and company.active and can_use_finance(request.user, 'can_import_finance'))
@@ -57,6 +60,15 @@ class SalesPostingImportViewSet(SalesImportViewSet):
         with locked_company(request.user,batch.company_id,['can_import_finance']) as company:
             posting=operations.commit(batch,company,request.user,data.validated_data['expected_plan'])
             return Response({'posting_id':posting.pk,'status':posting.status})
+
+    @action(detail=True,methods=['post'],url_path='apply-pending')
+    def apply_pending(self,request,pk=None):
+        class Input(serializers.Serializer):
+            expected_plan=serializers.CharField(min_length=64,max_length=64)
+        data=Input(data=request.data);data.is_valid(raise_exception=True);batch=self.get_object()
+        with locked_company(request.user,batch.company_id,['can_import_finance','can_edit_finance']) as company:
+            count=operations.apply_pending(batch,company,request.user,data.validated_data['expected_plan'])
+        return Response({'linked':count,'status':'active'})
 
     @action(detail=True, methods=['post'])
     def resolve(self, request, pk=None):
