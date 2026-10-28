@@ -801,3 +801,13 @@ have different balances. Broader historical scan found one old four-row payroll 
 without enough identity metadata to distinguish from source alone; retained unchanged.
 Recorded acceptance and limits in SEPTEMBER_BANK_DUPLICATE_ACCEPTANCE.md. Report20
 still has10 pending decisions. This audit made no working financial or permission writes.
+
+2026-10-28 record-editor close crash: reproduced expense Close causing TypeError
+reading account_name from null. Parent clears the selected record before the MUI exit
+transition/detail-reset effect finishes, leaving old detail content rendered briefly.
+BankDialog now renders details/enables editing only when the selected record matches
+the loaded movement; source/manual child dialogs use the same identity guard. Browser
+verified imported expense/income Close returns to the table, nested manual expense/
+income Close preserves the parent, and Escape dismisses the manual-expense parent.
+No runtime error on these paths; changed-file lint passed. No financial writes or
+backend/schema changes. The records screen remains open for client acceptance.
