@@ -103,3 +103,9 @@ reconciliation. Finish legitimate classifications/operation dates, cash coverage
 remaining bank20 decisions and September closure comparison with the client's
 complete document. Partner-profile acceptance and production cutover remain in
 DR_OPERATIONAL_RELEASE.md. Spain/analytics remain later releases.
+
+
+2026-10-28 follow-up: client accepted the recovery. Read-only inspection of the saved
+working results confirms invoice import10 has470 creations,141 links and0 pending;
+all615 September payments have an empty link issue. The developing agent did not
+apply the recovery or change working financial records.

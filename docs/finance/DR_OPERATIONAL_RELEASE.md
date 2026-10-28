@@ -1,6 +1,6 @@
 # DR Operational Finance — V1 release plan and readiness
 
-Updated2026-10-27 (local date). Work remains on `feature/finance-phase-2` in both
+Updated2026-10-28 (local date). Work remains on `feature/finance-phase-2` in both
 repositories. This is a development delivery and release checklist, not production
 approval or certification of a complete reporting period.
 
@@ -143,7 +143,9 @@ acceptance and the other gates below remain pending.
   as sales10/payments10. Both arrival orders/overlaps/repeats passed isolated actual-
   source rehearsal on2026-10-28:611 invoices,615 payments,4 split invoices and equal
   gross totals. D-089 corrects138 false legacy-text overlap anomalies and6 exact
-  September customer links through scoped, audited recovery; client acceptance remains.
+  September customer links through scoped, audited recovery. Client accepted the
+  recovery; saved results verified2026-10-28:470 creations/141 links/0 pending,
+  all615 September payments linked. Full-month operational acceptance remains.
   See ALEGRA_SEPTEMBER_ACCEPTANCE.md. Actual sample has no cancelled invoices;
   cancellations remain regression-covered and need representative owner acceptance.
   Compare final monthly closures/classifications with the client's current document.

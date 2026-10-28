@@ -14,6 +14,11 @@ from .closures import CHANNELS,compare
 from .closure_checks import attach_checks
 
 
+RECORD_ISSUES = ('payment_link', 'payment_method', 'invalid_facts', 'source_currency',
+    'studio_missing', 'method_review', 'studio_review', 'invoice_review',
+    'movement_type', 'operation_date', 'unreviewed', 'cash_account', 'invoice_without_payments')
+
+
 class ClosureViewSet(viewsets.GenericViewSet):
     permission_classes=[IsAuthenticated,SalesPreviewPermission]
     http_method_names=['get','post','head','options']
@@ -31,6 +36,7 @@ class ClosureViewSet(viewsets.GenericViewSet):
             channel=serializers.ChoiceField(choices=CHANNELS,required=False)
             day=serializers.DateField(required=False)
             side=serializers.ChoiceField(choices=['expected','actual','review','excluded'],required=False)
+            issue=serializers.ChoiceField(choices=RECORD_ISSUES,required=False)
             def validate_month(self,value):
                 try:date.fromisoformat(value+'-01')
                 except ValueError:raise serializers.ValidationError('Use a valid month.')
@@ -58,6 +64,7 @@ class ClosureViewSet(viewsets.GenericViewSet):
     @action(detail=False,methods=['get'])
     def evidence(self,request):
         _,rows,f=self.comparison(request)
+        if f.get('issue'):rows=[r for r in rows if f['issue'] in r['issues']]
         if f.get('channel'):rows=[r for r in rows if r['channel']==f['channel']]
         if f.get('day'):rows=[r for r in rows if r['date']==f['day'].isoformat()]
         if f.get('side')=='review':rows=[r for r in rows if r['issues']]

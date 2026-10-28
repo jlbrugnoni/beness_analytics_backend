@@ -49,7 +49,7 @@ def compare(company,accounts,month,studio=None):
         evidence.append(item)
         for reason in reasons:issues[reason]+=1
         return item
-    receipts=FinancialReceipt.objects.filter(company=company,active=True,source__date__gte=start.isoformat(),source__date__lte=end.isoformat()).select_related('sale','created_from__batch','studio','sale__studio')
+    receipts=FinancialReceipt.objects.filter(company=company,active=True,source__date__gte=start.isoformat(),source__date__lte=end.isoformat()).select_related('sale','created_from__batch','studio','sale__studio','sale__created_from__batch')
     for receipt in receipts:
         sale=receipt.sale;sid=sale.studio_id if sale and receipt.assignments.get('studio_origin')=='invoice' else receipt.studio_id
         if studio and sid!=studio:continue
@@ -66,7 +66,8 @@ def compare(company,accounts,month,studio=None):
         if receipt.assignments.get('studio_origin')=='manual_pending':reasons.append('studio_review')
         if sale and sale.assignments.get('requires_review'):reasons.append('invoice_review')
         record('expected',receipt,day,ch,value,sid,receipt.number,source.get('customer') or '',reasons,include,
-            sale_revision=sale.revision if sale else None,invoice=sale.code if sale else source.get('invoice_code'),file_name=receipt.created_from.batch.file_name,
+            sale_id=sale.pk if sale else None,sale_batch=sale.created_from.batch_id if sale else None,
+            sale_file_name=sale.created_from.batch.file_name if sale else None,sale_revision=sale.revision if sale else None,invoice=sale.code if sale else source.get('invoice_code'),file_name=receipt.created_from.batch.file_name,
             studio_name=sale.studio.name if sid and sale and receipt.assignments.get('studio_origin')=='invoice' else receipt.studio.name if receipt.studio_id else None)
         if include:
             cell=grid[ch][day];cell['gross']+=value;cell['payments']+=1;cell['review']+=bool(reasons)
@@ -100,11 +101,12 @@ def compare(company,accounts,month,studio=None):
             cell=grid[ch][day];cell['actual']+=value;cell['receipts']+=1;cell['review']+=bool(reasons)
     # Missing payment coverage must not masquerade as a completed comparison.
     linked=FinancialReceipt.objects.filter(sale_id=OuterRef('pk'),active=True)
-    sales=FinancialSale.objects.filter(company=company,active=True,source__date__gte=start.isoformat(),source__date__lte=end.isoformat())
+    sales=FinancialSale.objects.filter(company=company,active=True,source__date__gte=start.isoformat(),source__date__lte=end.isoformat()).select_related('created_from__batch')
     if studio:sales=sales.filter(studio_id=studio)
     for sale in sales.filter(source__status_kind='paid').annotate(has_receipts=Exists(linked)).filter(has_receipts=False):
         record('invoice',sale,sale.source.get('date'),'',amount(sale.source.get('invoice_total')),sale.studio_id,sale.code,
-            sale.source.get('customer') or '',['invoice_without_payments'],False,invoice=sale.code)
+            sale.source.get('customer') or '',['invoice_without_payments'],False,invoice=sale.code,
+            file_name=sale.created_from.batch.file_name,batch=sale.created_from.batch_id)
     pending_bank=BankDecision.objects.filter(posting__batch__account__in=accounts,posting__status='active',resolution='pending',
         row__parsed__bank_date__gte=start.isoformat(),row__parsed__bank_date__lte=end.isoformat()).count()
     pending_payments=PaymentDecision.objects.filter(posting__batch__company=company,posting__status='active',resolution='pending',

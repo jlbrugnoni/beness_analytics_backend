@@ -826,3 +826,25 @@ invoices/654 items/615 payments/4 split invoices,3,555,130.80DOP totals, identic
 final links/assignments and0 duplicate creations on repeats.332 PostgreSQL finance
 tests, frontend lint/build and migration drift passed. See ALEGRA_SEPTEMBER_ACCEPTANCE.md.
 No schema change, financial writes to the working dataset, grants, reset or deployment.
+
+
+2026-10-28 client accepts Alegra recovery; saved results verified read-only: sales10
+470 creations/141 links/0 pending and615 September receipts with no link issue.
+Continued DR operational V1 with actionable closure review: record-level issue chips
+open filtered evidence, and row numbers open existing bank/cash, invoice or unlinked
+payment editors. Linked payments navigate by sale ID with correct invoice provenance.
+Save refreshes evidence and monthly/daily/check status without clearing selection;
+closing preserves the current queue. Imported facts and existing authorization/audit
+rules remain intact. No automatic classifications, new financial formulas or schema.
+New PostgreSQL regression verifies filters/provenance, read-only GETs, access denial,
+invalid issue rejection and authorized date correction clearing the queue and updating
+totals while preserving bank date. Full333-test finance suite passed; frontend lint
+(existing unrelated warnings), production build and migration drift passed. Browser
+verified missing-date/invoice queues, correct existing editors and Close without
+crash. Read-only browser checks made no financial writes to the working dataset.
+See CLOSURE_REVIEW_WORKFLOW.md for business behavior and client acceptance steps.
+Initial September missing-date queue151; legitimate assignments/full-month comparison,
+old bank20 decisions, partner profiles and cutover remain release gates. No working
+reset, permission changes, merge, push or deployment. Local backend8027/frontend3037
+left running; disposable PostgreSQL stopped. Screenshot evidence saved privately at
+/private/tmp/finance-closure-review-queue.png.
