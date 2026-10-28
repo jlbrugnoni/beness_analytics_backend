@@ -29,7 +29,7 @@ def context(sale,receipts):
         'approval':sale.payment_link_review if approved else None,
         'can_accept':bool(valid and not sale.reconciled and not any(r.reconciled for r in receipts)),
         'payment_count':len(receipts),
-        'payments':[{'id':r.pk,'number':r.number,'customer':r.source.get('customer') or '',
+        'payments':[{'id':r.pk,'number':f'Manual #{r.pk}' if r.number.startswith('manual-') else r.number,'customer':r.source.get('customer') or '',
             'date':r.source.get('date'),'amount':r.source['amount']} for r in receipts]}
 
 

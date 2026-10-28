@@ -139,6 +139,8 @@ client-approved. Detailed behavior belongs in Business rules.
 
 | D-093 | 2026-10-28 | Correct imported invoice dates and recover without reset | Owner requests investigation of April23 migration invoices and a way to correct entries without clearing all data. Implement a reviewed date-only change from a newer report when all other invoice facts/status agree, preserving original evidence and classifications. Recovery after undo prepares a fresh invoice preview and reuses existing payments; financial posting remains explicit. April23 current dates are valid, missing payment numbers still require actual Alegra evidence. No synthetic IDs or unrequested data reset. See INVOICE_DATE_RECOVERY.md. |
 
+| D-094 | 2026-10-28 | Missing payment number is manually resolvable identity metadata | Client requires recognition of same-invoice/date/customer/amount payments without reupload solely for missing Alegra payment number. Permit explicit acceptance or linking from the existing report; preserve raw blank number and original evidence, use internal identity, audit decision and guard overlaps. Distinct matching occurrences require explicit confirmation; later numbered exports require linking rather than silent duplicate creation. Other invalid facts remain protected. Supersedes D-093 payment-number reupload requirement. See PAYMENT_IDENTITY_REVIEW.md. |
+
 ## Open policy decisions
 
 Implementation note D-089 (2026-10-28): fulfill the existing source-preservation and

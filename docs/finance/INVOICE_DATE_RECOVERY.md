@@ -1,5 +1,9 @@
 # Invoice date correction and recovery without reset
 
+Update D-094: the payment-number reupload requirement below is superseded. Complete
+missing-number rows can now be accepted or linked manually from the existing report.
+See PAYMENT_IDENTITY_REVIEW.md. Date correction/recovery functionality remains.
+
 Delivered locally2026-10-28, D-093; client acceptance pending.
 
 ## Actual diagnosis: migration10 / April23

@@ -3,13 +3,12 @@
 Updated2026-10-28. Backend/frontend work is on `feature/finance-phase-2`.
 **Current phase: DR operational V1 acceptance and release preparation.**
 
-Current Jan–Aug source is reimported after D-092. The owner subsequently undid invoice
-imports:4,949 invoices remain active;46 unlinked invoices were reversed. April23 dates
-are valid, but14 payment rows lack Numero. No further reset is needed. Date-only source
-correction and fresh invoice recovery previews are delivered; client acceptance pending.
-See [Invoice correction and recovery](INVOICE_DATE_RECOVERY.md). Configuration/payments/
-bank assignments are preserved. The prior [clean replay reset](CLEAN_REPLAY_2026.md)
-is historical evidence, not an empty-current-dataset statement.
+Current Jan–Aug data is imported and invoice recovery is complete (4,995 active
+invoices/4,984 payments at this checkpoint). Complete missing-number payments can now
+be manually accepted or linked from the existing report, without editing/reuploading
+Excel. See [Payment identity review](PAYMENT_IDENTITY_REVIEW.md), D-094. Owner acceptance
+pending; no live decisions were made by the agent. [Date correction and recovery](INVOICE_DATE_RECOVERY.md)
+remains available. Earlier empty/reset/reversed counts describe historical checkpoints.
 Spain is V2; financial analytics follows Spain. Do not treat older phase plans or
 pending-acceptance statements as the current delivery status. Current readiness and
 remaining gates are in [DR operational release](DR_OPERATIONAL_RELEASE.md) and

@@ -65,7 +65,7 @@ def compare(company,accounts,month,studio=None):
         if receipt.assignments.get('channel_review'):reasons.append('method_review')
         if receipt.assignments.get('studio_origin')=='manual_pending':reasons.append('studio_review')
         if sale and sale.assignments.get('requires_review'):reasons.append('invoice_review')
-        record('expected',receipt,day,ch,value,sid,receipt.number,source.get('customer') or '',reasons,include,
+        record('expected',receipt,day,ch,value,sid,f'Manual #{receipt.pk}' if receipt.number.startswith('manual-') else receipt.number,source.get('customer') or '',reasons,include,
             sale_id=sale.pk if sale else None,sale_batch=sale.created_from.batch_id if sale else None,
             sale_file_name=sale.created_from.batch.file_name if sale else None,sale_revision=sale.revision if sale else None,invoice=sale.code if sale else source.get('invoice_code'),file_name=receipt.created_from.batch.file_name,
             studio_name=sale.studio.name if sid and sale and receipt.assignments.get('studio_origin')=='invoice' else receipt.studio.name if receipt.studio_id else None)

@@ -132,6 +132,11 @@ class PaymentImportViewSet(PrivatePayments):
         with locked(request.user,batch.company_id,active=False) as company:
             result=operations.plan(batch,company);posting=result.pop('posting')
             result['excluded_rows']=batch.rows.filter(source__kind='egreso').count()
+            review=request.query_params.get('review','all');search=request.query_params.get('invoice','').strip().upper()
+            if review not in ('all','identity') or len(search)>100:raise serializers.ValidationError('Choose all or identity review and a valid invoice search.')
+            result['identity_count']=sum(r['can_resolve_identity'] for r in result['rows'])
+            if review=='identity':result['rows']=[r for r in result['rows'] if r['can_resolve_identity']]
+            if search:result['rows']=[r for r in result['rows'] if search in (r['invoice_code'] or '')]
             result['rows']=self.get_paginated_response(self.paginate_queryset(result['rows'])).data
             result.update(posting={'id':posting.pk,'status':posting.status,'revision':posting.revision} if posting else None,
                 can_commit=bool(not posting and not batch.file_issues and batch.rows.exists() and company.active and can_use_finance(request.user,'can_import_finance')),
@@ -146,6 +151,21 @@ class PaymentImportViewSet(PrivatePayments):
         with locked(request.user,batch.company_id,['can_import_finance']) as company:
             posting=operations.commit(batch,company,request.user,data.validated_data['expected_plan'])
             return Response({'posting_id':posting.pk,'status':posting.status})
+
+    @action(detail=True,methods=['post'],url_path='resolve-identity')
+    def resolve_identity(self,request,pk=None):
+        from .payment_identity import resolve
+        class Input(serializers.Serializer):
+            row_id=serializers.IntegerField(min_value=1)
+            expected_plan=serializers.CharField(min_length=64,max_length=64)
+            action=serializers.ChoiceField(choices=['create','link'])
+            receipt_id=serializers.IntegerField(min_value=1,required=False)
+            distinct=serializers.BooleanField(default=False)
+            note=serializers.CharField(max_length=2000,allow_blank=True,default='')
+        if set(request.data)-{'row_id','expected_plan','action','receipt_id','distinct','note'}:raise serializers.ValidationError('Source values are read-only.')
+        data=Input(data=request.data);data.is_valid(raise_exception=True);batch=self.get_object()
+        with locked(request.user,batch.company_id,['can_import_finance','can_edit_finance']) as company:
+            return Response(resolve(batch,company,request.user,row_id=data.validated_data['row_id'],expected=data.validated_data['expected_plan'],action=data.validated_data['action'],receipt_id=data.validated_data.get('receipt_id'),distinct=data.validated_data['distinct'],note=data.validated_data['note']))
 
     @action(detail=True,methods=['get'],url_path='source-row')
     def source_row(self,request,pk=None):

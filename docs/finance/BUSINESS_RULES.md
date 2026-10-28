@@ -473,3 +473,14 @@ and before/after audit; require reason and enforce access, stale/reconciliation 
 Reprepare reversed invoice imports without clearing payments/bank records. Missing
 payment numbers require verified source IDs, never synthesized from invoice codes.
 See INVOICE_DATE_RECOVERY.md.
+
+
+## Missing payment number — D-094
+
+Missing Alegra payment number alone does not require a report reupload. Complete
+invoice/date/customer/amount/currency evidence can be explicitly accepted or linked
+through audited identity review. Preserve raw blank number; use only an internal app
+reference. Check duplicate occurrences and future numbered overlaps. Independent
+source errors and invoice-link discrepancies remain reviewable. This supersedes the
+D-093 requirement to obtain external payment IDs before resolving these rows.
+See PAYMENT_IDENTITY_REVIEW.md.

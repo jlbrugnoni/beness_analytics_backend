@@ -11,7 +11,7 @@ from .mapping import resolve_source_values
 from .legacy_text import customer_equal
 from .models import FinancialReceipt, FinancialSale, PaymentPosting, PaymentDecision, PaymentEvent
 
-VERSION='alegra-receipts-v3'
+VERSION='alegra-receipts-v4'
 CHANNELS={'cierre':'card_terminal','recurrente':'recurring','link':'payment_link','transferencia':'transfer','efectivo':'cash'}
 FATAL={'currency_review','invalid_date','invalid_amount','missing_payment_number','invalid_payment_number','duplicate_payment_number',
        'unsupported_payment_kind','payment_status_review','invoice_reference_review','invoice_reference_conflict'}
@@ -35,7 +35,7 @@ def facts(source):
 
 
 def state(receipt):
-    return {'id':receipt.pk,'number':receipt.number,'source':receipt.source,'sale':receipt.sale_id,
+    return {'id':receipt.pk,'number':f'Manual #{receipt.pk}' if receipt.number.startswith('manual-') else receipt.number,'number_origin':'manual' if receipt.number.startswith('manual-') else 'reported','source':receipt.source,'sale':receipt.sale_id,
         'link_issue':receipt.link_issue,'channel':receipt.channel,'studio':receipt.studio_id,
         'assignments':receipt.assignments,'revision':receipt.revision,'active':receipt.active,
         'edited':receipt.edited,'reconciled':receipt.reconciled}
@@ -62,7 +62,7 @@ def outcome(source,receipt):
     if any(i['code'] in FATAL or (i['field'] in ('number','date','amount','associations','original_method','kind') and i['code'] in ('formula_error','cell_error','formula_cache_missing')) for i in source['issues']):return 'invalid'
     if not source.get('number') or len(source['number'])>64:return 'invalid'
     if not receipt:return 'new'
-    if facts(source)!=facts(receipt.source):return 'conflict'
+    if {k:v for k,v in facts(source).items() if k!='number' or not receipt.number.startswith('manual-')}!={k:v for k,v in facts(receipt.source).items() if k!='number' or not receipt.number.startswith('manual-')}:return 'conflict'
     for field in ('method','location'):
         if source.get(field) and source[field]!=receipt.source.get(field):return 'assignment_conflict'
     return 'unchanged'
@@ -70,17 +70,21 @@ def outcome(source,receipt):
 
 def plan(batch,company):
     posting=PaymentPosting.objects.filter(batch=batch).first()
-    receipts={r.number:r for r in FinancialReceipt.objects.filter(company=company,provider=batch.provider,active=True)}
+    from .payment_identity import index,needed,candidates,key
+    receipts,groups=index(company,batch.provider)
     decisions={d.row_id:d for d in posting.decisions.select_related('receipt')} if posting else {}
     rows=[];counts=Counter()
     for row in batch.rows.all():
         receipt=receipts.get(row.source.get('number'));decision=decisions.get(row.pk)
-        status=outcome(row.source,receipt);counts[decision.resolution if decision else status]+=1
+        if decision and decision.receipt_id:receipt=decision.receipt
+        identity=needed(row.source,receipt,groups)
+        status='identity_review' if row.source.get('number') and identity else outcome(row.source,receipt);counts[decision.resolution if decision else status]+=1
         rows.append({'row_id':row.pk,'source_row':row.source_row,'number':row.source.get('number'),
             'date':row.source.get('date'),'amount':row.source.get('amount'),'invoice_code':row.source.get('invoice_code'),
             'kind':row.source.get('kind'),'customer':row.source.get('customer'),
             'method':row.source.get('method'),'original_method':row.source.get('original_method'),
-            'location':row.source.get('location'),'issues':row.source['issues'],'outcome':status,
+            'location':row.source.get('location'),'can_resolve_identity':bool(identity and (not decision or decision.resolution in ('invalid','pending'))),
+            'identity_candidates':[{'id':r.pk,'number':f'Manual #{r.pk}' if r.number.startswith('manual-') else r.number,'source':r.source,'reconciled':r.reconciled,'matches':key(r.source)==key(row.source)} for r in candidates(row.source,groups)] if identity else [],'issues':row.source['issues'],'outcome':status,
             'decision_id':decision.pk if decision else None,'decision_revision':decision.revision if decision else None,
             'resolution':decision.resolution if decision else None,'receipt':state(receipt) if receipt else None})
     return {'token':token(company,batch),'counts':dict(counts),'rows':rows,'posting':posting}
@@ -127,9 +131,11 @@ def commit(batch,company,actor,expected):
     if expected!=token(company,batch):raise ConfigurationConflict('Payments, sales or mappings changed. Reload the plan.')
     if batch.file_issues or not batch.rows.exists():raise serializers.ValidationError('An empty or failed source cannot be posted.')
     posting=PaymentPosting.objects.create(batch=batch,actor=actor)
+    from .payment_identity import index,needed,key
+    numbers,groups=index(company,batch.provider)
     for row in batch.rows.all():
-        source=row.source;receipt=FinancialReceipt.objects.filter(company=company,provider=batch.provider,number=source.get('number'),active=True).first()
-        status=outcome(source,receipt);resolution='pending'
+        source=row.source;receipt=numbers.get(source.get('number'))
+        status='identity_review' if source.get('number') and needed(source,receipt,groups) else outcome(source,receipt);resolution='pending'
         if status=='new':
             mapping=assignments(company,source)
             from .migration_review import supervised
@@ -140,6 +146,7 @@ def commit(batch,company,actor,expected):
             snapshot={k:v for k,v in source.items() if k not in ('cells','invoice_payment_total','invoice_payment_rows')}
             receipt=FinancialReceipt.objects.create(company=company,provider=batch.provider,number=source['number'],
                 source=snapshot,created_from=row,channel=mapping['channel'] or '',studio_id=mapping['studio'],assignments=mapping)
+            numbers[receipt.number]=receipt;groups.setdefault(key(source),[]).append(receipt)
             resolution='created';event(posting,actor,'create',receipt)
         elif status=='unchanged':resolution='linked';event(posting,actor,'source_link',receipt)
         elif status=='invalid':resolution='invalid';receipt=None
@@ -163,7 +170,7 @@ def undo_plan(posting,company):
     eligible=[];protected=[];reused=0
     for d in posting.decisions.select_related('receipt'):
         r=d.receipt
-        if d.resolution!='created':
+        if d.resolution not in ('created','manual_created'):
             if r:reused+=1
         elif r.active:
             reason='reconciled' if r.reconciled else 'changed' if r.edited else 'other_import' if r.decisions.filter(posting__status__in=['active','partial_undo']).exclude(posting=posting).exists() else None

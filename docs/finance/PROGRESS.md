@@ -4,6 +4,11 @@ Updated: 2026-10-28.
 
 ## Current checkpoint
 
+Latest: D-094 missing-number payment acceptance/linking delivered; no reimport needed.
+Owner restored invoices (4,995 active).14April23 payments can be resolved from payment
+import12. Tested on a copy only; owner decisions pending. See PAYMENT_IDENTITY_REVIEW.md.
+The D-093 missing-number reupload advice is superseded.
+
 Latest: D-093 date-only invoice source approval and recovery preview delivered.
 Current imported April23 dates valid;14 Alegra_adm payment numbers missing; owner
 undo reversed46 unlinked invoices. No new reset. See INVOICE_DATE_RECOVERY.md.
@@ -1019,3 +1024,14 @@ unposted preview.357 finance PostgreSQL tests,5 final guards tests, frontend lin
 passed. Copy recovery preserved all existing evidence, produced4,949unchanged+46new+
 2invalid; no actual working recovery/source edits or reset. Missing real payment IDs
 remain owner input. Browser verified recovery control. See INVOICE_DATE_RECOVERY.md.
+
+
+2026-10-28 D-094: client rejects mandatory reupload solely for missing payment number.
+Added audited explicit identity create/link for otherwise complete source rows, internal
+manual identity with raw source number blank, duplicate occurrence confirmation,
+future numbered alias/overlap review, stale/permission/invalid-field guards, filtering
+and shared historical/routine UI. No schema/source rewrite or actual working acceptance.
+365 finance PostgreSQL tests and17 final identity/closure tests passed; lint/build
+passed. Disposable copy accepted/linked all14April23 rows,4,984→4,998 receipts, keeping
+all existing facts/assignments/bank/invoices unchanged. Browser checked first identity
+dialog without confirmation. Source-ID reupload demand superseded; see PAYMENT_IDENTITY_REVIEW.md.
