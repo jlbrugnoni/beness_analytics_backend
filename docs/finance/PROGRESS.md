@@ -953,3 +953,20 @@ migration history empty and supervision selected; replacement workbook not yet s
 Updated handover/release/status/cutover docs so prior queues and checks are historical.
 Local backend8027/frontend3037 restarted; test PostgreSQL stopped. Screenshot:
 /private/tmp/finance-supervised-reset-ready.png. No merge, push or deployment.
+
+
+2026-10-28 owner imported Jan–Aug supervised workbook (migration9/sales11/payments11)
+and reports linkage warnings. Read-only exact-invoice comparison:4,881 posted sales,
+4,984 receipts,4,849 linked,18 name conflicts,116 waiting and1 cancelled reference.
+Waiting116 are114 source invoices with genuinely blank totals (Feb6–12,120 item rows;
+all quantity/price/discount arithmetic agrees with552,680.00 of receipts) plus2
+receipts against Por cobrar B0200001144,1,200.00 invoice versus6,800.00 received.
+Name cases:12 generic-consumer expansions,1 abbreviated surname,4 actual different
+names/equal totals,1 different names/amount (B0200002104). Further5 amount/status cases
+and21 invalid payment source rows (16missing IDs/4duplicate-number rows/1MEDIAS)
+are documented in SUPERVISED_BASELINE_LINK_AUDIT.md. Requested owner payer-name policy.
+Prepared/verified five-sheet review workbook with exact source rows and independent
+item arithmetic; no client workbook, financial record, link or app logic changed.
+Private evidence .local-backups/supervised-baseline-link-audit-20261028/. No reset,
+permissions change, source-fact rewriting, merge/push/deployment. Consolidation remains
+a proposed scoped/audited workflow, not applied identity relaxation.
