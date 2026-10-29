@@ -1,0 +1,46 @@
+from django.urls import include, path
+from rest_framework.routers import APIRootView, DefaultRouter
+from rest_framework.permissions import IsAuthenticated
+from .permissions import FinancePermission
+from .views import AccountViewSet, CategoryViewSet, CompanyViewSet, ConfigurationOptions, FinanceOverview, MappingPreview, SourceMappingViewSet, TerminalViewSet
+
+from .policy_views import FeePolicyViewSet, SettlementPolicyViewSet, TaxProfileViewSet, PolicyPreview, PolicySetup
+
+from .migration_views import MigrationImportViewSet
+from .payment_views import PaymentImportViewSet, FinancialReceiptViewSet
+from .sales_posting_views import SalesPostingImportViewSet, FinancialSaleViewSet
+from .posting_views import BankPostingImportViewSet, BankMovementViewSet
+
+from .workspace_views import WorkspaceViewSet
+from .money_views import MoneyMovementViewSet
+from .closure_views import ClosureViewSet
+
+class FinanceAPIRoot(APIRootView):
+    permission_classes = [IsAuthenticated, FinancePermission]
+
+
+router = DefaultRouter()
+router.APIRootView = FinanceAPIRoot
+router.register("closures", ClosureViewSet, basename="finance-closure")
+router.register("workspace", WorkspaceViewSet, basename="finance-workspace")
+router.register("companies", CompanyViewSet, basename="finance-company")
+router.register("accounts", AccountViewSet, basename="finance-account")
+router.register("terminals", TerminalViewSet, basename="finance-terminal")
+router.register("categories", CategoryViewSet, basename="finance-category")
+router.register("source-mappings", SourceMappingViewSet, basename="finance-source-mapping")
+router.register("fee-policies", FeePolicyViewSet, basename="finance-fee-policy")
+router.register("settlement-policies", SettlementPolicyViewSet, basename="finance-settlement-policy")
+router.register("tax-profiles", TaxProfileViewSet, basename="finance-tax-profile")
+router.register("payment-imports", PaymentImportViewSet, basename="finance-payment-import")
+router.register("receipts", FinancialReceiptViewSet, basename="finance-receipt")
+router.register("migration-imports", MigrationImportViewSet, basename="finance-migration-import")
+router.register("sales", FinancialSaleViewSet, basename="finance-sale")
+router.register("sales-imports", SalesPostingImportViewSet, basename="finance-sales-import")
+router.register("bank-imports", BankPostingImportViewSet, basename="finance-bank-import")
+router.register("bank-movements", BankMovementViewSet, basename="finance-bank-movement")
+router.register("movements", MoneyMovementViewSet, basename="finance-movement")
+urlpatterns = [path("policy-preview/", PolicyPreview.as_view(), name="finance-policy-preview"),
+               path("policy-setup/", PolicySetup.as_view(), name="finance-policy-setup"),path("overview/", FinanceOverview.as_view(), name="finance-overview"),
+               path("configuration-options/", ConfigurationOptions.as_view(), name="finance-configuration-options"),
+               path("mapping-preview/", MappingPreview.as_view(), name="finance-mapping-preview"),
+               path("", include(router.urls))]

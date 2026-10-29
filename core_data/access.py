@@ -1,16 +1,11 @@
 from django.db.models import Q
+from django.conf import settings
 
 from .models import GroupAccessProfile, UserAccessProfile
+from .capabilities import ALL_CAPABILITIES, OPERATIONAL_CAPABILITIES
 
 
-ACCESS_CAPABILITIES = [
-    "can_view_money",
-    "can_upload_data",
-    "can_edit_data",
-    "can_reset_data",
-    "can_manage_users",
-    "can_view_admin_logs",
-]
+ACCESS_CAPABILITIES = list(ALL_CAPABILITIES)
 
 
 DEFAULT_GROUP_CAPABILITIES = {
@@ -71,15 +66,25 @@ def resolve_access_payload(user):
     profile = get_or_create_user_access_profile(user)
     capabilities = capability_payload()
 
-    if user_has_global_access(user):
+    sources = {capability: [] for capability in ACCESS_CAPABILITIES}
+    if user.is_superuser:
         capabilities = capability_payload(**{capability: True for capability in ACCESS_CAPABILITIES})
+        sources = {capability: ["superuser"] for capability in ACCESS_CAPABILITIES}
     else:
+        if user_has_global_access(user):
+            for capability in OPERATIONAL_CAPABILITIES:
+                capabilities[capability] = True
+                sources[capability].append("Admin (global)")
         for group in groups:
             group_payload = group_capabilities(group)
             for capability in ACCESS_CAPABILITIES:
                 capabilities[capability] = capabilities[capability] or group_payload[capability]
+                if group_payload[capability]:
+                    sources[capability].append(f"group:{group.name}")
         for capability in ACCESS_CAPABILITIES:
             capabilities[capability] = capabilities[capability] or getattr(profile, capability)
+            if getattr(profile, capability):
+                sources[capability].append("user")
 
     allowed_studios = list(profile.allowed_studios.select_related("site").all().order_by("site__name", "name"))
     allowed_site_ids = set(profile.allowed_sites.values_list("id", flat=True))
@@ -99,6 +104,13 @@ def resolve_access_payload(user):
         "language": profile.language,
         "groups": [{"id": group.id, "name": group.name} for group in groups],
         "capabilities": capabilities,
+        "capability_sources": sources,
+        "finance": {
+            "enabled": settings.FINANCE_ENABLED,
+            "can_enter": bool(settings.FINANCE_ENABLED and user.is_active
+                              and capabilities["can_view_money"]
+                              and capabilities["can_view_finance"]),
+        },
         "allowed_sites": [{"id": site.id, "name": site.name} for site in allowed_sites],
         "allowed_studios": [
             {
@@ -115,9 +127,11 @@ def resolve_access_payload(user):
 
 
 def user_has_capability(user, capability):
+    if not user or not user.is_authenticated or not user.is_active:
+        return False
     if capability not in ACCESS_CAPABILITIES:
         return False
-    if user_has_global_access(user):
+    if user.is_superuser or (capability in OPERATIONAL_CAPABILITIES and user_has_global_access(user)):
         return True
     profile = get_or_create_user_access_profile(user)
     if getattr(profile, capability):

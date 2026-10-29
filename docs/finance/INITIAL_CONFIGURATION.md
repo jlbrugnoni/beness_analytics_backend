@@ -1,0 +1,116 @@
+# Confirmed initial financial configuration
+
+Date: 2026-10-24. Client-provided values, not independently verified bank balances
+or contractual fee terms. Production configuration has not been created.
+
+## Dominican Republic accounts
+
+Company: Beness Pilates Studio S.R.L., currency DOP.
+
+- Banco Popular - Cuenta operativa (DOP): statements expected; opening balance
+  unknown until provided or established from source evidence.
+- Banco Popular - Cuenta de ahorro (DOP): no statements expected. Client states
+  the year began with zero balance; record 0.00 DOP at the start of 2026-01-01,
+  before that day's movements. Historical migration contains internal transfers
+  to savings. Savings is retained even without recurring statements.
+
+Future expected balance = reference opening balance + known internal receipts and
+other recorded inflows - recorded outflows, since the reference date. Include an
+own-company transfer once even when both imported legs later become available.
+An unimported destination leg is an expected receipt, not fabricated bank
+confirmation. Missing savings statements must not automatically create a missing
+routine-import alert when statement_imports_expected=False. Unknown reference
+balances stay unknown, not zero. Reconciliation and expected-balance calculations
+are later phases; Phase 2.1 stores reference values and the statement expectation.
+
+## Dominican Republic terminals
+
+Initial settlement account: the Dominican Banco Popular operating account.
+Terminal identifiers are strings. This explicit table supersedes illustrative
+terminal/location examples from initial discussion.
+
+| Identifier | Payment type | Existing studio |
+| --- | --- | --- |
+| 39618800002 | Cierre / card_terminal | Beness Pilates - Bella Vista |
+| 39618800004 | Recurrentes / recurring | Beness Pilates - Bella Vista |
+| 39618840003 | Link / payment_link | Beness Pilates - Bella Vista |
+| 39618800001 | Cierre / card_terminal | Beness Pilates - Piantini |
+| 39618800003 | Recurrentes / recurring | Beness Pilates - Piantini |
+| 39618840001 | Link / payment_link | Beness Pilates - Piantini |
+| 39618800006 | Cierre / card_terminal | Beness Pilates - Arroyo Hondo |
+| 39618840004 | Link / payment_link | Beness Pilates - Arroyo Hondo |
+
+No recurring terminal was supplied for Arroyo Hondo; do not invent one.
+Spain's previously confirmed 369092994 -> Estepona remains accepted (D-004).
+Do not invent Spain's channel, commission, or settlement-account setup from DR.
+
+## Dominican Republic fees
+
+| Payment type | Estimated withholding percentage |
+| --- | --- |
+| Cierre (credit and debit cards) | 3.5% |
+| Recurrentes | 3.5% |
+| Link | 5% |
+
+Client reports these have applied "since forever". Treat as defaults applicable
+throughout available historical coverage; no rate change/start date was supplied.
+Dated fee configuration permits this historical baseline without
+inventing an actual contract date. No fixed charge was confirmed. Unknown methods
+remain for review rather than being assigned one of these rates or zero.
+
+Phase 2.4 implements these as editable defaults and a read-only calculation
+preview. Applying fees to financial records and comparing actual deposits remain
+later processing work. Preserve P-002's single deduction and actual-adjustment treatment.
+
+## Category catalog (D-032–035)
+
+The common starting catalog contains 10 categories and 45 subcategories. The
+explicit workbook table is preserved in PHASE_2_2_DISCOVERY.md, plus accepted
+Otros / Extraordinarios. Initialize separately per company; common catalog codes
+remain stable across initial copies. Existing live edits are never overwritten.
+
+Personal is sensitive, as are the two Administracion payroll/social-security
+children. Ordinary costs default operating; revenue-related Impuestos and
+Extraordinarios default extraordinary; Equipamiento, Intereses and Devoluciones
+require review. Administracion defaults shared administration; explicit historical
+studio assignments must still be preserved during later migration.
+
+These are editable classification defaults, not automatically applied financial
+entries. The invalid historical 1 / 1 pair is not a catalog entry.
+
+## Source/payment mappings (D-037–038)
+
+| Alegra source label | Suggested financial channel | Review |
+| --- | --- | --- |
+| Tarjeta débito | Link / payment_link | No additional source ambiguity confirmed |
+| Tarjeta crédito | Cierre / card_terminal | Required; recurring payments share this label |
+| Efectivo | cash | Direct mapping |
+| Transferencia | transfer | Direct mapping |
+
+Recurring is assigned manually to the individual sale/receipt interpretation,
+not by overwriting all Tarjeta crédito aliases. Source label/rule evidence must
+remain separate. This bookkeeping convention is not a statement about physical
+card fees. Fees are configured in Phase 2.4, not calculated by source mappings.
+
+Map cost-center and price-list studio names Bella Vista, Piantini, Arroyo Hondo
+to their existing studio records selected explicitly by the settings manager.
+General is neutral price-list evidence. Initial setup adds 11 missing aliases
+(6 studio, 1 neutral and 4 payment) and preserves existing edits/inactive entries.
+
+Spain initially uses in-studio card and cash, with no recurring or transfer.
+Exact Mindbody labels remain unconfirmed; no aliases are guessed. Existing
+site-scoped payment-method names are offered as input suggestions when available.
+
+## Fee, timing and sales-tax setup (Phase 2.4)
+
+The explicit setup action adds missing policies only, preserving any existing
+rules for that company/channel/kind, including inactive or dated custom settings.
+DO creates three withholding rules, three typical 24–48-hour timing rules with
+weekend-delay flags, and a no-sales-tax profile. Spain creates a full-deposit card
+rule with reimbursement expected and a 21% inclusive-tax historical default.
+No Spain timing, cash fee or transfer fee is guessed.
+
+Caixa's fee is around EUR 36 and the offer ends in 2027 (D-040). Amount,
+frequency, and exact offer dates stay null/unknown. Notes preserve the evidence;
+no monthly charge or precise offer expiry is created. The full-deposit preview
+can be known even while a separate fee remains unknown.

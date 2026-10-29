@@ -1,0 +1,198 @@
+# Finance field dictionary
+
+Status: Phase 0 accepted, 2026-10-24. Names describe the target domain;
+exact Django field/API names are finalized during implementation. Phase 1 delivery
+and Phase 2.1–2.4 deliveries list implemented configuration/access. Phase 3.1–3.2
+deliveries add bank previews/postings/review/undo; other domain records remain planned.
+
+## Ownership and configuration
+
+| Record | Fields and meaning |
+| --- | --- |
+| Company | Name, country, default currency, linked operational site context. DR Beness Pilates Studio S.R.L.; Spain Bewellness Group SL. A site is not automatically a company. |
+| Account | Editable label, company, bank/cash type, currency, provider, participating studios, active status. DR-first proposed label Banco Popular - Cuenta operativa (DOP). Optional reference opening balance/date (start of day) and statement-import expectation; unknown balance differs from zero. No expected-balance calculation yet. External account identifier optional; credentials are not collected. |
+| Terminal | Identifier as text, provider, account/company, existing studio, payment channel, active state and revision. Effective dates remain future configuration work. Estepona identifier 369092994. |
+| Category/subcategory | Company-owned editable names, immutable parent, stable catalog code, operating/extraordinary/review defaults, shared/direct default, own/effective sensitive and active flags, record/parent revisions. Used categories are archived, not destructively deleted. Parent sensitivity applies to children. |
+| SourceMapping (implemented) | Company/source field/reported value identity, normalized exact key, map/review/neutral action, studio/channel target, review flag, active, revision. No regex/fuzzy matching. Manual choices take priority while raw values/rule evidence remain. |
+| Fee/date rule (future) | Fee rate/amount, effective dates, settlement/date interpretation and reviewed provenance. Source mapping does not calculate fees. |
+| Tax profile | Company default sales treatment/rate, prices-inclusive flag, effective dates. V1 uses inclusive results; expense tax is not guessed. |
+| Source policy | Company/period, one authoritative source. V1 DR Alegra; Spain existing Mindbody Sales. No Spain Alegra cutover is assumed. |
+
+## Import provenance
+
+| Field | Meaning |
+| --- | --- |
+| Creation origin | Manual, routine source import, historical migration, or explicitly source-linked projection. Manual edits do not change origin. |
+| Source batch/name | Original filename, import ID, source type, actor/time, account/company context. Show the source name subject to permissions. |
+| Raw row / source reference | Original payload, row location, optional source identifiers, original amount/dates, first/latest seen imports. Not a manual classification. |
+| Identity / version | Stable system identity independent of mutable classifications; source fingerprint/context/occurrence and history support overlap review. File hash alone is insufficient. |
+| Coverage | Actual date range and source availability. Missing income for an expense period means incomplete coverage, not zero sales. |
+
+DR historical data starts January 2026. Spain expenses start mid-2025 (exact month
+not given) and income starts February 2026. Imported files establish actual bounds.
+
+## Movement and classification
+
+| Field | Meaning |
+| --- | --- |
+| Bank/payment date | Date money moved, preserved from source; manual entries identify their entered date. |
+| Direction, amount, currency | Inflow/outflow and decimal value with explicit currency; no combined EUR/DOP sum. Preserve raw signs. |
+| Balance | Source-reported bank balance where provided; manual entries do not create a verified balance. |
+| Original description/reference/serial | Immutable bank evidence; optional and not globally unique. Sensitive details require protection. |
+| Business description | Entered explanation, independently editable with actor/time history. |
+| Operation date | Assigned sales day underlying a receipt. Extract Caixa DDMM using the bank date for year context; otherwise manual/rule assignment. |
+| Expense period | Month cost belongs to, independently of payment date; used for expense reporting and shared-cost allocation. |
+| Studio/channel/terminal | Mapped assignments linked to existing studio/configuration; unknown values enter review. |
+| Movement kind | Sales receipt, expense, internal transfer, fee/reimbursement, refund, or extraordinary movement. Not equivalent to debit/credit. |
+| Category and treatment | Expense category/subcategory plus operating/extraordinary/shared classification. Sensitivity is independent of financial treatment. |
+| Statuses | Review, classification completeness, and reconciliation are separate. Legacy reviewed flag does not fabricate a settlement match. |
+
+## Sales, refunds, fees, and allocations
+
+| Record | Fields and meaning |
+| --- | --- |
+| Invoice/sale | Company/source/code, sale and assigned payment date, studio, source method and mapped channel, original tax-inclusive total, source status, optional client identity. |
+| Item | Parent sale, occurrence, service/description, quantity, price, discount, explicit tax if supplied, line total. Identical legitimate items remain separate. |
+| Refund adjustment | Original sale link, original result period, actual refund date/channel, amount, source evidence, cancellation linkage. Source reversal must not be applied twice. |
+| Settlement | Group of receipts and sales with allocated amounts, expected gross, estimated fee, actual net, remaining amount, exact difference, reviewed resolution. |
+| Fee | Withheld versus separately charged, estimated versus actual, source/rule evidence and applicable period; actual replaces/adjusts estimate, not double expense. |
+| Fee reimbursement | Separate credit linked to fee debit with provider eligibility context. Preserve both source legs; no customer sales increase. |
+| Internal movement | Source/destination own-company accounts, imported leg references, amount/currency, counterpart status. Do not invent an unimported bank leg. |
+| Administration allocation | Source company cost, expense month, company/studio gross-sales basis including IVA before fees, weights, amounts, remainder, manual override, source version. Zero-income month stays pending. |
+| Sensitive access | Extra capability for individual detail; authorized aggregates still include the expense. Redaction must not remove costs from result calculations. |
+
+## Result definitions
+
+- Gross sales: authoritative tax-inclusive sales before processing fees, adjusted
+  for refunds in the original sale period.
+- Operating result: gross sales less applicable processing fees and operating
+  expenses, with direct/shared costs counted once.
+- Final management result: operating result + extraordinary inflows -
+  extraordinary outflows. Financing can affect this custom final figure.
+- Employment taxes/contributions: operating; client-described revenue-related
+  taxes: non-operating. Map actual categories during setup; unknowns enter review.
+- Studio results include allocated administration; company results include the
+  company expense once, not the parent plus its allocation children.
+- Default rounding-review threshold: 0.01 DOP/EUR, configurable, no automatic
+  match/write-off. Do not change source amounts to force a match.
+- Month closing and net-of-tax result: deferred; retain audit/period structure.
+
+These are custom management measures. A formal EBITDA measure requires a separate
+agreed definition; it is not an alternative label for the final financing-inclusive
+figure.
+
+## Implemented dated configuration (Phase 2.4)
+
+- Shared: company, nullable valid_from/valid_until (inclusive; null means
+  unbounded), notes, active, revision and audit history.
+- FeePolicy: immutable channel, deposit_mode (unknown/full/net), nullable withheld
+  percentage, nullable separate_fee_amount with confirmed frequency, expected
+  reimbursement flag and optional exact offer dates. Unknown amount is not zero.
+- SettlementPolicy: immutable channel, minimum_hours, maximum_hours and
+  weekend_delays. Typical elapsed-hour guidance, not a holiday-aware deadline.
+- TaxProfile: treatment (unknown/inclusive/no_tax/exempt), rate only for inclusive.
+  No expense-tax fields or net-result calculation yet.
+- Preview evidence: applicable rule ID/revision, gross amount/currency, nullable
+  fee/deposit/tax outputs and timing metadata. No financial record is saved.
+
+## Implemented bank preview fields (Phase 3.1)
+
+- BankImportBatch: immutable account/provider, filename, hash, byte_size, private
+  original_file bytes, encoding/parser_version, preview/failed status, summary,
+  file_issues, duplicate_of (same account/provider/bytes), uploaded_by, created_at.
+- BankImportRow: batch/row_number occurrence identity, physical source_line/end,
+  section, kind (header/preamble/blank/data), raw cells, parsed metadata, issues.
+- Parsed fields: bank_date, signed amount, nullable reported balance, currency,
+  direction, original description/short_description/reference/serial. No studio,
+  category, expense period or inferred operation date is assigned here.
+- Summary: valid/invalid counts, credit/debit counts/totals and net valid-row
+  movement, observed min/max dates, repeated occurrence count, header sections,
+  financial_records_created=0. These are parsing controls, not result/balance
+  values or proof of complete coverage. Exact decimal strings retain cents.
+
+## Implemented bank posting fields (Phase 3.2)
+
+- Account.ledger_revision: internal financial-plan version, separate from settings
+  revision. Supported financial writes advance it under the account lock.
+- BankPosting: one raw batch, financial actor, active/partial_undo/undone state,
+  revision, created/undone timestamps. Raw parse status is unchanged.
+- BankMovement: account/provider, current source dictionary (ISO bank date, signed
+  decimal strings, reported balance, original descriptions/reference/serial),
+  non-unique fingerprint, created_from row, active/reconciled, revision/timestamps.
+- BankDecision: posting and source-row identity, initial outcome, pending/created/
+  linked/corrected/ignored/invalid resolution, movement, revision. One posting
+  cannot assign two source occurrences to the same movement.
+- BankEvent: posting/movement/row/actor, action, previous/new snapshot, note/time.
+  Undo-import events also retain request token/result for safe retries.
+- Batch API processing_status: financial status separate from source parse status.
+  Candidate and movement IDs are scoped references, not transaction natural keys.
+- Undo eligibility: created/revision-1/unreconciled/no independent active source
+  dependencies. Old source corrections/manual changes remain review protected.
+  Reused existing movements are explicitly left unchanged.
+
+## Implemented sales ledger fields — Phase 3.3.2
+
+| Field | Meaning and owner |
+| --- | --- |
+| Company/provider/full code | Active invoice identity; includes B01/B02 prefix |
+| source / items | Preserved source facts and each item occurrence; date/client/amount/items not editable here |
+| studio / channel / assignments | Separate decisions and mapping evidence/origins; manual choices survive reimport |
+| source.status_kind | Versioned paid/cancelled interpretation; later cancellation approved explicitly |
+| cancellation_treatment | Pending, refund expected, no refund or replacement; never a bank payment |
+| replacement / cancellation_note | Same-company active paid replacement and operator explanation |
+| contribution | Full original invoice total only while active and paid, otherwise zero; not profit |
+| revision / active / reconciled | Stale/undo guards; reversal preserves history; later bank matching must maintain guards |
+| SalesPosting/Decision/Event | Financial committer, source decisions and before/after audit, separate from raw uploader |
+
+## Implemented enriched source preview — Phase 3.4.1
+
+| Field | Meaning |
+| --- | --- |
+| selected_month | Pilot filter context, September 2026 initially; preserves all source rows outside it |
+| bank_date | Native Fecha/source transaction date; naming does not prove a bank account origin |
+| operation_date / expense_period | Preserved independent manual date/expense month |
+| payment_origin | Unknown in this workbook; no cash/bank inference |
+| legacy_reviewed | Preserved checkbox only; does not set reconciled status |
+| raw | Cell reference/type, saved value, formula text/attributes, saved result or error |
+| parsed | Preserved original/manual descriptions and known legacy assignments; not committed classifications |
+| summary / issues | Valid monetary/date totals by basis/type, ignored template rows, source review issues and partial-file status |
+
+
+## Shared receipt fields — Phase 3.3.3.2
+
+| Field | Meaning |
+| --- | --- |
+| PaymentImportBatch.origin / migration_batch | Routine report or initial workbook source, feeding shared receipts |
+| selected_month | Optional prepared source scope; null retains all payment dates |
+| FinancialReceipt.number | Normal external payment identity within company/provider; conflicting facts require review |
+| source / assignments | Preserved normalized source evidence versus current manual/configured interpretation |
+| sale / link_issue | Full positive receipt allocation to one eligible invoice, or explicit pending/review reason |
+| studio / effective_studio | Matched historical manual assignment, or inherited invoice studio; unknown labels stay pending |
+| edited / reconciled / revision | Manual-change and reconciliation protections, optimistic action revision |
+| PaymentDecision.resolution | Created/reused/pending/invalid/retained outcome for one source occurrence |
+| PaymentEvent | Immutable action, actor/time, before/after and reason evidence |
+
+
+## Alegra native transaction type (D-070)
+
+`Tipo de nota débito` is the transaction-type column, despite its vendor label.
+The prepared historical workbook calls this `Tipo_nota`; both map to source `kind`
+in their respective reader presets. `Ingreso` means organizational sales/customer
+collections and is the only type considered by the current receipt import flow.
+Receipts complement invoices; importing them does not add sales revenue again.
+`Egreso` means organizational purchases. Those are legitimate source transactions
+outside this import's scope, not malformed purchases. Current previews retain them
+as ineligible (`unsupported_payment_kind`, currently displayed under invalid source)
+and exclude them from incoming totals and receipt posting. They do not create
+expenses or bank debits. Preserve the original type and source cells for later use.
+
+
+## Implemented bank business assignments — migration0012
+
+BankMovementClassification is optional one-to-one with an existing BankMovement.
+Fields: description, operation_date, expense_period (month normalized to day1),
+category/subcategory/studio/terminal protected FKs, administration flag, channel,
+movement_kind and reviewed. BankMovement.source/fingerprint retain bank facts;
+classification never sets reconciled. Parent movement revision/account ledger
+revision and BankEvent classify snapshots audit changes. Completeness and recognized
+review are distinct from bank matching. See BANK_CLASSIFICATION_DELIVERY.md.

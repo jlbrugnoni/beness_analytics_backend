@@ -23,4 +23,5 @@ urlpatterns = [
     path("auth/", include("djoser.urls")),  # Djoser core routes
     path("auth/", include("djoser.urls.authtoken")),  # Token authentication
     path('api/data/', include('core_data.urls')),
+    path("api/finance/", include("finance.urls")),
 ]

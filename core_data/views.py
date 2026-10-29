@@ -144,19 +144,25 @@ class UserViewSet(viewsets.ViewSet):
         return Response(UserSerializer(user).data)
 
     def create(self, request):
-        serializer = UserSerializer(data=request.data)
+        serializer = UserSerializer(data=request.data, context={"request": request})
         serializer.is_valid(raise_exception=True)
 
         password = request.data.get("password")
         if not password:
             return Response({"error": "Password is required"}, status=status.HTTP_400_BAD_REQUEST)
 
-        groups = serializer.validated_data.pop("groups", [])
-        user = serializer.save()
-        user.set_password(password)
-        user.save()
-        if groups:
-            user.groups.set(groups)
+        from finance.audit import log_user_access_change, user_access_snapshot
+        from .access_management import save_user_profile
+        with transaction.atomic():
+            groups = serializer.validated_data.pop("groups", [])
+            user = serializer.save()
+            user.set_password(password)
+            user.save()
+            if groups:
+                user.groups.set(groups)
+            if "access_profile" in request.data:
+                save_user_profile(user, request.data["access_profile"], request)
+            log_user_access_change(request.user, user, "create", {}, user_access_snapshot(user))
 
         return Response(UserSerializer(user).data, status=status.HTTP_201_CREATED)
 
@@ -172,13 +178,24 @@ class UserViewSet(viewsets.ViewSet):
             if protected_fields.intersection(request.data.keys()):
                 return Response({"error": "Superuser role fields are protected in the app."}, status=status.HTTP_403_FORBIDDEN)
 
-        serializer = UserSerializer(user, data=request.data, partial=True)
+        serializer = UserSerializer(user, data=request.data, partial=True, context={"request": request})
         serializer.is_valid(raise_exception=True)
-        user = serializer.save()
-
-        if request.data.get("password"):
-            user.set_password(request.data["password"])
-            user.save()
+        from finance.audit import log_user_access_change, user_access_snapshot
+        from .access_management import save_user_profile
+        with transaction.atomic():
+            user = User.objects.select_for_update().get(pk=user.pk)
+            if user.is_superuser and not request.user.is_superuser:
+                from rest_framework.exceptions import PermissionDenied
+                raise PermissionDenied("Only a superuser can edit another superuser.")
+            serializer.instance = user
+            before = user_access_snapshot(user)
+            user = serializer.save()
+            if request.data.get("password"):
+                user.set_password(request.data["password"])
+                user.save()
+            if "access_profile" in request.data:
+                save_user_profile(user, request.data["access_profile"], request)
+            log_user_access_change(request.user, user, "update", before, user_access_snapshot(user))
 
         return Response(UserSerializer(user).data)
 
@@ -212,14 +229,32 @@ class UserViewSet(viewsets.ViewSet):
         return Response({"message": "Password updated successfully"})
 
 
-class GroupAccessProfileViewSet(viewsets.ModelViewSet):
+class AccessProfileAuditMixin:
+    def perform_create(self, serializer):
+        from .access_management import save_access_profile
+        save_access_profile(serializer, self.request.user)
+
+    def perform_update(self, serializer):
+        self.perform_create(serializer)
+
+    def perform_destroy(self, instance):
+        from finance.audit import access_snapshot, log_access_change
+        from rest_framework.exceptions import PermissionDenied
+        if hasattr(instance, "user") and instance.user.is_superuser and not self.request.user.is_superuser:
+            raise PermissionDenied("Only a superuser can change a superuser's access profile.")
+        with transaction.atomic():
+            log_access_change(self.request.user, instance, "delete", access_snapshot(instance), {})
+            instance.delete()
+
+
+class GroupAccessProfileViewSet(AccessProfileAuditMixin, viewsets.ModelViewSet):
     queryset = GroupAccessProfile.objects.select_related("group").all()
     serializer_class = GroupAccessProfileSerializer
     permission_classes = [IsAuthenticated, CapabilityPermission]
     required_capability = "can_manage_users"
 
 
-class UserAccessProfileViewSet(viewsets.ModelViewSet):
+class UserAccessProfileViewSet(AccessProfileAuditMixin, viewsets.ModelViewSet):
     serializer_class = UserAccessProfileSerializer
     permission_classes = [IsAuthenticated, CapabilityPermission]
     required_capability = "can_manage_users"
