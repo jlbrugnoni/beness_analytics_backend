@@ -54,6 +54,7 @@ def save_check(company,actor,summary,rows,values):
     if Decimal(totals['difference'])!=0 and not note:raise ValidationError({'note':'Explain the difference before marking this day checked.'})
     check=ClosureCheck.objects.select_for_update().filter(company=company,channel=channel,day=values['day']).first()
     if check and check.state=='checked' and check.evidence_token==token:return check
+    if check and check.state=='checked':raise ValidationError('An authorized user must reopen this day before checking it again.')
     if (check.revision if check else 0)!=values['expected_revision']:raise ConfigurationConflict('This check changed. Refresh before saving.')
     before=check_state(check) if check else {}
     if not check:check=ClosureCheck(company=company,channel=channel,day=values['day'])

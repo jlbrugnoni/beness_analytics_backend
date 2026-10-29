@@ -44,7 +44,10 @@ class MoneyLedgerTests(APITestCase):
     def test_expense_period_account_edit_and_void_are_audited_without_deletion(self):
         obj,body=self.create(direction='debit',expense_period='2026-08-01',category=self.category.pk,subcategory=self.sub.pk,reviewed=True)
         self.assertEqual(str(obj.classification.expense_period),'2026-08-01');self.assertTrue(obj.classification.reviewed)
-        response=self.client.post(f'/api/finance/movements/{obj.pk}/edit-entry/',{**body,'account':self.bank.pk,'date':'2026-09-02','amount':'150.00','expected_revision':1},format='json')
+        self.profile.can_reopen_finance=True;self.profile.save()
+        self.assertEqual(self.client.post(f'/api/finance/movements/{obj.pk}/reopen/',{'expected_revision':obj.revision},format='json').status_code,200)
+        obj.refresh_from_db();body['reviewed']=False
+        response=self.client.post(f'/api/finance/movements/{obj.pk}/edit-entry/',{**body,'account':self.bank.pk,'date':'2026-09-02','amount':'150.00','expected_revision':obj.revision},format='json')
         self.assertEqual(response.status_code,200,response.data);obj.refresh_from_db();self.assertEqual(obj.account_id,self.bank.pk);self.assertEqual(obj.source['amount'],'-150.00')
         audit=obj.events.get(action='manual_edit');self.assertEqual(audit.before['account'],self.cash.pk);self.assertEqual(audit.after['account'],self.bank.pk)
         stale=self.client.post(f'/api/finance/movements/{obj.pk}/edit-entry/',{**body,'expected_revision':1},format='json');self.assertEqual(stale.status_code,409)
@@ -107,7 +110,7 @@ class MoneyLedgerTests(APITestCase):
         bad=self.upload(fixtures.workbook(credits=[{'bank_date':'invalid','amount':40,'payment_method':'Efectivo'}])).data['id']
         self.assertEqual(self.cash_plan(bad)['rows'][0]['status'],'invalid')
         self.assertEqual(self.client.get(f'/api/finance/migration-imports/{batch}/cash-preview/?account={self.bank.pk}').status_code,404)
-        self.profile.can_import_finance=False;self.profile.save();self.assertEqual(self.import_cash(batch).status_code,403)
+        self.profile.can_import_finance_migration=False;self.profile.save();self.assertEqual(self.import_cash(batch).status_code,403)
 
     def test_imported_cash_facts_protected_but_classification_edit_works(self):
         batch=self.upload(self.cash_workbook()).data['id'];self.import_cash(batch);obj=BankMovement.objects.first()

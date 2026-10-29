@@ -54,7 +54,8 @@ class ClosureViewSet(viewsets.GenericViewSet):
         if company.accounts.exclude(pk__in=accounts.values('pk')).exists():raise PermissionDenied('Full company account visibility is required for closures.')
         summary,rows=compare(company,accounts,f['month'],f.get('studio'))
         attach_checks(company,summary,rows,f.get('studio'))
-        summary['can_check']=company.active and can_use_finance(request.user,'can_reconcile_finance') and not f.get('studio')
+        summary['can_check']=company.active and can_use_finance(request.user,'can_edit_finance') and not f.get('studio')
+        summary['can_reopen']=company.active and can_use_finance(request.user,'can_reopen_finance') and not f.get('studio')
         return summary,rows,f
 
     def list(self,request):
@@ -76,7 +77,7 @@ class ClosureViewSet(viewsets.GenericViewSet):
         from django.db import transaction
         from .models import Company
         from .closure_checks import save_check,reopen
-        if not can_use_finance(request.user,'can_reconcile_finance') or not can_use_finance(request.user,'can_view_finance_bank_accounts'):raise PermissionDenied()
+        if not can_use_finance(request.user,'can_reopen_finance' if operation=='reopen' else 'can_edit_finance') or not can_use_finance(request.user,'can_view_finance_bank_accounts'):raise PermissionDenied()
         class Input(serializers.Serializer):
             company=serializers.IntegerField(min_value=1)
             day=serializers.DateField()

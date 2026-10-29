@@ -15,7 +15,7 @@ class PaymentMatchingTests(APITestCase):
 
     def setUp(self):
         fixtures.ReceiptPostingTests.setUp(self)
-        self.profile.can_reconcile_finance=True;self.profile.save()
+        self.profile.can_edit_finance=True;self.profile.save()
 
     def prepare_group(self,total='3600.00',customer='Invoice Company',content=None):
         self.invoice=self.sale(total=total)
@@ -101,9 +101,9 @@ class PaymentMatchingTests(APITestCase):
         self.assertNotIn('matching_review',detail.data)  # New source facts now agree automatically.
 
     def test_reconcile_permission_scope_and_visibility_are_rechecked(self):
-        self.prepare_group();self.profile.can_reconcile_finance=False;self.profile.save()
+        self.prepare_group();self.profile.can_edit_finance=False;self.profile.save()
         self.assertEqual(self.review().status_code,403);self.assertEqual(self.refresh().status_code,403)
-        self.profile.can_reconcile_finance=True;self.profile.can_view_sensitive_finance=False;self.profile.save()
+        self.profile.can_edit_finance=True;self.profile.can_view_sensitive_finance=False;self.profile.save()
         self.assertEqual(self.client.get(f'/api/finance/receipts/{self.receipt.pk}/').status_code,403)
         self.profile.can_view_sensitive_finance=True;self.profile.allowed_sites.clear();self.profile.save()
         self.assertEqual(self.client.post(f'/api/finance/receipts/{self.receipt.pk}/review-link/',{}).status_code,404)

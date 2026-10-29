@@ -135,7 +135,7 @@ class MigrationReaderTests(SimpleTestCase):
 class MigrationAPITests(APITestCase):
     def setUp(self):
         self.user=get_user_model().objects.create_user('migration-preview@example.test');self.profile=get_or_create_user_access_profile(self.user)
-        for flag in ('can_view_money','can_view_finance','can_view_sensitive_finance','can_view_finance_bank_accounts','can_import_finance'):setattr(self.profile,flag,True)
+        for flag in ('can_view_money','can_view_finance','can_view_sensitive_finance','can_view_finance_bank_accounts','can_import_finance','can_import_finance_migration'):setattr(self.profile,flag,True)
         self.profile.save();self.site=Site.objects.create(name='Migration DO',country_code='DO');self.es=Site.objects.create(name='Migration ES',country_code='ES')
         self.company=Company.objects.create(name='Migration QA',site=self.site,default_currency='DOP');self.spain=Company.objects.create(name='Migration ES QA',site=self.es,default_currency='EUR')
         self.profile.allowed_sites.add(self.site);self.client.force_authenticate(self.user)
@@ -171,7 +171,7 @@ class MigrationAPITests(APITestCase):
         self.assertEqual(cells['expense_period']['readable_value'],'2026-09')
         self.assertEqual(cells['manual_description']['readable_value'],'Readable utility')
         self.assertEqual(cells['manual_description']['reported_value'],'0')
-        self.assertEqual(cells['manual_description']['column_label'],'Concepto')
+        self.assertEqual(cells['manual_description']['column_label'],'Descripción Original')
         self.assertEqual(cells['amount']['readable_value'],'100.00')
         self.assertIs(cells['legacy_reviewed']['readable_value'],True)
         row.refresh_from_db();batch.refresh_from_db()
@@ -215,7 +215,7 @@ class MigrationAPITests(APITestCase):
             setattr(self.profile,flag,False);self.profile.save()
             for path in paths:self.assertEqual(self.client.get(path).status_code,403,(flag,path))
             setattr(self.profile,flag,True);self.profile.save()
-        self.profile.can_import_finance=False;self.profile.save()
+        self.profile.can_import_finance_migration=False;self.profile.save()
         self.assertEqual(self.upload().status_code,403);self.assertEqual(self.client.get(paths[-1]).status_code,403)
         self.assertEqual(self.client.get(paths[1]).status_code,200)
 

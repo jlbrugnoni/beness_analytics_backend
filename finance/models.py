@@ -549,6 +549,7 @@ class SalesPosting(models.Model):
 
 
 class FinancialSale(models.Model):
+    reviewed = models.BooleanField(default=False)
     payment_link_review = models.JSONField(default=dict)
     company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name='financial_sales')
     provider = models.CharField(max_length=16, default='alegra')
@@ -678,6 +679,7 @@ class PaymentPosting(models.Model):
 
 
 class FinancialReceipt(models.Model):
+    reviewed = models.BooleanField(default=False)
     company = models.ForeignKey(Company,on_delete=models.PROTECT,related_name='financial_receipts')
     provider = models.CharField(max_length=16,default='alegra')
     number = models.CharField(max_length=64)

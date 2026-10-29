@@ -43,6 +43,10 @@ class MigrationBatchSerializer(serializers.ModelSerializer):
 
 
 class MigrationRowSerializer(serializers.ModelSerializer):
+    parsed=serializers.SerializerMethodField()
+    def get_parsed(self,obj):
+        from .migration_descriptions import parsed_business_fields
+        return parsed_business_fields(obj)
     bank_issue=serializers.SerializerMethodField()
     def get_bank_issue(self,obj):
         from .migration_bank import bank_issue
@@ -93,7 +97,7 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(list(migration_companies(request.user).values('id','name','active','default_currency')))
 
     def create(self,request):
-        if not can_use_finance(request.user,'can_import_finance'):raise PermissionDenied('Financial import permission is required.')
+        if not can_use_finance(request.user,'can_import_finance_migration'):raise PermissionDenied('Financial import permission is required.')
         serializer=MigrationUploadSerializer(data=request.data)
         serializer.fields['company'].queryset=migration_companies(request.user)
         serializer.is_valid(raise_exception=True);values=serializer.validated_data
@@ -107,7 +111,7 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
         name=''.join(c for c in values['file'].name.replace('\\','/').split('/')[-1] if ord(c)>=32)[:255] or 'migration.xlsx'
         with transaction.atomic():
             company=Company.objects.select_for_update().get(pk=values['company'].pk)
-            if not migration_companies(request.user).filter(pk=company.pk).exists() or not can_use_finance(request.user,'can_import_finance'):
+            if not migration_companies(request.user).filter(pk=company.pk).exists() or not can_use_finance(request.user,'can_import_finance_migration'):
                 raise PermissionDenied('Migration access changed. Reload before uploading.')
             if not company.active:raise serializers.ValidationError({'company':'Activate the company before uploading.'})
             prior=MigrationImportBatch.objects.filter(company=company,file_hash=digest).order_by('pk').first()
@@ -122,14 +126,14 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True,methods=['post'],url_path='copy-to-company')
     def copy_to_company(self,request,pk=None):
         source=self.get_object()
-        if not can_use_finance(request.user,'can_import_finance'):raise PermissionDenied()
+        if not can_use_finance(request.user,'can_import_finance_migration'):raise PermissionDenied()
         class Input(serializers.Serializer):
             company=serializers.PrimaryKeyRelatedField(queryset=Company.objects.none())
         data=Input(data=request.data);data.fields['company'].queryset=migration_companies(request.user)
         data.is_valid(raise_exception=True)
         with transaction.atomic():
             company=Company.objects.select_for_update().get(pk=data.validated_data['company'].pk)
-            if not migration_companies(request.user).filter(pk=company.pk).exists() or not migration_companies(request.user).filter(pk=source.company_id).exists() or not can_use_finance(request.user,'can_import_finance'):raise PermissionDenied()
+            if not migration_companies(request.user).filter(pk=company.pk).exists() or not migration_companies(request.user).filter(pk=source.company_id).exists() or not can_use_finance(request.user,'can_import_finance_migration'):raise PermissionDenied()
             if not company.active or company.pk==source.company_id:raise serializers.ValidationError('Choose another active company.')
             prior=MigrationImportBatch.objects.filter(company=company,file_hash=source.file_hash).order_by('pk').first()
             batch=MigrationImportBatch.objects.create(company=company,selected_month=source.selected_month,supervised=source.supervised,
@@ -164,7 +168,7 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
         data.fields['account'].queryset=visible_accounts(request.user).filter(company=batch.company,kind='bank')
         data.is_valid(raise_exception=True)
         if not data.validated_data['confirm_bank_origin']:raise serializers.ValidationError('Confirm that selected rows were paid through the chosen bank account.')
-        with locked_account(request.user,data.validated_data['account'].pk,['can_import_finance']) as account:
+        with locked_account(request.user,data.validated_data['account'].pk,['can_import_finance_migration']) as account:
             if not migration_companies(request.user).filter(pk=batch.company_id).exists():raise PermissionDenied()
             derived=prepare(batch,account,request.user,data.validated_data['row_ids'])
         return Response(BankBatchSerializer(derived).data,status=201)
@@ -190,7 +194,7 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
             expected_plan=serializers.CharField(min_length=64,max_length=64)
         data=Input(data=request.data);data.is_valid(raise_exception=True);batch=self.get_object()
         selected=self.cash_account(request,batch,data.validated_data['account'])
-        with locked_account(request.user,selected.pk,['can_import_finance'],bank_only=False) as account:
+        with locked_account(request.user,selected.pk,['can_import_finance_migration'],bank_only=False) as account:
             if not migration_companies(request.user).filter(pk=batch.company_id).exists():raise PermissionDenied()
             if batch.status!='preview' or batch.file_issues:raise serializers.ValidationError('Use a readable workbook.')
             result=import_cash(batch,account,request.user,data.validated_data['expected_plan'])
@@ -209,7 +213,7 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
         v=data.validated_data;batch=self.get_object();selected=self.cash_account(request,batch,v['account'])
         if request.method=='GET':return Response(recovery_plan(batch,selected,request.user,v['mode']))
         if not v.get('expected_plan') or not v.get('note'):raise serializers.ValidationError('Review the preview and provide a reason.')
-        with locked_account(request.user,selected.pk,['can_import_finance','can_edit_finance'],bank_only=False) as account:
+        with locked_account(request.user,selected.pk,['can_import_finance_migration','can_edit_finance'],bank_only=False) as account:
             if not migration_companies(request.user).filter(pk=batch.company_id).exists():raise PermissionDenied()
             return Response(recover_cash(batch,account,request.user,v['mode'],v['expected_plan'],v['note']))
 
@@ -237,7 +241,7 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
         from .migration_sales import read_workbook_sales
         from .models import SalesImportBatch,SalesImportRow,SalesImportInvoice,PaymentImportBatch
         source=self.get_object()
-        with locked_company(request.user,source.company_id,['can_import_finance']) as company:
+        with locked_company(request.user,source.company_id,['can_import_finance_migration']) as company:
             if not migration_companies(request.user).filter(pk=company.pk).exists():raise PermissionDenied()
             sales=source.sales_imports.select_related('company','posting').order_by('-pk').first()
             payments=PaymentImportBatch.objects.filter(migration_batch=source,selected_month__isnull=True).select_related('company','posting').order_by('-pk').first()
@@ -315,7 +319,7 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True,methods=['get'])
     def original(self,request,pk=None):
-        if not can_use_finance(request.user,'can_import_finance'):raise PermissionDenied('Import permission is required to retrieve originals.')
+        if not can_use_finance(request.user,'can_import_finance_migration'):raise PermissionDenied('Import permission is required to retrieve originals.')
         batch=self.get_object()
         response=FileResponse(io.BytesIO(bytes(batch.original_file)),as_attachment=True,filename=batch.file_name,
             content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')

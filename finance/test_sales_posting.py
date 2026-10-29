@@ -13,7 +13,7 @@ class SalesPostingTests(APITestCase):
     def setUp(self):
         self.user=get_user_model().objects.create_user('sales-posting@example.test')
         self.profile=get_or_create_user_access_profile(self.user)
-        for key in ('can_view_money','can_view_finance','can_import_finance','can_edit_finance','can_view_sensitive_finance'):
+        for key in ('can_view_money','can_view_finance','can_import_finance','can_import_finance_migration','can_edit_finance','can_view_sensitive_finance'):
             setattr(self.profile,key,True)
         self.profile.save()
         self.site=Site.objects.create(name='Sales Posting DO',country_code='DO')

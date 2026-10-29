@@ -73,6 +73,11 @@ def resolve(batch,company,actor,row_id,expected,action,receipt_id=None,distinct=
         if existing and existing.pk!=receipt.pk:raise ConfigurationConflict('That source number already belongs to another payment.')
         decision.resolution='identity_linked'
     elif action=='create':
+        from .models import FinancialSale
+        sale=FinancialSale.objects.filter(company=company,provider=batch.provider,code=source.get('invoice_code'),active=True).first()
+        if sale:
+            from .review_workflow import assert_sale_editable
+            assert_sale_editable(sale)
         if existing:raise ConfigurationConflict('That source number already exists. Link its payment instead.')
         if matches and not distinct:raise ValidationError('Matching payments exist. Link one or explicitly confirm this is a separate payment.')
         mapping=ops.assignments(company,source)

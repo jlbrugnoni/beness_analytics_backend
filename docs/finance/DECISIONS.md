@@ -163,3 +163,12 @@ not a new permission grant or production approval. See ALEGRA_SEPTEMBER_ACCEPTAN
 
 The main discovery batch is resolved. Detailed implementation questions must
 reference a specific remaining case rather than reopen settled policy.
+
+
+D-095 (2026-10-29, client requested): supervised historical operational records arrive
+reviewed when essential fields are complete; routine entries require explicit review.
+Invoice and linked payments form one review unit. Reviewed work is read-only until
+explicitly reopened by a separately authorized user. Separate routine upload, migration
+upload, edit/review/close-day, reopen-entry/day and settings management capabilities;
+new grants default false. Source financial facts remain immutable through classification.
+See REVIEW_WORKFLOW.md for completion criteria, upgrades and scope boundaries.

@@ -100,11 +100,15 @@ class BankClassificationTests(APITestCase):
         self.assertEqual(self.client.get(url,{'company':self.company.pk,'kind':'debit','status':'reviewed'}).data['count'],0)
         self.assertEqual(self.client.get(url,{'company':self.company.pk,'kind':'debit','status':'unreviewed'}).data['count'],1)
 
-    def test_removing_required_data_clears_review_and_updates_filters(self):
+    def test_review_lock_requires_reopen_before_removing_required_data(self):
         self.records()
         response=self.assign(self.credit,movement_kind='customer_receipt',studio=self.studio.pk,
             channel='cash',operation_date='2026-09-01',reviewed=True)
         self.assertEqual(response.status_code,200,response.data)
+        self.credit.refresh_from_db()
+        self.assertEqual(self.assign(self.credit,operation_date=None).status_code,400)
+        self.profile.can_reopen_finance=True;self.profile.save()
+        self.assertEqual(self.client.post(f'/api/finance/movements/{self.credit.pk}/reopen/',{'expected_revision':self.credit.revision},format='json').status_code,200)
         self.credit.refresh_from_db()
         response=self.assign(self.credit,operation_date=None)
         self.assertEqual(response.status_code,200,response.data)
@@ -128,7 +132,7 @@ class BankClassificationTests(APITestCase):
         response=self.assign(self.credit,terminal=terminal.pk,channel='card_terminal',studio=self.studio.pk,operation_date='2026-08-30',movement_kind='customer_receipt',reviewed=True)
         self.assertEqual(response.status_code,200,response.data);self.assertFalse(response.data['needs_review'])
         other=Terminal.objects.create(account=self.foreign,identifier='OTHER',studio=Studio.objects.create(site=self.es,name='Foreign studio'),channel='card_terminal')
-        self.credit.refresh_from_db();self.assertEqual(self.assign(self.credit,terminal=other.pk).status_code,404)
+        self.credit.refresh_from_db();self.assertEqual(self.assign(self.credit,terminal=other.pk).status_code,400)
         self.assertEqual(self.assign(self.credit,expense_period='2026-08-01').status_code,400)
         self.assertEqual(self.assign(self.debit,operation_date='2026-08-30').status_code,400)
 

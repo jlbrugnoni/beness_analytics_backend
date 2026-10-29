@@ -37,6 +37,7 @@ class WorkspaceTests(APITestCase):
         self.assertEqual(self.invoices(status='review').data['count'],2)
         for receipt in FinancialReceipt.objects.all():
             receipt.assignments={**receipt.assignments,'channel_review':False};receipt.save()
+        first.reviewed=True;first.save(update_fields=['reviewed'])
         result=self.invoices(status='review');self.assertEqual(result.data['count'],1)
         self.assertEqual(result.data['results'][0]['id'],second.pk)
         self.assertEqual(self.invoices(start='2026-10-01',end='2026-09-01').status_code,400)

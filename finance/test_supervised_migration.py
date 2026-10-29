@@ -63,14 +63,14 @@ class SupervisedAlegraTests(APITestCase):
     setUp=migration.MigrationAPITests.setUp
     commit=sales.WorkbookAlegraAPITests.commit
 
-    def load(self,supervised,conflict=False):
+    def load(self,supervised,conflict=False,invoice_method_missing=False):
         studio=Studio.objects.create(site=self.site,name='Studio QA')
         SourceMapping.objects.create(company=self.company,source_field='alegra_cost_center',source_value='Studio QA',studio=studio)
         SourceMapping.objects.create(company=self.company,source_field='alegra_payment_method',source_value='Tarjeta crédito',channel='card_terminal',requires_review=True)
         if conflict:
             other=Studio.objects.create(site=self.site,name='Other')
             SourceMapping.objects.create(company=self.company,source_field='alegra_price_list',source_value='Other',studio=other)
-        source=sales.combined([{'price_list':'Other'}] if conflict else None)
+        source=sales.combined([{'price_list':'Other'}] if conflict else [{'payment_method':''}] if invoice_method_missing else None)
         response=migration.MigrationAPITests.upload(self,source,supervised=supervised)
         prepared=self.client.post(f"/api/finance/migration-imports/{response.data['id']}/prepare-alegra/",{},format='json')
         self.assertEqual(prepared.status_code,200,prepared.data)
@@ -100,3 +100,23 @@ class SupervisedAlegraTests(APITestCase):
         self.assertTrue(sale.assignments['requires_review'])
         self.assertIn('studio_conflict',sale.assignments['warnings'])
         self.assertFalse(receipt.assignments['channel_review'])
+
+    def test_supervised_invoice_uses_payment_methods_instead_of_requiring_invoice_method(self):
+        sale,receipt=self.load(True,invoice_method_missing=True)
+        self.assertTrue(sale.reviewed)
+        self.assertEqual(sale.channel,'')
+        self.assertTrue(receipt.reviewed)
+        self.assertFalse(sale.assignments['requires_review'])
+        self.assertFalse(sale.source.get('payment_method'))
+
+    def test_explicit_reopen_is_not_auto_completed_by_historical_refresh(self):
+        from .payment_posting import refresh_links
+        sale,receipt=self.load(True)
+        self.assertTrue(sale.reviewed)
+        self.profile.can_reopen_finance=True;self.profile.save()
+        response=self.client.post(f'/api/finance/sales/{sale.pk}/reopen/',{'expected_revision':sale.revision},format='json')
+        self.assertEqual(response.status_code,200,response.data)
+        refresh_links(self.company,self.user)
+        sale.refresh_from_db();receipt.refresh_from_db()
+        self.assertFalse(sale.reviewed);self.assertFalse(receipt.reviewed)
+        self.assertTrue(sale.assignments['review_reopened'])

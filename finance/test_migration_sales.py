@@ -116,6 +116,6 @@ class WorkbookAlegraAPITests(APITestCase):
 
     def test_scope_and_permissions(self):
         batch=self.upload(combined()).data['id']
-        self.profile.can_import_finance=False;self.profile.save()
+        self.profile.can_import_finance_migration=False;self.profile.save()
         self.assertEqual(self.prepare(batch).status_code,403)
         self.assertFalse(SalesImportBatch.objects.exists());self.assertFalse(PaymentImportBatch.objects.exists())

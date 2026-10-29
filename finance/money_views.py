@@ -83,6 +83,8 @@ class MoneyMovementViewSet(BankMovementViewSet):
                 for account_id in sorted({original.account_id,v['account'].pk})}
             obj=get_object_or_404(self.get_queryset().select_for_update(of=('self',)),pk=original.pk,active=True)
             if not obj.manual_key or obj.historical_row_id or obj.created_from_id:raise serializers.ValidationError('Imported financial facts are read-only.')
+            from .review_workflow import assert_bank_editable
+            assert_bank_editable(obj)
             if obj.reconciled or obj.decisions.filter(posting__status__in=['active','partial_undo']).exists():raise serializers.ValidationError('This entry has linked evidence. Review that linkage first.')
             if v.get('expected_revision')!=obj.revision or obj.account_id!=original.account_id:raise ConfigurationConflict('The entry changed. Reload before saving.')
             if v['direction']!=obj.source['direction']:raise serializers.ValidationError('Void an incorrect entry and create one in the correct direction.')
@@ -105,6 +107,8 @@ class MoneyMovementViewSet(BankMovementViewSet):
             obj=get_object_or_404(self.get_queryset().select_for_update(of=('self',)),pk=original.pk)
             if not obj.manual_key:raise serializers.ValidationError('Use the source import review/undo for imported entries.')
             if obj.revision!=data.validated_data['expected_revision']:raise ConfigurationConflict('The entry changed.')
+            from .review_workflow import assert_bank_editable
+            assert_bank_editable(obj)
             if obj.reconciled or obj.decisions.filter(posting__status__in=['active','partial_undo']).exists():raise serializers.ValidationError('Linked or reconciled entries cannot be voided here.')
             before=ledger.movement_data(obj);obj.active=False;obj.revision+=1;obj.save(update_fields=['active','revision','updated_at'])
             ledger.event(None,request.user,'manual_void',obj,before=before,note=data.validated_data['note']);ledger.advance(account)

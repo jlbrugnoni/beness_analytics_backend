@@ -484,3 +484,10 @@ reference. Check duplicate occurrences and future numbered overlaps. Independent
 source errors and invoice-link discrepancies remain reviewable. This supersedes the
 D-093 requirement to obtain external payment IDs before resolving these rows.
 See PAYMENT_IDENTITY_REVIEW.md.
+
+
+2026-10-29 — D-095 review policy: supervised historical completion depends on essential
+operational information, not redundant invoice payment-method mappings. Routine
+entries remain pending until an editor explicitly reviews them. Reviewed entries and
+invoice/payment groups lock; only the reopen capability unlocks them. Editors close
+days; reopeners reopen them. See REVIEW_WORKFLOW.md for the authoritative matrix.

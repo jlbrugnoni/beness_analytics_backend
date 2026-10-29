@@ -1,5 +1,6 @@
 """Explicitly selected historical bank entries reuse the normal bank posting ledger."""
 from decimal import Decimal
+from .migration_descriptions import parsed_business_fields
 from .models import BankImportBatch, BankImportRow, BankMovement, BankMovementClassification, BankDecision, Category, Terminal
 from .bank_readers import normalized
 from .bank_identity import description_text, identity_fields
@@ -16,7 +17,7 @@ def bank_issue(row):
 
 
 def bank_source(row):
-    raw=row.parsed
+    raw=parsed_business_fields(row)
     return {'bank_date':row.bank_date.isoformat(),'amount':str(row.amount),'balance':raw.get('balance'),
         'currency':'DOP','direction':row.kind,'description':raw.get('original_description') or '',
         'short_description':'','reference':raw.get('reference') or '', 'serial':raw.get('serial') or ''}
@@ -45,7 +46,7 @@ def prepare(batch,account,actor,ids):
     debit=-sum((row.amount for row in selected if row.kind=='debit'),Decimal(0))
     derived=BankImportBatch.objects.create(account=account,provider='popular',migration_batch=batch,
         file_name=batch.file_name,file_hash=batch.file_hash,byte_size=batch.byte_size,original_file=batch.original_file,
-        encoding='xlsx',parser_version='historical-bank-v1',status='preview',summary={
+        encoding='xlsx',parser_version='historical-bank-v2',status='preview',summary={
             'valid_rows':len(selected),'invalid_rows':0,'currency':'DOP','credit_total':str(credit),
             'debit_total':str(debit),'net_total':str(credit-debit),'financial_records_created':0,
             'origin':'historical','bank_origin_confirmed':True,'confirmed_row_ids':sorted(chosen)})
@@ -59,7 +60,7 @@ def prepare(batch,account,actor,ids):
 def map_assignments(movement,row):
     """Keep workbook manual decisions; resolve only exact, unambiguous configured labels."""
     if not row.migration_row_id:return
-    raw=row.migration_row.parsed;item=BankMovementClassification(movement=movement,movement_kind=effective_kind(row.migration_row.kind,None));company=movement.account.company
+    raw=parsed_business_fields(row.migration_row);item=BankMovementClassification(movement=movement,movement_kind=effective_kind(row.migration_row.kind,None));company=movement.account.company
     item.description=raw.get('manual_description') or ''
     item.operation_date=row.migration_row.operation_date if row.migration_row.kind=='credit' else None
     item.expense_period=row.migration_row.expense_period if row.migration_row.kind=='debit' else None
@@ -122,7 +123,8 @@ def assignment_conflicts(movement,row):
 
 def apply_assignments(movement,row,fill=False):
     if not row.migration_row_id:return False
-    if fill and (movement.reconciled or assignment_conflicts(movement,row)):return False
+    from .review_workflow import bank_locked
+    if fill and (bank_locked(movement) or movement.events.filter(action='reopen').exists() or movement.reconciled or assignment_conflicts(movement,row)):return False
     from datetime import date
     values=row.migration_assignments
     from rest_framework.exceptions import ValidationError

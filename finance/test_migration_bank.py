@@ -78,7 +78,7 @@ class HistoricalBankTests(APITestCase):
         self.assertEqual(self.prepare(batch,row_ids=[]).status_code,400)
         foreign=Account.objects.create(company=self.spain,name='Foreign',currency='EUR')
         self.assertEqual(self.prepare(batch,account=foreign.pk).status_code,400)
-        self.profile.can_import_finance=False;self.profile.save()
+        self.profile.can_import_finance_migration=False;self.profile.save()
         self.assertEqual(self.prepare(batch).status_code,403)
         self.assertFalse(BankImportBatch.objects.exists())
 
@@ -174,10 +174,14 @@ class HistoricalBankTests(APITestCase):
     def test_historical_undo_preserves_original_workbook_and_has_no_double_post(self):
         batch=self.migration();prepared=self.prepare(batch);self.commit(prepared.data['id'])
         url=f"/api/finance/bank-imports/{prepared.data['id']}/"
+        self.profile.can_reopen_finance=True;self.profile.save()
+        for movement in BankMovement.objects.filter(active=True):
+            if movement.classification.reviewed:self.assertEqual(self.client.post(f'/api/finance/movements/{movement.pk}/reopen/',{'expected_revision':movement.revision},format='json').status_code,200)
         plan=self.client.get(url+'undo-preview/').data
         response=self.client.post(url+'undo/',{'expected_plan':plan['token'],'note':'Synthetic test reset'},format='json')
         self.assertEqual(response.status_code,200,response.data)
-        self.assertEqual(BankMovement.objects.filter(active=True).count(),0)
+        self.assertEqual(BankMovement.objects.filter(active=True).count(),1) # Reopened classification keeps its audit protection.
+        self.assertEqual(response.data['protected'][0]['reason'],'changed')
         self.assertEqual(MigrationImportBatch.objects.get(pk=batch).rows.count(),2)
 
     def test_copy_preview_requires_target_scope_and_preserves_original(self):
@@ -192,7 +196,7 @@ class HistoricalBankTests(APITestCase):
         self.assertEqual(clone.rows.count(),source.rows.count())
         self.assertEqual(source.company_id,self.company.pk)
         self.assertEqual(BankMovement.objects.count(),0)
-        self.profile.can_import_finance=False;self.profile.save()
+        self.profile.can_import_finance_migration=False;self.profile.save()
         self.assertEqual(self.client.post(f'/api/finance/migration-imports/{batch}/copy-to-company/',{'company':target.pk},format='json').status_code,403)
 
     def test_same_workbook_row_cannot_be_posted_twice_to_different_accounts(self):

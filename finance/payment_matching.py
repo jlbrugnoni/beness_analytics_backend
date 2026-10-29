@@ -20,14 +20,14 @@ def context(sale,receipts):
     valid=sale.active and sale.source.get('status_kind')=='paid' and invoice_total>0 and bool(receipts)
     currency_matches=all(r.source.get('currency',sale.company.default_currency)==sale.source.get('currency',sale.company.default_currency) for r in receipts)
     valid=valid and currency_matches
-    return {'invoice_id':sale.pk,'invoice_code':sale.code,'invoice_customer':sale.source.get('customer') or '',
+    return {'invoice_id':sale.pk,'invoice_reviewed':sale.reviewed,'invoice_code':sale.code,'invoice_customer':sale.source.get('customer') or '',
         'invoice_status':sale.source.get('status') or sale.source.get('status_kind'),'currency':sale.source.get('currency',sale.company.default_currency),
         'invoice_total':f'{invoice_total:.2f}','payment_total':f'{total:.2f}',
         'difference':f'{total-invoice_total:.2f}','names_differ':bool(names_differ),
         'currency_matches':currency_matches,
         'amounts_equal':total==invoice_total,'basis_token':basis,'approved':approved,
         'approval':sale.payment_link_review if approved else None,
-        'can_accept':bool(valid and not sale.reconciled and not any(r.reconciled for r in receipts)),
+        'can_accept':bool(valid and not sale.reviewed and not sale.reconciled and not any(r.reconciled for r in receipts)),
         'payment_count':len(receipts),
         'payments':[{'id':r.pk,'number':f'Manual #{r.pk}' if r.number.startswith('manual-') else r.number,'customer':r.source.get('customer') or '',
             'date':r.source.get('date'),'amount':r.source['amount']} for r in receipts]}
@@ -48,6 +48,8 @@ def review(receipt,company,actor,expected,decision,note):
     sale=receipt.sale or FinancialSale.objects.filter(company=company,provider=receipt.provider,
         code=receipt.source.get('invoice_code'),active=True).select_related('company').first()
     if not sale:raise ValidationError('Import a valid invoice before reviewing its payments.')
+    from .review_workflow import assert_sale_editable
+    assert_sale_editable(sale)
     receipts=list(FinancialReceipt.objects.filter(company=company,provider=receipt.provider,
         active=True,source__invoice_code=sale.code).order_by('pk'))
     current=context(sale,receipts)

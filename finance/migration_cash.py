@@ -58,6 +58,7 @@ def import_cash(batch,account,actor,expected):
 
 
 def recovery_plan(batch,account,actor,mode):
+    from .review_workflow import bank_locked
     """Undo/restore only unchanged own imports, never silently erase subsequent work."""
     from .access import can_use_finance
     from .bank_posting import movement_data
@@ -68,13 +69,14 @@ def recovery_plan(batch,account,actor,mode):
     checked=set()
     for check in ClosureCheck.objects.filter(company=batch.company,state='checked'):
         checked.update(r['id'] for r in check.snapshot.get('records',[]) if r.get('side')=='actual')
-    can_write=can_use_finance(actor,'can_import_finance') and can_use_finance(actor,'can_edit_finance')
+    can_write=can_use_finance(actor,'can_import_finance_migration') and can_use_finance(actor,'can_edit_finance')
     manager=can_use_finance(actor,'can_manage_finance_settings')
     eligible=[];protected=[];states=[]
     for item in items:
         if item.active!=(mode=='undo'):continue
         latest=item.events.order_by('-pk').first();reason=None
         if not can_write or (item.manual_actor_id!=actor.pk and not manager):reason='permission'
+        elif item.active and bank_locked(item):reason='reviewed'
         elif item.reconciled or item.pk in checked:reason='checked'
         elif not latest or latest.action not in (('cash_migration','cash_migration_restore') if mode=='undo' else ('cash_migration_undo',)):reason='changed'
         elif latest.after!=movement_data(item):reason='changed'

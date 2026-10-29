@@ -49,7 +49,8 @@ class ClosureAccessTests(APITestCase):
                 self.profile.save()
 
     def test_viewer_can_read_history_but_cannot_check_or_reopen(self):
-        self.profile.can_reconcile_finance = False
+        self.profile.can_edit_finance = False
+        self.profile.can_reopen_finance = False
         self.profile.save()
         response = self.client.get('/api/finance/closures/history/', self.filters)
         self.assertEqual(response.status_code, 200)
@@ -78,10 +79,11 @@ class ClosureAccessTests(APITestCase):
         self.assert_denied(404)
 
     def test_existing_group_capabilities_can_authorize_reopening_without_user_override(self):
-        self.profile.can_reconcile_finance = False
+        self.profile.can_edit_finance = False
+        self.profile.can_reopen_finance = False
         self.profile.save()
         group = Group.objects.create(name='Closure test partner')
-        GroupAccessProfile.objects.update_or_create(group=group, defaults={'can_reconcile_finance': True})
+        GroupAccessProfile.objects.update_or_create(group=group, defaults={'can_edit_finance': True,'can_reopen_finance':True})
         self.user.groups.add(group)
         self.assertTrue(self.get()['can_check'])
         response = self.client.post('/api/finance/closures/reopen/', self.payload, format='json')

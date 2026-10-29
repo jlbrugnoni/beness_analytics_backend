@@ -1,3 +1,4 @@
+from .review_workflow import import_capability
 import hashlib
 import io
 from contextlib import contextmanager
@@ -120,7 +121,7 @@ class PaymentImportViewSet(PrivatePayments):
             scope=serializers.ChoiceField(choices=['selected','all'],default='selected')
         data=Input(data=request.data);data.is_valid(raise_exception=True)
         source=get_object_or_404(MigrationImportBatch.objects.filter(company__in=migration_companies(request.user)),pk=data.validated_data['migration_batch'])
-        with locked(request.user,source.company_id,['can_import_finance']) as company:
+        with locked(request.user,source.company_id,['can_import_finance_migration']) as company:
             parsed=read_payment_preview(bytes(source.original_file))
             month=source.selected_month if data.validated_data['scope']=='selected' else None
             batch=store(company,request.user,bytes(source.original_file),parsed,source.file_name,source,month)
@@ -139,8 +140,8 @@ class PaymentImportViewSet(PrivatePayments):
             if search:result['rows']=[r for r in result['rows'] if search in (r['invoice_code'] or '')]
             result['rows']=self.get_paginated_response(self.paginate_queryset(result['rows'])).data
             result.update(posting={'id':posting.pk,'status':posting.status,'revision':posting.revision} if posting else None,
-                can_commit=bool(not posting and not batch.file_issues and batch.rows.exists() and company.active and can_use_finance(request.user,'can_import_finance')),
-                can_review=bool(posting and posting.status=='active' and company.active and can_use_finance(request.user,'can_import_finance') and can_use_finance(request.user,'can_edit_finance')),
+                can_commit=bool(not posting and not batch.file_issues and batch.rows.exists() and company.active and can_use_finance(request.user,import_capability(batch))),
+                can_review=bool(posting and posting.status=='active' and company.active and can_use_finance(request.user,'can_edit_finance')),
                 can_undo=bool(posting and posting.status in ('active','partial_undo') and company.active and may_undo(request.user,posting)))
             return Response(result)
 
@@ -148,7 +149,7 @@ class PaymentImportViewSet(PrivatePayments):
     def commit(self,request,pk=None):
         class Input(serializers.Serializer):expected_plan=serializers.CharField(min_length=64,max_length=64)
         data=Input(data=request.data);data.is_valid(raise_exception=True);batch=self.get_object()
-        with locked(request.user,batch.company_id,['can_import_finance']) as company:
+        with locked(request.user,batch.company_id,[import_capability(batch)]) as company:
             posting=operations.commit(batch,company,request.user,data.validated_data['expected_plan'])
             return Response({'posting_id':posting.pk,'status':posting.status})
 
@@ -164,7 +165,7 @@ class PaymentImportViewSet(PrivatePayments):
             note=serializers.CharField(max_length=2000,allow_blank=True,default='')
         if set(request.data)-{'row_id','expected_plan','action','receipt_id','distinct','note'}:raise serializers.ValidationError('Source values are read-only.')
         data=Input(data=request.data);data.is_valid(raise_exception=True);batch=self.get_object()
-        with locked(request.user,batch.company_id,['can_import_finance','can_edit_finance']) as company:
+        with locked(request.user,batch.company_id,['can_edit_finance']) as company:
             return Response(resolve(batch,company,request.user,row_id=data.validated_data['row_id'],expected=data.validated_data['expected_plan'],action=data.validated_data['action'],receipt_id=data.validated_data.get('receipt_id'),distinct=data.validated_data['distinct'],note=data.validated_data['note']))
 
     @action(detail=True,methods=['get'],url_path='source-row')
@@ -181,7 +182,7 @@ class PaymentImportViewSet(PrivatePayments):
             expected_revision=serializers.IntegerField(min_value=1)
             note=serializers.CharField(max_length=2000,allow_blank=False)
         data=Input(data=request.data);data.is_valid(raise_exception=True);v=data.validated_data;batch=self.get_object()
-        with locked(request.user,batch.company_id,['can_import_finance','can_edit_finance']) as company:
+        with locked(request.user,batch.company_id,['can_edit_finance']) as company:
             if v['expected_plan']!=operations.token(company,batch):raise ConfigurationConflict('Payments changed. Reload the plan.')
             d=get_object_or_404(PaymentDecision,posting__batch=batch,pk=v['decision_id'])
             operations.retain(d,company,request.user,v['note'],v['expected_revision']);return Response({'resolution':d.resolution})
@@ -200,15 +201,16 @@ class PaymentImportViewSet(PrivatePayments):
             expected_plan=serializers.CharField(min_length=64,max_length=64)
             note=serializers.CharField(max_length=2000,allow_blank=False)
         data=Input(data=request.data);data.is_valid(raise_exception=True);batch=self.get_object()
-        with locked(request.user,batch.company_id,['can_import_finance','can_edit_finance']) as company:
+        with locked(request.user,batch.company_id,[import_capability(batch),'can_edit_finance']) as company:
             posting=get_object_or_404(PaymentPosting,batch=batch)
             if not may_undo(request.user,posting):raise PermissionDenied('You cannot undo this posting.')
             return Response(operations.undo(posting,company,request.user,data.validated_data['expected_plan'],data.validated_data['note']))
 
     @action(detail=True,methods=['get'])
     def original(self,request,pk=None):
-        if not can_use_finance(request.user,'can_import_finance'):raise PermissionDenied('Import permission is required.')
-        batch=self.get_object();content=bytes(batch.migration_batch.original_file) if batch.migration_batch_id else bytes(batch.original_file)
+        batch=self.get_object()
+        if not can_use_finance(request.user,import_capability(batch)):raise PermissionDenied('Import permission is required.')
+        content=bytes(batch.migration_batch.original_file) if batch.migration_batch_id else bytes(batch.original_file)
         response=FileResponse(io.BytesIO(content),as_attachment=True,filename=batch.file_name)
         response['X-Content-Type-Options']='nosniff';return response
 
@@ -253,7 +255,7 @@ class FinancialReceiptViewSet(PrivatePayments):
     def refresh_matching(self,request):
         class Input(serializers.Serializer):company=serializers.IntegerField(min_value=1)
         data=Input(data=request.data);data.is_valid(raise_exception=True)
-        with locked(request.user,data.validated_data['company'],['can_reconcile_finance']) as company:
+        with locked(request.user,data.validated_data['company'],['can_edit_finance']) as company:
             return Response({'updated':operations.refresh_links(company,request.user)})
 
     @action(detail=True,methods=['post'],url_path='review-link')
@@ -265,7 +267,7 @@ class FinancialReceiptViewSet(PrivatePayments):
             note=serializers.CharField(max_length=2000,allow_blank=True,required=False,default='')
         if set(request.data)-{'expected_token','decision','note'}:raise serializers.ValidationError('Source facts are read-only.')
         original=self.get_object();data=Input(data=request.data);data.is_valid(raise_exception=True);v=data.validated_data
-        with locked(request.user,original.company_id,['can_reconcile_finance']) as company:
+        with locked(request.user,original.company_id,['can_edit_finance']) as company:
             receipt=get_object_or_404(self.get_queryset(),pk=original.pk,active=True)
             return Response(review(receipt,company,request.user,v['expected_token'],v['decision'],v['note']))
 
@@ -289,7 +291,7 @@ class FinancialReceiptViewSet(PrivatePayments):
             expected_revision=serializers.IntegerField(min_value=1)
             channel=serializers.ChoiceField(choices=[v for v,label in SourceMapping.CHANNELS],allow_null=True,required=False)
             studio=serializers.PrimaryKeyRelatedField(queryset=Studio.objects.none(),allow_null=True,required=False)
-            note=serializers.CharField(max_length=2000,allow_blank=False)
+            note=serializers.CharField(max_length=2000,allow_blank=True,default='')
         if set(request.data)-{'expected_revision','channel','studio','note'}:raise serializers.ValidationError('Source facts are read-only.')
         original=self.get_object();data=Input(data=request.data)
         data.fields['studio'].queryset=Studio.objects.filter(site_id=original.company.site_id)
@@ -298,6 +300,8 @@ class FinancialReceiptViewSet(PrivatePayments):
         with locked(request.user,original.company_id,['can_edit_finance']) as company:
             receipt=get_object_or_404(self.get_queryset(),pk=original.pk,active=True)
             if receipt.revision!=v['expected_revision']:raise ConfigurationConflict('Payment changed. Reload before saving.')
+            from .review_workflow import assert_receipt_editable
+            assert_receipt_editable(receipt)
             if receipt.reconciled:raise serializers.ValidationError('Resolve the bank reconciliation before changing this payment.')
             before=operations.state(receipt)
             if 'channel' in v:
@@ -306,6 +310,7 @@ class FinancialReceiptViewSet(PrivatePayments):
             if 'studio' in v:
                 receipt.studio=v['studio']
                 receipt.assignments={**receipt.assignments,'studio':receipt.studio_id,'studio_origin':'manual' if receipt.studio_id else 'invoice'}
+            receipt.assignments={**receipt.assignments,'review_reopened':True}
             receipt.edited=True;receipt.revision+=1;receipt.save(update_fields=['channel','studio','assignments','edited','revision'])
             operations.event(PaymentPosting.objects.get(batch=receipt.created_from.batch),request.user,'assign',receipt,before,v['note'])
             operations.advance(company);return Response(self.serialize(receipt))

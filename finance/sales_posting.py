@@ -33,7 +33,7 @@ def state(sale):
         'studio': sale.studio_id, 'channel': sale.channel, 'assignments': sale.assignments,
         'cancellation_treatment': sale.cancellation_treatment, 'replacement': sale.replacement_id,
         'cancellation_note': sale.cancellation_note, 'revision': sale.revision, 'active': sale.active,
-        'reconciled': sale.reconciled, 'payment_link_review':sale.payment_link_review}
+        'reconciled': sale.reconciled,'reviewed':sale.reviewed, 'payment_link_review':sale.payment_link_review}
 
 
 def event(posting, actor, action, sale=None, before=None, note='', after=None):
@@ -149,7 +149,7 @@ def plan(batch, company):
         rows.append({'invoice_id': invoice.pk, 'code': invoice.code, 'source': snapshot['source'],
             'item_count': invoice.item_count, 'items': snapshot['items'], 'issues': snapshot['issues'],
             'review_issues':preview_issues(snapshot),'source_rows':invoice.row_numbers,'outcome': status,
-            'can_correct_date':bool(date_correction(snapshot,sale) and not sale.reconciled and not sale.receipts.filter(active=True,reconciled=True).exists() and batch.created_at>sale.created_from.batch.created_at),
+            'can_correct_date':bool(date_correction(snapshot,sale) and not sale.reviewed and not sale.reconciled and not sale.receipts.filter(active=True,reconciled=True).exists() and batch.created_at>sale.created_from.batch.created_at),
             'decision_id': decision.pk if decision else None, 'decision_revision': decision.revision if decision else None,
             'resolution': decision.resolution if decision else None, 'sale': state(sale) if sale else None})
     return {'token': token(company, batch), 'interpretation_version': VERSION, 'counts': dict(counts), 'rows': rows, 'posting': posting}
@@ -220,6 +220,8 @@ def resolve(decision, company, actor, action, note, expected_revision):
     sale = decision.sale
     if not sale or not sale.active:
         raise ConfigurationConflict('The current sale is no longer active.')
+    from .review_workflow import assert_sale_editable
+    if action in ('cancel','correct_date'):assert_sale_editable(sale)
     if action == 'cancel':
         snapshot = next(item for item in snapshots(decision.posting.batch) if item['invoice'].pk == decision.invoice_id)
         if outcome(snapshot, sale) != 'cancellation':
@@ -255,10 +257,12 @@ def resolve(decision, company, actor, action, note, expected_revision):
 def edit_sale(sale, posting, company, actor, values, note):
     if sale.reconciled:
         raise serializers.ValidationError('Reconciled sales cannot be edited here.')
+    from .review_workflow import assert_sale_editable
+    assert_sale_editable(sale)
     before = state(sale)
     # An edit to one assignment must not re-run newer default mappings for the
     # other field. Preserve the mapping snapshot and untouched origins/evidence.
-    mapping = deepcopy(sale.assignments)
+    mapping = {**deepcopy(sale.assignments),'review_reopened':True}
     reasons = set(mapping.get('review_reasons', []))
     if 'studio' in values:
         sale.studio = values['studio']
@@ -301,7 +305,8 @@ def undo_plan(posting, company):
             if sale: reused += 1
         elif sale.active:
             reason = None
-            if sale.reconciled: reason = 'reconciled'
+            if sale.reviewed: reason = 'reviewed'
+            elif sale.reconciled: reason = 'reconciled'
             elif sale.receipts.filter(active=True).exists(): reason = 'payment_link'
             elif sale.revision != 1: reason = 'changed'
             elif sale.replaces.filter(active=True).exists(): reason = 'replacement_link'

@@ -1,3 +1,9 @@
+**Current readiness (2026-10-29):** September reports are imported; see
+[DR MVP release recommendation](DR_V1_RELEASE_READINESS_20261029.md) for current
+counts, processing queues and remaining production gates. Earlier snapshots and
+permission descriptions below are historical. The current review/reopen permission
+policy is in [Review workflow](REVIEW_WORKFLOW.md).
+
 **Current2026-10-28: clean replay reset D-092 completed.** Local finance records/import
 history are empty; configuration/access/analytics preserved. Corrected source and new
 Jan–Aug/September replay acceptance pending. See CLEAN_REPLAY_2026.md. Historical

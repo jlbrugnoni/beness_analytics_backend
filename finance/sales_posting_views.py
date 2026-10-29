@@ -1,3 +1,4 @@
+from .review_workflow import import_capability
 from contextlib import contextmanager
 from django.db import transaction
 from django.shortcuts import get_object_or_404
@@ -55,8 +56,8 @@ class SalesPostingImportViewSet(SalesImportViewSet):
             if f['search']:rows=[row for row in rows if f['search'].casefold() in row['code'].casefold()]
             result['rows'] = self.get_paginated_response(self.paginate_queryset(rows)).data
             result['posting'] = {'id': posting.pk, 'status': posting.status, 'revision': posting.revision, 'actor':posting.actor_id} if posting else None
-            result['can_commit'] = bool(not posting and batch.status == 'preview' and company.active and can_use_finance(request.user, 'can_import_finance'))
-            result['can_review'] = bool(posting and posting.status == 'active' and company.active and can_use_finance(request.user,'can_import_finance') and can_use_finance(request.user,'can_edit_finance'))
+            result['can_commit'] = bool(not posting and batch.status == 'preview' and company.active and can_use_finance(request.user, import_capability(batch)))
+            result['can_review'] = bool(posting and posting.status == 'active' and company.active and can_use_finance(request.user,'can_edit_finance'))
             result['can_undo'] = bool(posting and posting.status in ('active','partial_undo') and company.active and may_undo(request.user,posting))
             return Response(result)
 
@@ -65,7 +66,7 @@ class SalesPostingImportViewSet(SalesImportViewSet):
         class Input(serializers.Serializer):
             expected_plan = serializers.CharField(min_length=64,max_length=64)
         data=Input(data=request.data);data.is_valid(raise_exception=True);batch=self.get_object()
-        with locked_company(request.user,batch.company_id,['can_import_finance']) as company:
+        with locked_company(request.user,batch.company_id,[import_capability(batch)]) as company:
             posting=operations.commit(batch,company,request.user,data.validated_data['expected_plan'])
             return Response({'posting_id':posting.pk,'status':posting.status})
 
@@ -74,7 +75,7 @@ class SalesPostingImportViewSet(SalesImportViewSet):
         class Input(serializers.Serializer):
             expected_plan=serializers.CharField(min_length=64,max_length=64)
         data=Input(data=request.data);data.is_valid(raise_exception=True);batch=self.get_object()
-        with locked_company(request.user,batch.company_id,['can_import_finance','can_edit_finance']) as company:
+        with locked_company(request.user,batch.company_id,['can_edit_finance']) as company:
             count=operations.apply_pending(batch,company,request.user,data.validated_data['expected_plan'])
         return Response({'linked':count,'status':'active'})
 
@@ -87,7 +88,7 @@ class SalesPostingImportViewSet(SalesImportViewSet):
             action=serializers.ChoiceField(choices=['cancel','retain','correct_date'])
             note=serializers.CharField(max_length=2000,allow_blank=False)
         data=Input(data=request.data);data.is_valid(raise_exception=True);values=data.validated_data;batch=self.get_object()
-        with locked_company(request.user,batch.company_id,['can_import_finance','can_edit_finance']) as company:
+        with locked_company(request.user,batch.company_id,['can_edit_finance']) as company:
             if values['expected_plan'] != operations.token(company,batch): raise ConfigurationConflict('Sales changed. Reload the plan.')
             decision=get_object_or_404(SalesDecision.objects.select_related('sale','posting__batch'),pk=values['decision_id'],posting__batch=batch)
             operations.resolve(decision,company,request.user,values['action'],values['note'],values['expected_revision'])
@@ -107,7 +108,7 @@ class SalesPostingImportViewSet(SalesImportViewSet):
             expected_plan=serializers.CharField(min_length=64,max_length=64)
             note=serializers.CharField(max_length=2000,allow_blank=False)
         data=Input(data=request.data);data.is_valid(raise_exception=True);batch=self.get_object()
-        with locked_company(request.user,batch.company_id,['can_import_finance','can_edit_finance']) as company:
+        with locked_company(request.user,batch.company_id,[import_capability(batch),'can_edit_finance']) as company:
             posting=get_object_or_404(SalesPosting,batch=batch)
             if not may_undo(request.user,posting):raise PermissionDenied('You cannot undo this posting.')
             return Response(operations.undo(posting,company,request.user,data.validated_data['expected_plan'],data.validated_data['note']))
@@ -139,7 +140,9 @@ class FinancialSaleViewSet(viewsets.ReadOnlyModelViewSet):
 
     @staticmethod
     def serialize(sale):
+        from .review_workflow import sale_missing
         result=operations.state(sale)
+        result.update(needs_review=not sale.reviewed,missing_fields=sale_missing(sale) if not sale.reviewed else [])
         result.update(company=sale.company_id,studio_name=sale.studio.name if sale.studio else None,
             contribution=sale.source['invoice_total'] if sale.active and sale.source['status_kind']=='paid' else '0.00')
         return result
@@ -161,6 +164,27 @@ class FinancialSaleViewSet(viewsets.ReadOnlyModelViewSet):
             'channels':[{'value':value,'label':label} for value,label in SourceMapping.CHANNELS]})
 
     @action(detail=True,methods=['post'])
+    def review(self,request,pk=None):
+        return self.change_review(request,False)
+
+    @action(detail=True,methods=['post'])
+    def reopen(self,request,pk=None):
+        return self.change_review(request,True)
+
+    def change_review(self,request,reopen):
+        from .review_workflow import review_invoice
+        class Input(serializers.Serializer):expected_revision=serializers.IntegerField(min_value=1)
+        data=Input(data=request.data);data.is_valid(raise_exception=True);original=self.get_object()
+        from .access import can_view_sensitive_detail
+        if not can_use_finance(request.user,'can_view_finance_bank_accounts') or not can_view_sensitive_detail(request.user):raise PermissionDenied()
+        cap='can_reopen_finance' if reopen else 'can_edit_finance'
+        with locked_company(request.user,original.company_id,[cap]) as company:
+            sale=get_object_or_404(self.get_queryset().select_for_update(of=('self',)),pk=original.pk,active=True)
+            if sale.revision!=data.validated_data['expected_revision']:raise ConfigurationConflict('Invoice changed. Reload before reviewing.')
+            review_invoice(sale,company,request.user,reopen)
+            return Response(self.serialize(sale))
+
+    @action(detail=True,methods=['post'])
     def assign(self,request,pk=None):
         class Input(serializers.Serializer):
             expected_revision=serializers.IntegerField(min_value=1)
@@ -168,7 +192,7 @@ class FinancialSaleViewSet(viewsets.ReadOnlyModelViewSet):
             channel=serializers.ChoiceField(choices=[value for value,label in SourceMapping.CHANNELS],allow_null=True,required=False)
             cancellation_treatment=serializers.ChoiceField(choices=['pending','refund','no_refund','replacement'],required=False)
             replacement=serializers.PrimaryKeyRelatedField(queryset=FinancialSale.objects.none(),allow_null=True,required=False)
-            note=serializers.CharField(max_length=2000,allow_blank=False)
+            note=serializers.CharField(max_length=2000,allow_blank=True,default='')
         if set(request.data)-{'expected_revision','studio','channel','cancellation_treatment','replacement','note'}:raise serializers.ValidationError('Source facts are read-only.')
         original=self.get_object()
         with locked_company(request.user,original.company_id,['can_edit_finance']) as company:

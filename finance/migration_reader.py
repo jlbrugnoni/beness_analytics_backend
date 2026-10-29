@@ -9,7 +9,7 @@ from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 from xml.etree import ElementTree as ET
 from .bank_readers import normalized
 
-VERSION = 'dr-enriched-xlsx-v1'
+VERSION = 'dr-enriched-xlsx-v2'
 MAX_BYTES = 5 * 1024 * 1024
 MAX_EXPANDED_BYTES = 50 * 1024 * 1024
 MAX_PART_BYTES = 20 * 1024 * 1024
@@ -20,7 +20,7 @@ NS = {'s': 'http://schemas.openxmlformats.org/spreadsheetml/2006/main'}
 REL = '{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id'
 MAPPINGS = {
     'debitos': {'bank_date': 'Fecha', 'amount': 'Monto', 'reference': 'No. Referencia', 'serial': 'No. Serial',
-        'manual_description': 'Concepto', 'legacy_reviewed': 'Conciliado', 'original_description': 'Descripción Original',
+        'manual_description': 'Descripción Original', 'legacy_reviewed': 'Conciliado', 'original_description': 'Concepto',
         'expense_period': 'Periodo', 'category': 'Categoria', 'subcategory': 'Sub-categoria', 'location': 'Ubicación', 'legacy_type': 'Tipo'},
     'ingresos': {'bank_date': 'Fecha', 'original_description': 'Descripción', 'amount': 'Monto', 'balance': 'Balance',
         'payment_method': 'Concepto', 'operation_date': 'Fecha_operacion', 'manual_description': 'Motivo',

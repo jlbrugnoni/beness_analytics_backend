@@ -157,7 +157,7 @@ class PaymentPreviewAPITests(APITestCase):
             with patch('finance.migration_views.read_payment_preview') as reader:
                 self.assertIn(self.client.get(url).status_code,(403,404));reader.assert_not_called()
             setattr(self.profile,flag,True);self.profile.save()
-        self.profile.can_import_finance=False;self.profile.save()
+        self.profile.can_import_finance_migration=False;self.profile.save()
         self.assertEqual(self.client.get(url).status_code,200)
         from core_data.models import Studio
         studio=Studio.objects.create(name='Payment restricted QA',site=self.site)

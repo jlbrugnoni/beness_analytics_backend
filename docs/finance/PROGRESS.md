@@ -1035,3 +1035,103 @@ and shared historical/routine UI. No schema/source rewrite or actual working acc
 passed. Disposable copy accepted/linked all14April23 rows,4,984→4,998 receipts, keeping
 all existing facts/assignments/bank/invoices unchanged. Browser checked first identity
 dialog without confirmation. Source-ID reupload demand superseded; see PAYMENT_IDENTITY_REVIEW.md.
+
+2026-10-29 D-095: client requests supervised migration completion plus operational
+review locks and separated routine/migration/edit/reopen/configuration permissions.
+Implemented invoice/payment reviewed fields, essential-field completion, audited
+invoice/payment-group and movement review/reopen, API edit/source-correction/undo
+locks, independent migration import checks including derived batches, editor day
+check and privileged day reopen, status filters, read-only dialogs and permission UI.
+Legacy reconcile capability remains stored for compatibility and is removed from
+operational permission controls. Optional comments remain optional for ordinary
+classification; source exceptions retain required reasons.
+
+375 finance PostgreSQL tests passed; frontend lint/production build passed. Final
+workspace filtering also passed alongside45 loadable core/workspace checks. The full
+core_data discovery has an existing import error in core_data/tests.py (`Center` no
+longer exists); confirmed the same import is present in HEAD. This unrelated legacy
+suite error is not treated as a successful whole-project test run.
+
+Local QA database consistently backed up to private review-workflow-20261029 before
+migration/application. Rehearsed first, then applied0021 migrations and explicit
+supervised-review upgrade for company1/actor1.4,739 of4,995active invoices and4,747
+of5,000payments reviewed;256invoices/253payments remain pending for essential
+operational/payment/cancellation issues.1,773of2,351movements reviewed;578pending
+lack essential assignments. All source records/IDs remain unchanged (including46
+inactive historical invoices); original amounts/dates/customer names untouched.
+No reset and no permission grants. Existing test user can manage access; new
+migration/reopen grants startfalse. Browser verified historicalB0200004532 and its
+payment openread-only and table showsReviewed. Local backend8027/frontend3037
+running; changes remain uncommitted on feature/finance-phase-2 for client acceptance.
+September comparison, real partner grants and production cutover remain release gates.
+
+2026-10-29 — Records UI refinement requested by client: Expenses is now the initial
+tab when selecting a company (invoice-only viewers retain their authorized fallback).
+Expense/income tables show the requested operational columns, compact green-reviewed
+and amber-pending status icons, and one action column for edit/open plus original
+information. Long descriptions use two lines with the full text available on hover.
+Account/origin filters and existing detail/source dialogs remain available. Income
+terminal mapping moved into More actions (three dots); no automatic mapping action
+was performed during UI verification. Shared workspace pagination now distinguishes
+page count from item count: Page X of Y · N items, using the API default15rows/page.
+No finance data, review rules, or permissions changed in this UI increment.
+Verification for this UI increment: frontend lint and production build passed. Browser
+confirmed Expenses initial selection, requested income/expense column order, reviewed
+and pending accessible icon labels, reviewed record open behavior, original-information
+icon dialog, terminal mapping in the three-dot menu (not executed), and income footer
+"Page1of81 ·1,214items". Local frontend3037/backend8027 remain running. No commit/push.
+
+2026-10-29 — Owner reports reversed expense description columns. Investigation found
+the historical Debitos header mapping itself was inverted: Concepto is bank text;
+Descripción Original is the business description. Corrected reader v2, interpretation
+of retained v1 previews, and prepared an audited idempotent repair for derived bank
+previews/ledger entries. UI labels changed to Bank concept / Description (English),
+Concepto bancario / Descripción (Spanish), including dialogs. See
+EXPENSE_DESCRIPTION_MAPPING.md. Original workbook bytes/raw cells stay retained.
+
+Local application of the description correction: private consistent backup and
+rehearsal in expense-description-fix-20261029;1,137preview rows and1,137expense
+movements corrected with per-row/per-movement audit. Verified all other movement
+source/classification fields, all income descriptions, all invoices and payments
+unchanged. A second apply was a no-op. No reset or reupload required. Frontend lint
+and production build passed. Local frontend3037/backend8027 running for acceptance.
+Final verification:380finance PostgreSQL tests passed, including literal workbook
+header meaning, audited/idempotent repair, dry-run rollback, preservation of later
+manual edits and strong/missing-balance bank overlap rules. Browser verified corrected
+expense row values. Changes remain uncommitted on feature/finance-phase-2.
+
+2026-10-29 — Import details crash: reproduced Records → original report information
+→ Import details. Bank import page referenced an undefined `batch` in its original
+file download permission check; the selected import is named `selected`. Corrected
+the reference while preserving routine-versus-migration download permission checks.
+Explicit ESLint no-undef validation (ES6 environment) passed on bank/sales/payment
+import pages. No backend or financial-data changes. Browser confirmed batch24 import
+metadata, processing decisions and source rows render after the correction.
+Browser verification completed from both Expenses and Income source dialogs: Import
+details opens batch24 successfully, without the undefined-variable runtime error.
+Changes remain uncommitted; local app stays running. No data changes.
+
+2026-10-29 — Owner asks about MVP release after current September uploads. Read-only
+snapshot audit confirms bank25/26 totals175creations then117creations/53overlaplinks,
+no pending import decisions and no identical active September movement groups under
+the configured date/amount/description/balance comparison. Sales15has611invoices;
+payments14has615linkedreceipts, four split invoices, equal3,555,130.80DOP aggregate
+and zero per-invoice differences.67excluded payment rows are Egreso, not sales.
+Routine classification/review remains pending (162income dates,125expenses needing
+classification;0Septemberdays checked). Recorded controlled DR-MVP recommendation,
+representative-day acceptance and production backup/config/access/cutover gates in
+DR_V1_RELEASE_READINESS_20261029.md. Updated stale document entry points. No data,
+permissions, commits, merge, push or deployment changed by this readiness assessment.
+
+2026-10-29 — Owner confirms testing several operating days successfully and explicitly
+authorizes committing current code, merging and pushing the finance branch in both
+repositories. Remote main checked before merge: no remote-only changes (backend84 /
+frontend50 existing development commits ahead before this final increment). Release
+publishes application code, schema migrations and handover documentation only. Local
+QA transactions/configuration/database files, original reports, credentials, private
+backups and user-owned exports/ are excluded. Production configuration-only transfer,
+backup/restore verification and original-report initialization are separate remaining
+cutover tasks. A Git push is not evidence of completed hosting deployment or live
+production acceptance. Last full finance suite380passed; frontend build/lint passed,
+with the later Import details fix additionally browser-verified from both entry points
+and explicit no-undef lint on all three report pages.

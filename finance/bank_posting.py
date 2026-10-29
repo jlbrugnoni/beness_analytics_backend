@@ -254,6 +254,8 @@ def resolve(decision, account, actor, action, expected_revision, note, target=No
         if action == 'correct':
             if target.manual_key:raise serializers.ValidationError('Link bank evidence to a manual entry; do not overwrite its independent facts.')
             if decision.outcome=='assignment_conflict':raise serializers.ValidationError('Edit assignments in Records, or link to retain existing decisions. Source correction does not resolve assignment conflicts.')
+            from .review_workflow import assert_bank_editable
+            assert_bank_editable(target)
             if target.reconciled: raise serializers.ValidationError('Reconciled movements require reconciliation review before source correction.')
             target.source = decision.row.parsed; target.fingerprint = fingerprint(target.source)
             target.revision += 1; target.save()
@@ -283,6 +285,7 @@ def resolve(decision, account, actor, action, expected_revision, note, target=No
 
 
 def undo_plan(posting, account):
+    from .review_workflow import bank_locked
     eligible = []; protected = []; reused = 0
     for decision in posting.decisions.select_related('movement').all():
         movement = decision.movement
@@ -292,7 +295,8 @@ def undo_plan(posting, account):
             if movement: reused += 1
         elif movement.active:
             reason = None
-            if movement.reconciled: reason = 'reconciled'
+            if bank_locked(movement): reason = 'reviewed'
+            elif movement.reconciled: reason = 'reconciled'
             elif movement.revision != 1: reason = 'changed'
             elif movement.decisions.filter(posting__status__in=['active', 'partial_undo']).exclude(posting=posting).exists(): reason = 'other_import'
             if reason: protected.append({'movement_id': movement.pk, 'reason': reason})

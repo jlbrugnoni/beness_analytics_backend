@@ -1,3 +1,4 @@
+from .review_workflow import import_capability
 from contextlib import contextmanager
 from django.db import transaction
 from django.db.models import Q
@@ -34,7 +35,7 @@ def locked_account(user, account_id, capabilities=(), active=True, bank_only=Tru
 
 
 def may_undo(user, posting):
-    return (can_use_finance(user, 'can_import_finance') and can_use_finance(user, 'can_edit_finance') and
+    return (can_use_finance(user, import_capability(posting.batch)) and can_use_finance(user, 'can_edit_finance') and
             (posting.actor_id == user.pk or can_use_finance(user, 'can_manage_finance_settings')))
 
 
@@ -57,9 +58,9 @@ class BankPostingImportViewSet(BankImportViewSet):
             result['posting'] = {'id': posting.pk, 'status': posting.status, 'revision': posting.revision,
                 'actor': posting.actor_id} if posting else None
             result['can_commit'] = bool(not posting and batch.status == 'preview' and batch.summary.get('valid_rows')
-                and account.kind == 'bank' and account.active and account.company.active and can_use_finance(request.user, 'can_import_finance'))
+                and account.kind == 'bank' and account.active and account.company.active and can_use_finance(request.user, import_capability(batch)))
             result['can_review'] = bool(posting and posting.status == 'active' and account.kind == 'bank' and account.active and account.company.active
-                and can_use_finance(request.user, 'can_import_finance') and can_use_finance(request.user, 'can_edit_finance'))
+                and can_use_finance(request.user, 'can_edit_finance'))
             result['can_undo'] = bool(posting and posting.status in ('active', 'partial_undo') and account.kind == 'bank' and account.active and account.company.active and may_undo(request.user, posting))
             return Response(result)
 
@@ -69,7 +70,7 @@ class BankPostingImportViewSet(BankImportViewSet):
             expected_plan = serializers.CharField(min_length=64, max_length=64)
         data = Input(data=request.data); data.is_valid(raise_exception=True)
         batch = self.get_object()
-        with locked_account(request.user, batch.account_id, ['can_import_finance']) as account:
+        with locked_account(request.user, batch.account_id, [import_capability(batch)]) as account:
             posting = operations.commit(batch, account, request.user, data.validated_data['expected_plan'])
             return Response({'posting_id': posting.pk, 'status': posting.status})
 
@@ -87,7 +88,7 @@ class BankPostingImportViewSet(BankImportViewSet):
         if values['action'] in ('correct','ignore') and not values['note'].strip():
             raise serializers.ValidationError({'note':'Explain a source correction or ignored row.'})
         batch = self.get_object()
-        with locked_account(request.user, batch.account_id, ['can_import_finance', 'can_edit_finance']) as account:
+        with locked_account(request.user, batch.account_id, ['can_edit_finance']) as account:
             if values['expected_plan'] != operations.token(account, batch):
                 raise ConfigurationConflict('The ledger changed. Reload the review plan.')
             decision = get_object_or_404(BankDecision.objects.select_related('posting__batch', 'row'),
@@ -104,7 +105,7 @@ class BankPostingImportViewSet(BankImportViewSet):
             expected_plan=serializers.CharField(min_length=64,max_length=64)
         data=Input(data=request.data);data.is_valid(raise_exception=True)
         batch=self.get_object()
-        with locked_account(request.user,batch.account_id,['can_import_finance','can_edit_finance']) as account:
+        with locked_account(request.user,batch.account_id,['can_edit_finance']) as account:
             changed=operations.apply_pending(batch,account,request.user,data.validated_data['expected_plan'])
         return Response({'changed':changed,'status':'active'})
 
@@ -130,7 +131,7 @@ class BankPostingImportViewSet(BankImportViewSet):
             note = serializers.CharField(max_length=2000, allow_blank=False)
         data = Input(data=request.data); data.is_valid(raise_exception=True)
         batch = self.get_object()
-        with locked_account(request.user, batch.account_id, ['can_import_finance', 'can_edit_finance']) as account:
+        with locked_account(request.user, batch.account_id, [import_capability(batch),'can_edit_finance']) as account:
             posting = get_object_or_404(BankPosting, batch=batch)
             if not may_undo(request.user, posting): raise PermissionDenied('Only your own imports may be undone without financial settings authority.')
             result = operations.undo(posting, account, request.user, data.validated_data['expected_plan'], data.validated_data['note'])
@@ -185,6 +186,7 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
         return queryset
 
     def retrieve(self,request,pk=None):
+        from .migration_descriptions import parsed_business_fields
         obj=self.get_object()
         historical=obj.historical_row if obj.historical_row_id else obj.created_from.migration_row if obj.created_from_id and obj.created_from.migration_row_id else None
         if historical is None:
@@ -192,8 +194,8 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
             historical=evidence.row.migration_row if evidence else None
         return Response({**BankMovementSerializer(obj).data,**presentation(obj),
             **movement_origin(obj),
-            'historical_source':historical.parsed if historical else None,
-            'can_edit':bool(can_use_finance(request.user,'can_edit_finance') and obj.active and not obj.reconciled and obj.account.active and obj.account.company.active)})
+            'historical_source':parsed_business_fields(historical) if historical else None,
+            'can_edit':bool(can_use_finance(request.user,'can_edit_finance') and obj.active and not obj.reconciled and not presentation(obj)['classification'].get('reviewed') and obj.account.active and obj.account.company.active)})
 
     @action(detail=True,methods=['get'])
     def options(self,request,pk=None):
@@ -206,6 +208,20 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
             'terminals':list(Terminal.objects.filter(account=obj.account,studio__in=visible_studios(request.user)).filter(Q(active=True)|Q(pk=snapshot(obj).get('terminal'))).values('id','identifier','channel','studio_id')),
             'channels':[{'value':v,'label':label} for v,label in SourceMapping.CHANNELS],
             'kinds':[{'value':v,'label':label} for v,label in BankMovementClassification.KINDS if v in (BankMovementClassification.DEBIT_KINDS if obj.source.get('direction')=='debit' else BankMovementClassification.CREDIT_KINDS)]})
+
+    @action(detail=True,methods=['post'])
+    def reopen(self,request,pk=None):
+        class Input(serializers.Serializer):expected_revision=serializers.IntegerField(min_value=1)
+        data=Input(data=request.data);data.is_valid(raise_exception=True);original=self.get_object()
+        with locked_account(request.user,original.account_id,['can_reopen_finance'],bank_only=False) as account:
+            obj=get_object_or_404(self.get_queryset().select_for_update(of=('self',)),pk=original.pk,active=True)
+            if obj.revision!=data.validated_data['expected_revision']:raise ConfigurationConflict('Entry changed. Reload before reopening.')
+            before=operations.movement_data(obj)
+            item,_=BankMovementClassification.objects.get_or_create(movement=obj)
+            item.reviewed=False;item.save(update_fields=['reviewed']);obj.classification=item
+            obj.revision+=1;obj.save(update_fields=['revision','updated_at'])
+            operations.event(None,request.user,'reopen',obj,before=before);operations.advance(account)
+            return Response({**BankMovementSerializer(obj).data,**presentation(obj)})
 
     @action(detail=True,methods=['post'])
     def assign(self,request,pk=None):
@@ -232,6 +248,8 @@ class BankMovementViewSet(viewsets.ReadOnlyModelViewSet):
             obj=get_object_or_404(self.get_queryset().select_for_update(of=('self',)),pk=original.pk,active=True)
             if obj.revision!=revision:raise ConfigurationConflict('The bank record changed. Reload before saving.')
             if obj.reconciled:raise serializers.ValidationError('Review bank reconciliation before editing this movement.')
+            from .review_workflow import assert_bank_editable
+            assert_bank_editable(obj)
             before=operations.movement_data(obj)
             from .movement_validation import validate_assignments
             values=validate_assignments(request.user,account,obj.source['direction'],before['classification'],values)

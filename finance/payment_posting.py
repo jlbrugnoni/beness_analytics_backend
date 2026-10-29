@@ -38,12 +38,12 @@ def state(receipt):
     return {'id':receipt.pk,'number':f'Manual #{receipt.pk}' if receipt.number.startswith('manual-') else receipt.number,'number_origin':'manual' if receipt.number.startswith('manual-') else 'reported','source':receipt.source,'sale':receipt.sale_id,
         'link_issue':receipt.link_issue,'channel':receipt.channel,'studio':receipt.studio_id,
         'assignments':receipt.assignments,'revision':receipt.revision,'active':receipt.active,
-        'edited':receipt.edited,'reconciled':receipt.reconciled}
+        'edited':receipt.edited,'reconciled':receipt.reconciled,'reviewed':receipt.reviewed}
 
 
 def event(posting,actor,action,receipt=None,before=None,note='',after=None):
     PaymentEvent.objects.create(posting=posting,actor=actor,action=action,receipt=receipt,
-        before=before or {},after=state(receipt) if receipt else after or {},note=note)
+        before=before or {},after=after if after is not None else state(receipt) if receipt else {},note=note)
 
 
 def assignments(company,source):
@@ -100,9 +100,11 @@ def refresh_links(company,actor,posting=None,legacy_codes=()):
     comparisons={key:context(sales[key],rows) for key,rows in grouped.items() if key in sales}
     legacy_codes=set(legacy_codes);changed=0
     for r in receipts:
+        if r.reviewed:continue
         before=state(r);key=(r.provider,r.source.get('invoice_code'));candidate=r.sale or sales.get(key)
         comparison=comparisons.get(key)
-        if not candidate:issue='invoice_missing'
+        if candidate and candidate.reviewed:issue='invoice_review_locked'
+        elif not candidate:issue='invoice_missing'
         elif not candidate.active:issue='invoice_inactive'
         elif candidate.source.get('status_kind')!='paid':issue='invoice_cancelled' if candidate.source.get('status_kind')=='cancelled' else 'invoice_status_review'
         elif comparison and not comparison['currency_matches']:issue='currency_conflict'
@@ -119,6 +121,8 @@ def refresh_links(company,actor,posting=None,legacy_codes=()):
         if before['sale']!=r.sale_id or before['link_issue']!=issue:
             r.revision+=1;r.save(update_fields=['sale','link_issue','revision'])
             event(posting,actor,'invoice_link_review' if issue else 'invoice_link',r,before);changed+=1
+    from .review_workflow import refresh_supervised
+    changed+=refresh_supervised(company,actor)
     if changed:advance(company)
     return changed
 
@@ -173,7 +177,7 @@ def undo_plan(posting,company):
         if d.resolution not in ('created','manual_created'):
             if r:reused+=1
         elif r.active:
-            reason='reconciled' if r.reconciled else 'changed' if r.edited else 'other_import' if r.decisions.filter(posting__status__in=['active','partial_undo']).exclude(posting=posting).exists() else None
+            reason='reviewed' if r.reviewed else 'reconciled' if r.reconciled else 'changed' if r.edited else 'other_import' if r.decisions.filter(posting__status__in=['active','partial_undo']).exclude(posting=posting).exists() else None
             if reason:protected.append({'receipt_id':r.pk,'reason':reason})
             else:eligible.append(r.pk)
     return {'token':token(company,posting.batch,f'undo:{posting.pk}:{posting.revision}'),

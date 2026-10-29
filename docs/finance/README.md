@@ -1,14 +1,17 @@
 # Finance module handover
 
-Updated2026-10-28. Backend/frontend work is on `feature/finance-phase-2`.
+Updated2026-10-29. Release target: `main` in both repositories; development branch: `feature/finance-phase-2`.
 **Current phase: DR operational V1 acceptance and release preparation.**
 
-Current Jan–Aug data is imported and invoice recovery is complete (4,995 active
-invoices/4,984 payments at this checkpoint). Complete missing-number payments can now
-be manually accepted or linked from the existing report, without editing/reuploading
-Excel. See [Payment identity review](PAYMENT_IDENTITY_REVIEW.md), D-094. Owner acceptance
-pending; no live decisions were made by the agent. [Date correction and recovery](INVOICE_DATE_RECOVERY.md)
-remains available. Earlier empty/reset/reversed counts describe historical checkpoints.
+September uploads now audited: [Current release recommendation](DR_V1_RELEASE_READINESS_20261029.md).
+
+Current Jan–Aug data is imported. Owner accepted the missing-number payment review;
+there are now 4,995 active invoices and 5,000 active payments. The next pre-release
+increment implements supervised migration completion, explicit review locks, separate
+routine/migration upload permissions and privileged reopening of entries/closed days.
+See [Review workflow](REVIEW_WORKFLOW.md), D-095. Historical expense bank/business description interpretation is corrected in
+[Expense description mapping](EXPENSE_DESCRIPTION_MAPPING.md). Owner accepted representative-day testing and authorized committing, merging and
+pushing both repositories. Production configuration/data initialization remains a separate cutover step. Original invoice/payment identity and source correction flows remain available.
 Spain is V2; financial analytics follows Spain. Do not treat older phase plans or
 pending-acceptance statements as the current delivery status. Current readiness and
 remaining gates are in [DR operational release](DR_OPERATIONAL_RELEASE.md) and

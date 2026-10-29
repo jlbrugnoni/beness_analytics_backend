@@ -135,7 +135,9 @@ class BankImportViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=True, methods=['get'])
     def original(self, request, pk=None):
-        if not can_use_finance(request.user, 'can_import_finance'):
+        from .review_workflow import import_capability
+        batch = self.get_object()
+        if not can_use_finance(request.user, import_capability(batch)):
             raise PermissionDenied('Financial import permission is required to retrieve source files.')
         batch = self.get_object()
         response = FileResponse(io.BytesIO(bytes(batch.original_file)), as_attachment=True, filename=batch.file_name, content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' if batch.migration_batch_id else 'text/csv')

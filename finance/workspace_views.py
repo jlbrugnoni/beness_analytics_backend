@@ -95,7 +95,7 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
         if f.get('start') and f.get('end') and f['start']>f['end']:
             raise serializers.ValidationError('Start must precede end.')
         kind=f['kind'];bank=kind in ('debit','credit')
-        if not bank and f['status'] in ('missing_category','method_review','reviewed','unreviewed'):raise serializers.ValidationError('Choose a supported invoice status.')
+        if not bank and f['status'] in ('missing_category','method_review'):raise serializers.ValidationError('Choose a supported invoice status.')
         if kind=='credit' and (f.get('category') or f.get('subcategory') or f['status']=='missing_category'):
             raise serializers.ValidationError('Categories apply only to bank debits.')
         if bank:
@@ -137,10 +137,7 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
                     from rest_framework.exceptions import PermissionDenied
                     raise PermissionDenied()
                 qs=qs.filter(Q(receipts__active=True,receipts__channel=f['channel'])|Q(channel=f['channel'])).distinct()
-            if f['status']=='review':
-                review=Q(assignments__requires_review=True)|Q(source__status_kind='cancelled',cancellation_treatment='pending')
-                if can_use_finance(request.user,'can_view_finance_bank_accounts'):review|=Q(payment_review=True)|Q(payment_count=0)
-                qs=qs.filter(review)
+            if f['status'] in ('review','unreviewed','reviewed'):qs=qs.filter(reviewed=f['status']=='reviewed')
         else:
             if not can_use_finance(request.user,'can_view_finance_bank_accounts'):
                 from rest_framework.exceptions import PermissionDenied
@@ -148,6 +145,7 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
             get_object_or_404(sales_preview_companies(request.user),pk=company.pk)
             qs=FinancialReceipt.objects.filter(company=company,active=True).filter(Q(sale__isnull=True)|~Q(link_issue='')).select_related('studio','sale__company','created_from__batch').defer('created_from__batch__original_file')
             date_key='date';amount_key='amount';number_key=None
+            if f['status'] in ('review','unreviewed','reviewed'):qs=qs.filter(reviewed=f['status']=='reviewed')
             if f.get('search'):qs=qs.filter(Q(number__icontains=f['search'])|Q(source__customer__icontains=f['search'])|Q(source__invoice_code__icontains=f['search']))
             if f.get('studio'):qs=qs.filter(studio_id=f['studio'])
             if f.get('channel'):qs=qs.filter(channel=f['channel'])
@@ -172,7 +170,7 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
                 # Receipt detail requires the same bank/sensitive gate as before.
                 item.update(payment_count=obj.payment_count if can_use_finance(request.user,'can_view_finance_bank_accounts') else None,
                     payment_methods=sorted({r.channel for r in getattr(obj,'workspace_receipts',[]) if r.channel}),
-                    needs_review=bool(obj.assignments.get('requires_review') or (obj.payment_review or obj.payment_count==0 if can_use_finance(request.user,'can_view_finance_bank_accounts') else False) or (obj.source.get('status_kind')=='cancelled' and obj.cancellation_treatment=='pending')),
+                    needs_review=not obj.reviewed,
                     file_name=obj.created_from.batch.file_name,batch=obj.created_from.batch_id)
                 rows.append(item)
             else:

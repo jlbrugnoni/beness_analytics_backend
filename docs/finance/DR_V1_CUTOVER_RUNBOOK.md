@@ -1,3 +1,9 @@
+**Current readiness (2026-10-29):** September reports are imported; see
+[DR MVP release recommendation](DR_V1_RELEASE_READINESS_20261029.md) for current
+counts, processing queues and remaining production gates. Earlier snapshots and
+permission descriptions below are historical. The current review/reopen permission
+policy is in [Review workflow](REVIEW_WORKFLOW.md).
+
 # DR operational finance V1 — cutover and recovery runbook
 
 Prepared2026-10-28 on feature/finance-phase-2. This is a reviewable release procedure;

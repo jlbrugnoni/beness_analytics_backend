@@ -12,7 +12,7 @@ class OperationalCheckTests(APITestCase):
     get=fixtures.ClosureTests.get
     method=fixtures.ClosureTests.method
     def setUp(self):
-        fixtures.ClosureTests.setUp(self);self.profile.can_reconcile_finance=True;self.profile.save()
+        fixtures.ClosureTests.setUp(self);self.profile.can_edit_finance=True;self.profile.can_reopen_finance=True;self.profile.save()
         self.receipt();self.movement=self.actual()
 
     def day(self):return self.method(self.get())['days'][0]
@@ -36,14 +36,16 @@ class OperationalCheckTests(APITestCase):
         self.assertEqual(self.check(note='Deposit difference under investigation').status_code,200)
         self.movement.source['amount']='96.00';self.movement.save() # Even a missing revision bump cannot hide changed facts.
         self.assertEqual(self.day()['check']['status'],'needs_recheck')
+        self.assertEqual(self.check(note='Updated receipt reviewed').status_code,400)
+        day=self.day();self.assertEqual(self.client.post('/api/finance/closures/reopen/',{'company':self.company.pk,'day':day['date'],'channel':'card_terminal','expected_revision':day['check']['revision']},format='json').status_code,200)
         self.assertEqual(self.check(note='Updated receipt reviewed').status_code,200)
-        self.assertEqual(ClosureCheckEvent.objects.count(),2);self.assertEqual(self.day()['check']['status'],'checked')
+        self.assertEqual(ClosureCheckEvent.objects.count(),3);self.assertEqual(self.day()['check']['status'],'checked')
 
     def test_stale_tokens_permissions_and_studio_scope_fail_closed(self):
         old=self.day()['check_token'];self.receipt(number='2')
         self.assertEqual(self.check(expected_token=old,note='Stale').status_code,409)
-        self.profile.can_reconcile_finance=False;self.profile.save();self.assertEqual(self.check(note='Not allowed').status_code,403)
-        self.profile.can_reconcile_finance=True;self.profile.can_view_finance_bank_accounts=False;self.profile.save()
+        self.profile.can_edit_finance=False;self.profile.save();self.assertEqual(self.check(note='Not allowed').status_code,403)
+        self.profile.can_edit_finance=True;self.profile.can_view_finance_bank_accounts=False;self.profile.save()
         response=self.client.post('/api/finance/closures/check/',{'company':self.company.pk,'day':'2026-09-01','channel':'card_terminal','expected_revision':0,'expected_token':old},format='json')
         self.assertEqual(response.status_code,403);self.assertFalse(ClosureCheck.objects.exists())
 
@@ -61,3 +63,12 @@ class OperationalCheckTests(APITestCase):
         self.assertEqual(self.day()['check']['status'],'checked')
         data=self.get(studio=self.studio.pk);self.assertFalse(data['can_check'])
         self.assertEqual(self.method(data)['days'][0]['check']['status'],'company_scope')
+
+    def test_edit_and_reopen_permissions_are_independent(self):
+        self.profile.can_reopen_finance=False;self.profile.save()
+        self.assertEqual(self.check().status_code,200)
+        day=self.day();body={'company':self.company.pk,'day':day['date'],'channel':'card_terminal','expected_revision':day['check']['revision']}
+        self.assertEqual(self.client.post('/api/finance/closures/reopen/',body,format='json').status_code,403)
+        self.profile.can_reopen_finance=True;self.profile.can_edit_finance=False;self.profile.save()
+        self.assertEqual(self.client.post('/api/finance/closures/reopen/',body,format='json').status_code,200)
+        self.assertEqual(self.check().status_code,403)
