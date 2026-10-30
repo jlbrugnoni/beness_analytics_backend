@@ -191,3 +191,15 @@ studios within the destination DO site instead of copying local IDs. Default to
 preview, support repeat installation, reject conflicts without overwriting, and
 leave production activation and report migration as separate steps. See
 BENESS_DOMINICANA_CONFIGURATION.md.
+
+
+D-098 (2026-10-30, client requested): provide category catalog restore, CSV import
+and CSV export so the local catalog can be moved to production without resetting
+financial data. Gate transfer with the existing financial migration permission,
+company-wide scope and sensitivity safeguards. Preview before applying; merge/update
+by stable codes or exact normalized name/parent fallback for manual records; preserve
+IDs/references and archive absent categories only when explicitly selected. Never
+hard-delete or reparent categories through transfer. Signed state-bound previews,
+atomic writes/audits and stale checks apply. Client authorizes direct main commits
+after local testing. Fix the identified HTTP-pagination deployment failure mode in
+finance loaders. See CATEGORY_CATALOG_TRANSFER.md.

@@ -51,7 +51,7 @@ An identical retry of the existing check is idempotent; it does not replace the 
 | Capability | Authorizes |
 | --- | --- |
 | `can_import_finance` | Upload and commit routine bank/Alegra reports |
-| `can_import_finance_migration` | Upload/prepare/commit supervised historical migrations, including their derived bank/sales/payment batches |
+| `can_import_finance_migration` | Upload/prepare/commit supervised historical migrations, including their derived bank/sales/payment batches; catalog CSV export/import and starting-catalog restore with company-wide scope and sensitive-detail access (D-098) |
 | `can_edit_finance` | Create/edit operational entries, classify/review invoices and payments, resolve source/matching issues, check/close days |
 | `can_reopen_finance` | Explicitly reopen reviewed entries and checked days |
 | `can_manage_finance_settings` | Existing company/account/terminal/category/mapping/fee configuration management |

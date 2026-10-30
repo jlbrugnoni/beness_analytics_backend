@@ -1,5 +1,10 @@
 # Finance module handover
 
+Latest delivery: [Category catalog restore and CSV transfer](CATEGORY_CATALOG_TRANSFER.md)
+uses the migration permission and preserves existing expense links. Finance paginated
+loaders retain the configured backend origin for HTTPS deployments.
+
+
 Updated2026-10-29. Release target: `main` in both repositories; development branch: `feature/finance-phase-2`.
 **Current phase: DR operational V1 acceptance and release preparation.**
 

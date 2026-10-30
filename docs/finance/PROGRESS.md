@@ -4,6 +4,15 @@ Updated: 2026-10-30.
 
 ## Current checkpoint
 
+Latest: D-098 catalog recovery and CSV export/import implemented on main at the
+client's request. Migration permission gates the dedicated transfer page. Preview/
+apply supports default restore, merge/update and optional archiving without deleting
+category references. Finance pagination now preserves the configured HTTPS origin.
+407 finance tests, 2 pagination tests and frontend build passed. Local browser CSV
+round trip recognized all 56 entries unchanged; full category state/audit counts
+were identical afterward. No production mutation. See
+[CATEGORY_CATALOG_TRANSFER.md](CATEGORY_CATALOG_TRANSFER.md).
+
 Latest: V1.2 now carries a configuration-only Beness Dominicana deployment preset
 (87 settings across company/accounts/terminals/categories/mappings/policies).
 Explicit dry-run/apply command resolves existing destination studios and rejects
