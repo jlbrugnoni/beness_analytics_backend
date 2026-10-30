@@ -3834,7 +3834,7 @@ def unresolved_attendance_matches_view(request):
     })
 
 
-def occupation_payload(request, start=None, end=None):
+def occupation_payload(request, start=None, end=None, slot_limit=100):
     start, end, attendance, _, _ = base_querysets(request, start=start, end=end)
     scheduled_classes = filtered_schedule(
         ScheduledClass.objects.select_related("site", "studio", "room").filter(class_date__range=(start, end)),
@@ -3990,7 +3990,7 @@ def occupation_payload(request, start=None, end=None):
         "by_studio": sorted(by_studio.values(), key=lambda row: row["name"]),
         "by_day": sorted(by_day.values(), key=lambda row: row["date"]),
         "by_room_capacity": sorted(by_room.values(), key=lambda row: (row["studio"], row["name"])),
-        "by_slot": sorted(slots.values(), key=lambda row: (row["date"], row["start_time"], row["studio"]))[:100],
+        "by_slot": sorted(slots.values(), key=lambda row: (row["date"], row["start_time"], row["studio"]))[:slot_limit],
         "note": (
             "La ocupacion usa los emparejamientos guardados entre asistencias y clases programadas. "
             "Reconstruye los emparejamientos despues de importar agenda o asistencia para actualizar estos datos."
@@ -4473,3 +4473,47 @@ def dashboard_weekly_trends_view(request):
 @permission_classes([IsAuthenticated])
 def dashboard_weekly_occupancy_hour_matrix_view(request):
     return Response(occupancy_hour_matrix_payload(request))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def dashboard_occupancy_view(request):
+    """Occupancy-only cross-period data, without unrelated revenue/conversion queries."""
+    from rest_framework.exceptions import ValidationError
+    mode = request.query_params.get("mode", "weekly")
+    start, end = date_bounds(request)
+    if mode not in ("weekly", "monthly") or end < start or (end - start).days > 366:
+        raise ValidationError("Select a valid weekly/monthly period of up to one year.")
+    if mode == "monthly":
+        start, end = month_start(start), month_end(start)
+        previous_start, previous_end = previous_month_range(start)
+    else:
+        previous_start, previous_end = previous_week_range(start, end)
+    if request.query_params.get("detail") == "trends":
+        ranges = month_trend_ranges(start) if mode == "monthly" else week_trend_ranges(start, end)
+        rows = []
+        for period_start, period_end in ranges:
+            payload = occupation_payload(request, period_start, period_end, slot_limit=0)
+            rows.append({"week_start": period_start.isoformat(),
+                         "scheduled_capacity": payload["scheduled_capacity"],
+                         "attendance_used": payload["matched_attended_visits"],
+                         "scheduled_classes": payload["available_classes"],
+                         "occupation_rate": payload["occupation_rate"]})
+        return Response({"weeks": rows})
+    current = occupation_payload(request, start, end, slot_limit=None)
+    if request.query_params.get("detail") == "matrix":
+        cells = {}
+        for slot in current["by_slot"]:
+            hour = slot["start_time"][:2] + ":00"
+            cell = cells.setdefault((slot["date"], hour), {
+                "date": slot["date"], "weekday": weekday_name(date.fromisoformat(slot["date"])),
+                "hour": hour, "scheduled_capacity": 0, "attended": 0, "scheduled_classes": 0})
+            for target, source in (("scheduled_capacity", "capacity"), ("attended", "attended"), ("scheduled_classes", "scheduled_classes")):
+                cell[target] += slot[source]
+        for cell in cells.values():
+            cell["occupation_rate"] = percentage(cell["attended"], cell["scheduled_capacity"])
+        matrix = {"days": [{"date": row["date"], "weekday": weekday_name(date.fromisoformat(row["date"]))} for row in current["by_day"]],
+                  "hours": sorted({cell["hour"] for cell in cells.values()}), "cells": list(cells.values())}
+        return Response({"current_week": matrix, "weekday_history": matrix})
+    return Response({"current": {"occupation": current}, "comparison": {
+        "occupation": occupation_payload(request, previous_start, previous_end, slot_limit=None)}})
