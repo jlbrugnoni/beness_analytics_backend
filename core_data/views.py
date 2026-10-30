@@ -6,7 +6,7 @@ from django.contrib.auth import authenticate, get_user_model
 from django.contrib.auth.models import Group
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from rest_framework import status, viewsets
 from rest_framework.authtoken.models import Token
@@ -174,7 +174,7 @@ class UserViewSet(viewsets.ViewSet):
         if user.is_superuser and not request.user.is_superuser:
             return Response({"error": "Only a superuser can edit another superuser."}, status=status.HTTP_403_FORBIDDEN)
         if user.is_superuser:
-            protected_fields = {"is_superuser", "is_staff", "is_active", "groups"}
+            protected_fields = {"is_superuser", "is_staff", "is_active"}
             if protected_fields.intersection(request.data.keys()):
                 return Response({"error": "Superuser role fields are protected in the app."}, status=status.HTTP_403_FORBIDDEN)
 
@@ -2322,11 +2322,26 @@ def all_users(request):
     return Response(UserSerializer(users, many=True).data)
 
 
-@api_view(["GET"])
+@api_view(["GET", "POST"])
 @permission_classes([IsAuthenticated])
 def list_groups(request):
     if not user_has_capability(request.user, "can_manage_users"):
         return Response({"error": "You do not have permission to perform this action."}, status=status.HTTP_403_FORBIDDEN)
+    if request.method == "POST":
+        serializer = GroupSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        from .access_management import save_access_profile
+        from .serializers import GroupAccessProfileSerializer
+        with transaction.atomic():
+            try:
+                with transaction.atomic():
+                    group = serializer.save()
+            except IntegrityError:
+                return Response({"name": ["A group with this name already exists."]}, status=status.HTTP_400_BAD_REQUEST)
+            profile_serializer = GroupAccessProfileSerializer(data={"group": group.pk})
+            profile_serializer.is_valid(raise_exception=True)
+            save_access_profile(profile_serializer, request.user)
+        return Response(GroupSerializer(group).data, status=status.HTTP_201_CREATED)
     return Response(GroupSerializer(Group.objects.all().order_by("name"), many=True).data)
 
 
