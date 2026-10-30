@@ -172,3 +172,22 @@ explicitly reopened by a separately authorized user. Separate routine upload, mi
 upload, edit/review/close-day, reopen-entry/day and settings management capabilities;
 new grants default false. Source financial facts remain immutable through classification.
 See REVIEW_WORKFLOW.md for completion criteria, upgrades and scope boundaries.
+
+
+D-096 (2026-10-30, client requested): finance V1.2 adds in-app permission group
+creation under the existing Manage users and group permissions capability. New groups
+start with all grants false and no members; creation and the access audit are atomic.
+Superuser actors may save superuser group membership and direct grants through the
+user form. Existing implicit full superuser access is unchanged; role/activity flags
+and deletion remain protected, and non-superuser managers cannot edit superusers.
+The server finance feature flag continues to apply. See V1_2_PERMISSION_ADMINISTRATION.md.
+
+
+D-097 (2026-10-30, client requested): include the current Dominican settings with
+V1.2 under one finance company named Beness Dominicana. Transfer configuration only;
+exclude QA accounts/companies, transactional records, users and grants. Use a
+reviewable checked-in preset and explicit audited installer, resolving existing
+studios within the destination DO site instead of copying local IDs. Default to
+preview, support repeat installation, reject conflicts without overwriting, and
+leave production activation and report migration as separate steps. See
+BENESS_DOMINICANA_CONFIGURATION.md.

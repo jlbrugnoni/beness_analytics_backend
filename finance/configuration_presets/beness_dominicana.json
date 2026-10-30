@@ -1,0 +1,811 @@
+{
+  "schema_version": 1,
+  "company": {
+    "name": "Beness Dominicana",
+    "country_code": "DO",
+    "default_currency": "DOP",
+    "active": true,
+    "category_catalog_version": "beness-v1"
+  },
+  "accounts": [
+    {
+      "name": "Banco Popular - Cuenta operativa (DOP)",
+      "kind": "bank",
+      "currency": "DOP",
+      "bank_name": "Banco Popular",
+      "active": true,
+      "statement_imports_expected": true,
+      "opening_balance": null,
+      "opening_balance_date": null,
+      "studios": [
+        "Beness Pilates - Arroyo Hondo",
+        "Beness Pilates - Bella Vista",
+        "Beness Pilates - Piantini"
+      ]
+    },
+    {
+      "name": "Banco Popular - Cuenta de ahorro (DOP)",
+      "kind": "bank",
+      "currency": "DOP",
+      "bank_name": "Banco Popular",
+      "active": true,
+      "statement_imports_expected": false,
+      "opening_balance": "0.00",
+      "opening_balance_date": "2026-01-01",
+      "studios": [
+        "Beness Pilates - Arroyo Hondo",
+        "Beness Pilates - Bella Vista",
+        "Beness Pilates - Piantini"
+      ]
+    },
+    {
+      "name": "General cash (DOP)",
+      "kind": "cash",
+      "currency": "DOP",
+      "bank_name": "",
+      "active": true,
+      "statement_imports_expected": false,
+      "opening_balance": null,
+      "opening_balance_date": null,
+      "studios": []
+    }
+  ],
+  "terminals": [
+    {
+      "identifier": "39618800002",
+      "channel": "card_terminal",
+      "active": true,
+      "account": "Banco Popular - Cuenta operativa (DOP)",
+      "studio": "Beness Pilates - Bella Vista"
+    },
+    {
+      "identifier": "39618800004",
+      "channel": "recurring",
+      "active": true,
+      "account": "Banco Popular - Cuenta operativa (DOP)",
+      "studio": "Beness Pilates - Bella Vista"
+    },
+    {
+      "identifier": "39618840003",
+      "channel": "payment_link",
+      "active": true,
+      "account": "Banco Popular - Cuenta operativa (DOP)",
+      "studio": "Beness Pilates - Bella Vista"
+    },
+    {
+      "identifier": "39618800001",
+      "channel": "card_terminal",
+      "active": true,
+      "account": "Banco Popular - Cuenta operativa (DOP)",
+      "studio": "Beness Pilates - Piantini"
+    },
+    {
+      "identifier": "39618800003",
+      "channel": "recurring",
+      "active": true,
+      "account": "Banco Popular - Cuenta operativa (DOP)",
+      "studio": "Beness Pilates - Piantini"
+    },
+    {
+      "identifier": "39618840001",
+      "channel": "payment_link",
+      "active": true,
+      "account": "Banco Popular - Cuenta operativa (DOP)",
+      "studio": "Beness Pilates - Piantini"
+    },
+    {
+      "identifier": "39618800006",
+      "channel": "card_terminal",
+      "active": true,
+      "account": "Banco Popular - Cuenta operativa (DOP)",
+      "studio": "Beness Pilates - Arroyo Hondo"
+    },
+    {
+      "identifier": "39618840004",
+      "channel": "payment_link",
+      "active": true,
+      "account": "Banco Popular - Cuenta operativa (DOP)",
+      "studio": "Beness Pilates - Arroyo Hondo"
+    },
+    {
+      "identifier": "39618800005",
+      "channel": "recurring",
+      "active": true,
+      "account": "Banco Popular - Cuenta operativa (DOP)",
+      "studio": "Beness Pilates - Arroyo Hondo"
+    }
+  ],
+  "categories": [
+    {
+      "name": "Personal",
+      "catalog_code": "personal",
+      "default_treatment": "operating",
+      "default_allocation": "direct",
+      "sensitive": true,
+      "active": true,
+      "parent": null
+    },
+    {
+      "name": "Sueldos",
+      "catalog_code": "personal-01",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "personal"
+    },
+    {
+      "name": "Seguridad social",
+      "catalog_code": "personal-02",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "personal"
+    },
+    {
+      "name": "Honorarios",
+      "catalog_code": "personal-03",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "personal"
+    },
+    {
+      "name": "Comisiones",
+      "catalog_code": "personal-04",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "personal"
+    },
+    {
+      "name": "Vacaciones / liquidaciones",
+      "catalog_code": "personal-05",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "personal"
+    },
+    {
+      "name": "Dietas y Viaticos",
+      "catalog_code": "personal-06",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "personal"
+    },
+    {
+      "name": "Local / Instalaciones",
+      "catalog_code": "local",
+      "default_treatment": "operating",
+      "default_allocation": "direct",
+      "sensitive": false,
+      "active": true,
+      "parent": null
+    },
+    {
+      "name": "Alquiler",
+      "catalog_code": "local-01",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "local"
+    },
+    {
+      "name": "Comunidad",
+      "catalog_code": "local-02",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "local"
+    },
+    {
+      "name": "Mantenimiento",
+      "catalog_code": "local-03",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "local"
+    },
+    {
+      "name": "Limpieza",
+      "catalog_code": "local-04",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "local"
+    },
+    {
+      "name": "Seguro",
+      "catalog_code": "local-05",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "local"
+    },
+    {
+      "name": "Servicios",
+      "catalog_code": "servicios",
+      "default_treatment": "operating",
+      "default_allocation": "direct",
+      "sensitive": false,
+      "active": true,
+      "parent": null
+    },
+    {
+      "name": "Electricidad",
+      "catalog_code": "servicios-01",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "servicios"
+    },
+    {
+      "name": "Agua",
+      "catalog_code": "servicios-02",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "servicios"
+    },
+    {
+      "name": "Internet y telefono",
+      "catalog_code": "servicios-03",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "servicios"
+    },
+    {
+      "name": "Valet parking",
+      "catalog_code": "servicios-04",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "servicios"
+    },
+    {
+      "name": "Otros",
+      "catalog_code": "servicios-05",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "servicios"
+    },
+    {
+      "name": "Operacion",
+      "catalog_code": "operacion",
+      "default_treatment": "operating",
+      "default_allocation": "direct",
+      "sensitive": false,
+      "active": true,
+      "parent": null
+    },
+    {
+      "name": "Equipamiento",
+      "catalog_code": "operacion-01",
+      "default_treatment": "review",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "operacion"
+    },
+    {
+      "name": "Mantenimiento equipos",
+      "catalog_code": "operacion-02",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "operacion"
+    },
+    {
+      "name": "Materiales",
+      "catalog_code": "operacion-03",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "operacion"
+    },
+    {
+      "name": "Insumos",
+      "catalog_code": "operacion-04",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "operacion"
+    },
+    {
+      "name": "Uniformes",
+      "catalog_code": "operacion-05",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "operacion"
+    },
+    {
+      "name": "Marketing",
+      "catalog_code": "marketing",
+      "default_treatment": "operating",
+      "default_allocation": "direct",
+      "sensitive": false,
+      "active": true,
+      "parent": null
+    },
+    {
+      "name": "Publicidad digital",
+      "catalog_code": "marketing-01",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "marketing"
+    },
+    {
+      "name": "Diseño",
+      "catalog_code": "marketing-02",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "marketing"
+    },
+    {
+      "name": "Impresiones",
+      "catalog_code": "marketing-03",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "marketing"
+    },
+    {
+      "name": "Promociones",
+      "catalog_code": "marketing-04",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "marketing"
+    },
+    {
+      "name": "Software",
+      "catalog_code": "software",
+      "default_treatment": "operating",
+      "default_allocation": "direct",
+      "sensitive": false,
+      "active": true,
+      "parent": null
+    },
+    {
+      "name": "Mindbody",
+      "catalog_code": "software-01",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "software"
+    },
+    {
+      "name": "Alegra",
+      "catalog_code": "software-02",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "software"
+    },
+    {
+      "name": "Otras suscripciones",
+      "catalog_code": "software-03",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "software"
+    },
+    {
+      "name": "Administracion",
+      "catalog_code": "administracion",
+      "default_treatment": "operating",
+      "default_allocation": "administration",
+      "sensitive": false,
+      "active": true,
+      "parent": null
+    },
+    {
+      "name": "Contabilidad",
+      "catalog_code": "administracion-01",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "administracion"
+    },
+    {
+      "name": "Legal",
+      "catalog_code": "administracion-02",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "administracion"
+    },
+    {
+      "name": "Impuestos",
+      "catalog_code": "administracion-03",
+      "default_treatment": "extraordinary",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "administracion"
+    },
+    {
+      "name": "Sueldos administración",
+      "catalog_code": "administracion-04",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": true,
+      "active": true,
+      "parent": "administracion"
+    },
+    {
+      "name": "Seguridad social administración",
+      "catalog_code": "administracion-05",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": true,
+      "active": true,
+      "parent": "administracion"
+    },
+    {
+      "name": "Transporte administración",
+      "catalog_code": "administracion-06",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "administracion"
+    },
+    {
+      "name": "Caja chica administración",
+      "catalog_code": "administracion-07",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "administracion"
+    },
+    {
+      "name": "Otros gastos administración",
+      "catalog_code": "administracion-08",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "administracion"
+    },
+    {
+      "name": "Bancos",
+      "catalog_code": "bancos",
+      "default_treatment": "operating",
+      "default_allocation": "direct",
+      "sensitive": false,
+      "active": true,
+      "parent": null
+    },
+    {
+      "name": "Comisiones",
+      "catalog_code": "bancos-01",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "bancos"
+    },
+    {
+      "name": "TPV / POS",
+      "catalog_code": "bancos-02",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "bancos"
+    },
+    {
+      "name": "Intereses",
+      "catalog_code": "bancos-03",
+      "default_treatment": "review",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "bancos"
+    },
+    {
+      "name": "Devoluciones",
+      "catalog_code": "bancos-04",
+      "default_treatment": "review",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "bancos"
+    },
+    {
+      "name": "Logistica",
+      "catalog_code": "logistica",
+      "default_treatment": "operating",
+      "default_allocation": "direct",
+      "sensitive": false,
+      "active": true,
+      "parent": null
+    },
+    {
+      "name": "Envios",
+      "catalog_code": "logistica-01",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "logistica"
+    },
+    {
+      "name": "Transporte",
+      "catalog_code": "logistica-02",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "logistica"
+    },
+    {
+      "name": "Aduanas",
+      "catalog_code": "logistica-03",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "logistica"
+    },
+    {
+      "name": "Otros",
+      "catalog_code": "otros",
+      "default_treatment": "operating",
+      "default_allocation": "direct",
+      "sensitive": false,
+      "active": true,
+      "parent": null
+    },
+    {
+      "name": "Varios",
+      "catalog_code": "otros-01",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "otros"
+    },
+    {
+      "name": "Extraordinarios",
+      "catalog_code": "otros-02",
+      "default_treatment": "extraordinary",
+      "default_allocation": "",
+      "sensitive": false,
+      "active": true,
+      "parent": "otros"
+    },
+    {
+      "name": "Horas extra",
+      "catalog_code": "custom-e09efbfe06bc471983bdb267652635d4",
+      "default_treatment": "",
+      "default_allocation": "",
+      "sensitive": true,
+      "active": true,
+      "parent": "personal"
+    }
+  ],
+  "source_mappings": [
+    {
+      "source_field": "alegra_payment_method",
+      "source_value": "Tarjeta débito",
+      "behavior": "map",
+      "channel": "payment_link",
+      "requires_review": false,
+      "active": true,
+      "studio": null
+    },
+    {
+      "source_field": "alegra_payment_method",
+      "source_value": "Tarjeta crédito",
+      "behavior": "map",
+      "channel": "card_terminal",
+      "requires_review": true,
+      "active": true,
+      "studio": null
+    },
+    {
+      "source_field": "alegra_payment_method",
+      "source_value": "Efectivo",
+      "behavior": "map",
+      "channel": "cash",
+      "requires_review": false,
+      "active": true,
+      "studio": null
+    },
+    {
+      "source_field": "alegra_payment_method",
+      "source_value": "Transferencia",
+      "behavior": "map",
+      "channel": "transfer",
+      "requires_review": false,
+      "active": true,
+      "studio": null
+    },
+    {
+      "source_field": "alegra_price_list",
+      "source_value": "General",
+      "behavior": "neutral",
+      "channel": "",
+      "requires_review": false,
+      "active": true,
+      "studio": null
+    },
+    {
+      "source_field": "alegra_cost_center",
+      "source_value": "Bella Vista",
+      "behavior": "map",
+      "channel": "",
+      "requires_review": false,
+      "active": true,
+      "studio": "Beness Pilates - Bella Vista"
+    },
+    {
+      "source_field": "alegra_price_list",
+      "source_value": "Bella Vista",
+      "behavior": "map",
+      "channel": "",
+      "requires_review": false,
+      "active": true,
+      "studio": "Beness Pilates - Bella Vista"
+    },
+    {
+      "source_field": "alegra_cost_center",
+      "source_value": "Piantini",
+      "behavior": "map",
+      "channel": "",
+      "requires_review": false,
+      "active": true,
+      "studio": "Beness Pilates - Piantini"
+    },
+    {
+      "source_field": "alegra_price_list",
+      "source_value": "Piantini",
+      "behavior": "map",
+      "channel": "",
+      "requires_review": false,
+      "active": true,
+      "studio": "Beness Pilates - Piantini"
+    },
+    {
+      "source_field": "alegra_cost_center",
+      "source_value": "Arroyo Hondo",
+      "behavior": "map",
+      "channel": "",
+      "requires_review": false,
+      "active": true,
+      "studio": "Beness Pilates - Arroyo Hondo"
+    },
+    {
+      "source_field": "alegra_price_list",
+      "source_value": "Arroyo Hondo",
+      "behavior": "map",
+      "channel": "",
+      "requires_review": false,
+      "active": true,
+      "studio": "Beness Pilates - Arroyo Hondo"
+    }
+  ],
+  "fee_policies": [
+    {
+      "valid_from": null,
+      "valid_until": null,
+      "notes": "Client-confirmed historical withholding baseline; contract start date unspecified.",
+      "active": true,
+      "channel": "card_terminal",
+      "deposit_mode": "net",
+      "percentage": "3.5000",
+      "separate_fee_amount": null,
+      "separate_fee_frequency": "unknown",
+      "reimbursement_expected": false,
+      "reimbursement_from": null,
+      "reimbursement_until": null
+    },
+    {
+      "valid_from": null,
+      "valid_until": null,
+      "notes": "Client-confirmed historical withholding baseline; contract start date unspecified.",
+      "active": true,
+      "channel": "recurring",
+      "deposit_mode": "net",
+      "percentage": "3.5000",
+      "separate_fee_amount": null,
+      "separate_fee_frequency": "unknown",
+      "reimbursement_expected": false,
+      "reimbursement_from": null,
+      "reimbursement_until": null
+    },
+    {
+      "valid_from": null,
+      "valid_until": null,
+      "notes": "Client-confirmed historical withholding baseline; contract start date unspecified.",
+      "active": true,
+      "channel": "payment_link",
+      "deposit_mode": "net",
+      "percentage": "5.0000",
+      "separate_fee_amount": null,
+      "separate_fee_frequency": "unknown",
+      "reimbursement_expected": false,
+      "reimbursement_from": null,
+      "reimbursement_until": null
+    }
+  ],
+  "settlement_policies": [
+    {
+      "valid_from": null,
+      "valid_until": null,
+      "notes": "Typical elapsed hours; may take longer over weekends. Suggestion only; no holiday calendar.",
+      "active": true,
+      "channel": "card_terminal",
+      "minimum_hours": 24,
+      "maximum_hours": 48,
+      "weekend_delays": true
+    },
+    {
+      "valid_from": null,
+      "valid_until": null,
+      "notes": "Typical elapsed hours; may take longer over weekends. Suggestion only; no holiday calendar.",
+      "active": true,
+      "channel": "recurring",
+      "minimum_hours": 24,
+      "maximum_hours": 48,
+      "weekend_delays": true
+    },
+    {
+      "valid_from": null,
+      "valid_until": null,
+      "notes": "Typical elapsed hours; may take longer over weekends. Suggestion only; no holiday calendar.",
+      "active": true,
+      "channel": "payment_link",
+      "minimum_hours": 24,
+      "maximum_hours": 48,
+      "weekend_delays": true
+    }
+  ],
+  "tax_profiles": [
+    {
+      "valid_from": null,
+      "valid_until": null,
+      "notes": "Client-provided activity sales-tax default.",
+      "active": true,
+      "treatment": "no_tax",
+      "rate": null
+    }
+  ]
+}

@@ -157,3 +157,8 @@ folder. Never mark a phase complete merely because its documentation exists.
 Payment preview handover: [PHASE_3_3_3_1_DELIVERY.md](PHASE_3_3_3_1_DELIVERY.md).
 
 Shared receipt/import handover: [PHASE_3_3_3_2_DELIVERY.md](PHASE_3_3_3_2_DELIVERY.md).
+
+
+V1.2 configuration transfer: [Beness Dominicana configuration package](BENESS_DOMINICANA_CONFIGURATION.md)
+contains the approved setup baseline and explicit dry-run/apply deployment steps;
+it excludes local transactional data and access grants.

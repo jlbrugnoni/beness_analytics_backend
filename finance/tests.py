@@ -208,6 +208,81 @@ class AccessManagementTests(APITestCase):
         self.target = User.objects.create_user("partner@example.test")
         self.target_profile = get_or_create_user_access_profile(self.target)
 
+    def test_create_group_starts_without_grants_or_members_and_is_audited(self):
+        response = self.client.post("/api/data/groups/", {"name": "  Finance operators  "}, format="json")
+        self.assertEqual(response.status_code, 201, response.data)
+        group = Group.objects.get(pk=response.data["id"])
+        self.assertEqual(group.name, "Finance operators")
+        self.assertFalse(User.objects.filter(groups=group).exists())
+        self.assertTrue(all(not value for value in response.data["capabilities"].values()))
+        self.assertEqual(response.data["access_profile_id"], group.access_profile.pk)
+        audit = AccessChange.objects.get(target_type="group", target_id=group.pk)
+        self.assertEqual(audit.actor_id, self.manager.pk)
+        self.assertEqual(audit.operation, "create")
+        # Configure, assign, and resolve the newly created group through existing APIs.
+        response = self.client.patch(f"/api/data/group-access-profiles/{group.access_profile.pk}/", {
+            "can_view_money": True, "can_view_finance": True, "expected_revision": 1,
+        }, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        response = self.client.put(f"/api/data/users/{self.target.pk}/", {"groups": [group.pk]}, format="json")
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertTrue(resolve_access_payload(self.target)["capabilities"]["can_view_finance"])
+
+    def test_group_creation_rejects_blank_long_and_case_insensitive_duplicate_names(self):
+        before = Group.objects.count()
+        for name in ["", "   ", "X" * 151, " partner FINANCE ", "admin"]:
+            with self.subTest(name=name):
+                response = self.client.post("/api/data/groups/", {"name": name}, format="json")
+                self.assertEqual(response.status_code, 400, response.data)
+        self.assertEqual(Group.objects.count(), before)
+        self.assertFalse(AccessChange.objects.exists())
+
+    def test_only_user_managers_can_create_groups(self):
+        self.client.force_authenticate(self.target)
+        self.assertEqual(self.client.post("/api/data/groups/", {"name": "Forbidden"}).status_code, 403)
+        self.client.force_authenticate(None)
+        self.assertEqual(self.client.post("/api/data/groups/", {"name": "Anonymous"}).status_code, 401)
+        self.assertFalse(Group.objects.filter(name__in=["Forbidden", "Anonymous"]).exists())
+
+    def test_group_creation_rolls_back_if_audit_fails(self):
+        with patch("finance.audit.log_access_change", side_effect=RuntimeError("audit failure")):
+            with self.assertRaises(RuntimeError):
+                self.client.post("/api/data/groups/", {"name": "Rolled back"}, format="json")
+        self.assertFalse(Group.objects.filter(name="Rolled back").exists())
+
+    def test_superuser_can_save_own_grants_and_membership_without_losing_implicit_access(self):
+        root = User.objects.create_superuser("root-edit@example.test", "LocalTest123!")
+        profile = get_or_create_user_access_profile(root)
+        self.client.force_authenticate(root)
+        for groups in [[], [self.group.pk]]:
+            response = self.client.put(f"/api/data/users/{root.pk}/", {
+                "groups": groups,
+                "access_profile": {"can_import_finance_migration": True, "expected_revision": profile.revision},
+            }, format="json")
+            self.assertEqual(response.status_code, 200, response.data)
+            profile.refresh_from_db()
+            self.assertTrue(profile.can_import_finance_migration)
+            self.assertEqual(list(root.groups.values_list("pk", flat=True)), groups)
+        with override_settings(FINANCE_ENABLED=False):
+            access = resolve_access_payload(root)
+            self.assertTrue(all(access["capabilities"].values()))
+            self.assertFalse(access["finance"]["can_enter"])
+        self.assertTrue(AccessChange.objects.filter(actor=root, target_type="user").exists())
+        self.assertTrue(AccessChange.objects.filter(actor=root, target_type="user_membership").exists())
+
+    def test_superuser_role_flags_remain_protected(self):
+        root = User.objects.create_superuser("protected-root@example.test", "LocalTest123!")
+        self.client.force_authenticate(root)
+        for field in ["is_superuser", "is_staff", "is_active"]:
+            response = self.client.put(f"/api/data/users/{root.pk}/", {field: False}, format="json")
+            self.assertEqual(response.status_code, 403, response.data)
+        root.refresh_from_db()
+        self.assertTrue(root.is_superuser and root.is_staff and root.is_active)
+        self.client.force_authenticate(self.manager)
+        response = self.client.put(f"/api/data/users/{root.pk}/", {"groups": [self.group.pk]}, format="json")
+        self.assertEqual(response.status_code, 403)
+        self.assertFalse(root.groups.exists())
+
     def test_group_catalog_includes_capabilities_and_profile_id(self):
         response = self.client.get("/api/data/groups/")
         self.assertEqual(response.status_code, 200)

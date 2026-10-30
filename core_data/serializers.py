@@ -127,6 +127,12 @@ class GroupSerializer(serializers.ModelSerializer):
         model = Group
         fields = ["id", "name", "capabilities", "access_profile_id"]
 
+    def validate_name(self, value):
+        value = value.strip()
+        if Group.objects.filter(name__iexact=value).exclude(pk=self.instance.pk if self.instance else None).exists():
+            raise serializers.ValidationError("A group with this name already exists.")
+        return value
+
     def get_capabilities(self, obj):
         return group_capabilities(obj)
 

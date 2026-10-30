@@ -1,8 +1,21 @@
 # Finance delivery progress
 
-Updated: 2026-10-28.
+Updated: 2026-10-30.
 
 ## Current checkpoint
+
+Latest: V1.2 now carries a configuration-only Beness Dominicana deployment preset
+(87 settings across company/accounts/terminals/categories/mappings/policies).
+Explicit dry-run/apply command resolves existing destination studios and rejects
+conflicts without overwriting. No production install or local data reassignment.
+See [BENESS_DOMINICANA_CONFIGURATION.md](BENESS_DOMINICANA_CONFIGURATION.md).
+
+Latest: Finance V1.2 permission administration implemented on
+`feature/finance-module-v1.2` in both repositories; client acceptance pending.
+Superusers can save group membership and individual grants; user managers can create
+empty permission groups and configure them using the existing capability editor.
+See [V1_2_PERMISSION_ADMINISTRATION.md](V1_2_PERMISSION_ADMINISTRATION.md).
+No production deployment or permission/data changes were performed.
 
 Latest: D-094 missing-number payment acceptance/linking delivered; no reimport needed.
 Owner restored invoices (4,995 active).14April23 payments can be resolved from payment
