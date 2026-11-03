@@ -291,8 +291,9 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
         if scope not in ('selected','all'):raise serializers.ValidationError({'scope':'Choose selected or all.'})
         invoice=request.query_params.get('invoice','').strip().upper()
         import re
-        if invoice and not re.fullmatch(r'B0[12]\d{8}',invoice):
-            raise serializers.ValidationError({'invoice':'Use a complete B01/B02 invoice code.'})
+        from .invoice_numbers import INVOICE_CODE_PATTERN
+        if invoice and not re.fullmatch(INVOICE_CODE_PATTERN,invoice):
+            raise serializers.ValidationError({'invoice':'Use a complete B01/B02 (eight digits) or E31/E32 (ten digits) invoice code.'})
         review=request.query_params.get('review','all')
         if review not in ('all','issues'):raise serializers.ValidationError({'review':'Choose all or issues.'})
         parsed=read_payment_preview(bytes(batch.original_file))

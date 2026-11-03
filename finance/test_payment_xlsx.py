@@ -65,7 +65,7 @@ class PaymentXLSXReaderTests(SimpleTestCase):
     def test_single_export_detects_sheet_headers_and_excel_dates_without_enrichment(self):
         result=read_payment_xlsx(export_xlsx())
         self.assertEqual(result['file_issues'],[])
-        self.assertEqual(result['parser_version'],'alegra-payment-xlsx-v2')
+        self.assertEqual(result['parser_version'],'alegra-payment-xlsx-v3')
         self.assertEqual(result['summary']['amount_total'],'3600.00')
         self.assertEqual(result['rows'][0]['sheet'],'Reporte de ingresos')
         self.assertEqual(result['rows'][0]['source_row'],4)

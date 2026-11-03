@@ -203,3 +203,12 @@ hard-delete or reparent categories through transfer. Signed state-bound previews
 atomic writes/audits and stale checks apply. Client authorizes direct main commits
 after local testing. Fix the identified HTTP-pagination deployment failure mode in
 finance loaders. See CATEGORY_CATALOG_TRANSFER.md.
+
+
+D-099 (2026-11-03, client requested): patch directly on main to accept the observed
+new E31/E32 + ten-digit invoice sequences alongside legacy B01/B02 + eight digits.
+Use a shared rule for invoice parsing, payment associations and migration filtering;
+retain the complete prefixed number for identity. Preserve strict single-invoice
+references and all existing financial/review/duplicate checks. Recovery is reuploading
+the original reports into new parser-version previews, without resetting financial
+data or mutating source evidence. See ALEGRA_ELECTRONIC_NUMBERING.md.

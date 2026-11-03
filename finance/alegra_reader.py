@@ -5,9 +5,10 @@ import re
 from collections import defaultdict
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
+from .invoice_numbers import INVOICE_CODE_PATTERN
 from .bank_readers import MAX_FILE_BYTES, MAX_ROWS, normalized, money
 
-PARSER_VERSION = 'alegra-items-v2'
+PARSER_VERSION = 'alegra-items-v3'
 FIELDS = {
     'date': 'FECHA DE EMISIÓN', 'code': 'CÓDIGO', 'status': 'ESTADO',
     'cost_center': 'CENTRO DE COSTO', 'payment_method': 'MÉTODO DE PAGO', 'price_list': 'LISTAS DE PRECIOS',
@@ -80,7 +81,7 @@ def read_alegra_csv(content):
                     row['issues'].append('column_count')
                 if not parsed['code']:
                     row['issues'].append('missing_invoice_code')
-                elif not re.fullmatch(r'B0[12]\d{8}', parsed['code']):
+                elif not re.fullmatch(INVOICE_CODE_PATTERN, parsed['code']):
                     row['issues'].append('unexpected_invoice_code')
                 try:
                     parsed['date'] = datetime.strptime(parsed['date'], '%d/%m/%Y').date().isoformat()

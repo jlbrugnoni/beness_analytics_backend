@@ -1,8 +1,15 @@
 # Finance delivery progress
 
-Updated: 2026-10-30.
+Updated: 2026-11-03.
 
 ## Current checkpoint
+
+Latest: D-099 small Alegra numbering patch on main, preserving legacy B01/B02 and
+adding observed E31/E32 invoice identities consistently in invoice/payment readers
+and the migration payment filter. Reparsed supplied reports: 249 valid invoices,
+250 correctly identified income payments, DOP 1,545,306.00, no grouped amount
+differences. Reupload original reports after deployment; no reset. See
+[ALEGRA_ELECTRONIC_NUMBERING.md](ALEGRA_ELECTRONIC_NUMBERING.md).
 
 Latest: D-098 catalog recovery and CSV export/import implemented on main at the
 client's request. Migration permission gates the dedicated transfer page. Preview/

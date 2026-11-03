@@ -6,18 +6,19 @@ import zipfile
 from collections import Counter, defaultdict
 from decimal import Decimal
 from xml.etree import ElementTree as ET
+from .invoice_numbers import INVOICE_CODE_PATTERN
 from .bank_readers import normalized
 from .migration_reader import (NS, REL, MAX_BYTES, MAX_EXPANDED_BYTES, MAX_ROWS,
     MAX_SCAN_ROWS, MAX_CELLS, safe_xml, column_number, cell_value, parse_date, parse_money)
 
-VERSION = 'alegra-workbook-payments-v1'
+VERSION = 'alegra-workbook-payments-v2'
 FIELDS = {'account':'Cuenta','date':'Fecha','number':'Numero','customer':'Cliente',
     'customer_id':'ID','amount':'Valor','observations':'Observaciones','notes':'Notas',
     'associations':'Asociaciones','kind':'Tipo_nota','source_reviewed':'Conciliada',
     'original_method':'Metodo_pago','status':'Estado','method':'Metodo',
     'manual_reviewed':'Conciliado','location':'Ubicación','cached_invoice':'NCF','currency':'Moneda'}
 REQUIRED = {'date','number','amount','associations','kind','original_method'}
-CODE = re.compile(r'(?<![A-Za-z0-9])B0[12]\d{8}(?![A-Za-z0-9])', re.I)
+CODE = re.compile(r'(?<![A-Za-z0-9])' + INVOICE_CODE_PATTERN + r'(?![A-Za-z0-9])', re.I)
 METHODS = {'cierre','link','recurrente','transferencia','efectivo'}
 
 
@@ -155,7 +156,7 @@ def read_payment_preview(content, prepared=None, report_sheet=False):
             # Only the observed single-invoice format is supported; unrecognized
             # trailing references must not be silently dropped by a regex match.
             association=row['associations'] or ''
-            exact=re.fullmatch(r'\s*Facturas?\s*:\s*(B0[12]\d{8})\s*',association,re.I)
+            exact=re.fullmatch(r'\s*Facturas?\s*:\s*(' + INVOICE_CODE_PATTERN + r')\s*',association,re.I)
             row['invoice_code']=references[0] if len(references)==1 and exact else None
             if not row['invoice_code']:issues.append({'code':'invoice_reference_review','field':'associations'})
             cached=row['cached_invoice']
@@ -205,7 +206,7 @@ def read_payment_preview(content, prepared=None, report_sheet=False):
 def read_payment_csv(content):
     """Strict CSV preset using observed payment columns; unknown layouts fail closed."""
     import csv
-    result={'parser_version':'alegra-payment-csv-v1','rows':[],'file_issues':[],'summary':{}}
+    result={'parser_version':'alegra-payment-csv-v2','rows':[],'file_issues':[],'summary':{}}
     try:
         if len(content)>MAX_BYTES:raise ValueError('file_too_large')
         if b'\x00' in content:raise ValueError('invalid_payment_csv')
@@ -238,7 +239,7 @@ def read_payment_csv(content):
             if len(values)!=len(first):raise ValueError('invalid_payment_csv')
             rows.append((i,{j+1:cell(j+1,i,v) for j,v in enumerate(values)}))
         result=read_payment_preview(b'',prepared=('Payments CSV',False,headers,mapping,rows))
-        result.update(parser_version='alegra-payment-csv-v1',encoding=encoding)
+        result.update(parser_version='alegra-payment-csv-v2',encoding=encoding)
     except (UnicodeError,ValueError,csv.Error) as error:
         result['file_issues']=[str(error) if str(error) in {'file_too_large','missing_payment_header','duplicate_header','workbook_limit'} else 'invalid_payment_csv']
         result['summary']=payment_totals([])
@@ -248,5 +249,5 @@ def read_payment_csv(content):
 def read_payment_xlsx(content):
     """Routine XLSX export: identify one payment table without a sheet-name requirement."""
     result=read_payment_preview(content,report_sheet=True)
-    result['parser_version']='alegra-payment-xlsx-v2'
+    result['parser_version']='alegra-payment-xlsx-v3'
     return result
