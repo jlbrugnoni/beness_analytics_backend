@@ -208,6 +208,7 @@ def commit(batch, company, actor, expected):
     decisions = []
     new_sales = []
     codes = set()
+    review_keys = set()
     for snapshot in snapshots(batch):
         invoice = snapshot['invoice']
         codes.add(invoice.code)
@@ -218,6 +219,8 @@ def commit(batch, company, actor, expected):
             mapping = resolve_source_values(company, 'alegra', snapshot['source'], rules=rules)
             if is_supervised:
                 mapping = approve_sale(mapping)
+            if not batch.migration_batch_id and batch.provider == 'alegra':
+                mapping['auto_review_pending'] = True
             sale = FinancialSale(company=company, provider=batch.provider, code=invoice.code,
                 source=snapshot['source'], items=snapshot['items'], created_from=invoice,
                 studio_id=mapping['studio'], channel=mapping['channel'] or '', assignments=mapping)
@@ -228,6 +231,8 @@ def commit(batch, company, actor, expected):
             resolution = 'linked'
         elif status == 'invalid':
             resolution = 'invalid'
+        if not batch.migration_batch_id and resolution in ('created', 'linked'):
+            review_keys.add((batch.provider, invoice.code))
         decisions.append((invoice, sale, resolution))
     FinancialSale.objects.bulk_create(new_sales, batch_size=250)
     SalesEvent.objects.bulk_create([
@@ -240,7 +245,7 @@ def commit(batch, company, actor, expected):
         for invoice, sale, resolution in decisions
     ], batch_size=500)
     from .payment_posting import refresh_links
-    refresh_links(company,actor,legacy_codes=codes)
+    refresh_links(company,actor,legacy_codes=codes,auto_review_keys=review_keys)
     event(posting, actor, 'commit', after={'interpretation_version': VERSION})
     advance(company)
     return posting

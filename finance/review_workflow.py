@@ -3,7 +3,7 @@ from collections import defaultdict
 from django.db.models import Q
 from django.utils import timezone
 from rest_framework.exceptions import ValidationError
-from .models import FinancialSale,FinancialReceipt,SalesPosting
+from .models import FinancialSale,FinancialReceipt,SalesPosting,SalesEvent,PaymentEvent
 
 
 def import_capability(batch):
@@ -118,6 +118,55 @@ def refresh_supervised(company,actor):
     if changed:sales_posting.advance(company)
     return changed
 
+
+
+def auto_review_imported(company, actor, sales, grouped, comparisons, keys):
+    """Complete newly imported routine invoices when their payment group is ready."""
+    from . import sales_posting, payment_posting
+    approved = []
+    for key in sorted(keys):
+        sale = sales.get(key)
+        if (not sale or sale.reviewed or sale.reconciled or
+                not sale.assignments.get('auto_review_pending') or sale.assignments.get('review_reopened')):
+            continue
+        receipts = grouped.get(key, [])
+        comparison = comparisons.get(key)
+        if (sale.source.get('status_kind') != 'paid' or not comparison or
+                not comparison['amounts_equal'] or not comparison['currency_matches'] or
+                any(r.sale_id != sale.pk or r.reconciled or r.assignments.get('review_reopened') for r in receipts) or
+                sale_missing(sale, receipts)):
+            continue
+        approved.append((sale, receipts))
+    if not approved:
+        return 0
+    postings = dict(SalesPosting.objects.filter(
+        batch_id__in={sale.created_from.batch_id for sale, _ in approved}).values_list('batch_id', 'pk'))
+    reviewed_sales, reviewed_receipts, sales_events, payment_events = [], [], [], []
+    for sale, receipts in approved:
+        before = sales_posting.state(sale)
+        sale.reviewed = True
+        sale.revision += 1
+        sale.assignments = {**sale.assignments, 'auto_review_pending': False, 'requires_review': False,
+                            'review_reasons': [], 'review_basis': 'routine_import'}
+        reviewed_sales.append(sale)
+        sales_events.append(SalesEvent(posting_id=postings[sale.created_from.batch_id], actor=actor, sale=sale,
+            action='routine_auto_review', before=before, after=sales_posting.state(sale)))
+        for receipt in receipts:
+            if receipt.reviewed:
+                continue
+            before = payment_posting.state(receipt)
+            receipt.reviewed = True
+            receipt.revision += 1
+            receipt.assignments = {**receipt.assignments, 'channel_review': False, 'review_basis': 'routine_import'}
+            reviewed_receipts.append(receipt)
+            payment_events.append(PaymentEvent(actor=actor, receipt=receipt, action='routine_auto_review',
+                before=before, after=payment_posting.state(receipt)))
+    FinancialSale.objects.bulk_update(reviewed_sales, ['reviewed', 'revision', 'assignments'], batch_size=250)
+    FinancialReceipt.objects.bulk_update(reviewed_receipts, ['reviewed', 'revision', 'assignments'], batch_size=250)
+    SalesEvent.objects.bulk_create(sales_events, batch_size=250)
+    PaymentEvent.objects.bulk_create(payment_events, batch_size=250)
+    sales_posting.advance(company)
+    return len(reviewed_sales)
 
 def review_invoice(sale,company,actor,reopen=False):
     from . import sales_posting,payment_posting

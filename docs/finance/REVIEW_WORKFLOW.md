@@ -25,8 +25,18 @@ Important missing information keeps an entry pending:
   cancellation treatment remain pending. Amount/status/currency issues retain their
   existing resolution process.
 
-Routine imports start pending even if their automatic assignments are complete.
-An editor finishes the assignments and explicitly marks the entry reviewed. Reviewing
+New routine Alegra invoices are automatically reviewed when they have a studio and
+their linked payments have assigned methods and studios, and the payment group
+agrees with the invoice. Either report can arrive first; until the other arrives,
+the incomplete invoice stays pending. The payment methods are taken from the
+linked payments, including split payments. A recognized card mapping is sufficient;
+an unmapped method, unresolved studio conflict, payment mismatch, or cancellation
+still needs attention. Auto-review locks the invoice and payments, records its own
+audit event, and does not reconcile the bank or mark a day checked.
+
+Existing invoices are not backfilled by this change, and explicitly reopened work
+stays open across repeated uploads. Routine bank imports still start pending.
+An editor finishes incomplete assignments and explicitly marks the entry reviewed. Reviewing
 an invoice reviews and locks its active associated payments as one unit. Bank/cash
 income and expense review uses the existing recognized/reviewed checkbox and Save.
 Review does not set financial reconciliation flags.

@@ -90,7 +90,7 @@ def plan(batch,company):
     return {'token':token(company,batch),'counts':dict(counts),'rows':rows,'posting':posting}
 
 
-def refresh_links(company,actor,posting=None,legacy_codes=(), *, invoice=None):
+def refresh_links(company,actor,posting=None,legacy_codes=(), *, invoice=None, auto_review_keys=()):
     """Exact invoice references; amount/name differences require scoped approval."""
     from .payment_matching import context
     receipt_query=FinancialReceipt.objects.filter(company=company,active=True)
@@ -142,7 +142,9 @@ def refresh_links(company,actor,posting=None,legacy_codes=(), *, invoice=None):
     FinancialReceipt.objects.bulk_update(updated,['sale','link_issue','revision'],batch_size=250)
     PaymentEvent.objects.bulk_create(events,batch_size=250)
     changed=len(updated)
-    from .review_workflow import refresh_supervised
+    from .review_workflow import auto_review_imported, refresh_supervised
+    if auto_review_keys:
+        changed+=auto_review_imported(company,actor,sales,grouped,comparisons,auto_review_keys)
     # Explicitly reopened invoices are excluded from automatic supervision.
     if invoice is None:changed+=refresh_supervised(company,actor)
     if changed:advance(company)
@@ -179,7 +181,14 @@ def commit(batch,company,actor,expected):
         PaymentDecision.objects.create(posting=posting,row=row,receipt=receipt,resolution=resolution)
     legacy_codes=set(FinancialReceipt.objects.filter(decisions__posting=posting,
         decisions__resolution__in=['created','linked'],active=True).values_list('source__invoice_code',flat=True))
-    refresh_links(company,actor,posting,legacy_codes=legacy_codes);event(posting,actor,'commit',after={'version':VERSION});advance(company)
+    review_keys={(batch.provider,code) for code in legacy_codes if code} if not batch.migration_batch_id else set()
+    if review_keys:
+        # A held source row may be part of a split payment. Leave that group open.
+        blocked_codes=posting.decisions.filter(resolution__in=['invalid','pending'],
+            row__source__kind='ingreso').values_list('row__source__invoice_code',flat=True)
+        review_keys.difference_update((batch.provider,code) for code in blocked_codes)
+    refresh_links(company,actor,posting,legacy_codes=legacy_codes,auto_review_keys=review_keys)
+    event(posting,actor,'commit',after={'version':VERSION});advance(company)
     return posting
 
 
