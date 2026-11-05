@@ -3,7 +3,11 @@ from django.core.exceptions import ValidationError
 from .models import ConfigurationChange, SourceMapping, normalized_source_value
 
 
-def resolve_source_values(company, source, values, manual=None):
+def source_rules(company):
+    return {(rule.source_field, rule.normalized_value): rule for rule in company.source_mappings.filter(active=True)}
+
+
+def resolve_source_values(company, source, values, manual=None, *, rules=None):
     if source not in {'alegra', 'mindbody', 'historical'}:
         raise ValidationError('Unsupported source.')
     manual = manual or {}
@@ -13,7 +17,8 @@ def resolve_source_values(company, source, values, manual=None):
         raise ValidationError('Unknown manual channel.')
     fields = {'cost_center': 'alegra_cost_center', 'price_list': 'alegra_price_list', 'payment_method': 'alegra_payment_method'} if source == 'alegra' else {
         'studio_label': f'{source}_studio', 'payment_method': f'{source}_payment_method'}
-    rules = {(rule.source_field, rule.normalized_value): rule for rule in company.source_mappings.filter(active=True)}
+    if rules is None:
+        rules = source_rules(company)
     evidence = {}
     for key, field in fields.items():
         raw = values.get(key, '')

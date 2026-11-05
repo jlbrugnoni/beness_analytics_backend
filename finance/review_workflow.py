@@ -60,8 +60,14 @@ def refresh_supervised(company,actor):
     from . import sales_posting,payment_posting
     from .payment_matching import context
     changed=0
-    sales=list(FinancialSale.objects.filter(company=company,active=True).select_related('created_from__batch__migration_batch').defer('created_from__batch__original_file','created_from__batch__migration_batch__original_file'))
-    receipts=list(FinancialReceipt.objects.filter(company=company,active=True).select_related('created_from__batch__migration_batch').defer('created_from__batch__original_file','created_from__batch__migration_batch__original_file'))
+    sales=list(FinancialSale.objects.filter(company=company,active=True,reviewed=False,
+        created_from__batch__migration_batch__supervised=True).select_related('created_from__batch__migration_batch').only(
+        *(field.name for field in FinancialSale._meta.concrete_fields),
+        'created_from__batch__migration_batch__supervised'))
+    if not sales:return 0
+    receipts=list(FinancialReceipt.objects.filter(company=company,active=True).select_related('created_from__batch__migration_batch').only(
+        *(field.name for field in FinancialReceipt._meta.concrete_fields),
+        'created_from__batch__migration_batch__supervised'))
     by_code=defaultdict(list);by_sale=defaultdict(list)
     for r in receipts:
         by_code[(r.provider,r.source.get('invoice_code'))].append(r)
@@ -124,11 +130,12 @@ def review_invoice(sale,company,actor,reopen=False):
     sale.reviewed=not reopen
     sale.assignments={**sale.assignments,'review_reopened':reopen,'requires_review':reopen,'review_reasons':[]}
     sale.revision+=1;sale.save(update_fields=['reviewed','assignments','revision'])
-    sales_posting.event(SalesPosting.objects.get(batch=sale.created_from.batch),actor,'reopen' if reopen else 'review',sale,before)
+    posting=SalesPosting.objects.get(batch__invoices__pk=sale.created_from_id)
+    sales_posting.event(posting,actor,'reopen' if reopen else 'review',sale,before)
     for r in receipts:
         prior=payment_posting.state(r);r.reviewed=not reopen
         r.assignments={**r.assignments,'review_reopened':reopen,**({'channel_review':False} if not reopen and r.channel else {})}
         r.revision+=1;r.save(update_fields=['reviewed','assignments','revision'])
         payment_posting.event(None,actor,'reopen' if reopen else 'review',r,prior)
     sales_posting.advance(company);payment_posting.advance(company)
-    if reopen:payment_posting.refresh_links(company,actor)
+    if reopen:payment_posting.refresh_links(company,actor,invoice=sale)

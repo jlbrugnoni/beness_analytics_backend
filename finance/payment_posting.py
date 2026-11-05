@@ -90,15 +90,31 @@ def plan(batch,company):
     return {'token':token(company,batch),'counts':dict(counts),'rows':rows,'posting':posting}
 
 
-def refresh_links(company,actor,posting=None,legacy_codes=()):
+def refresh_links(company,actor,posting=None,legacy_codes=(), *, invoice=None):
     """Exact invoice references; amount/name differences require scoped approval."""
     from .payment_matching import context
-    receipts=list(FinancialReceipt.objects.filter(company=company,active=True).select_related('sale__company','created_from__batch').defer('created_from__batch__original_file').order_by('pk'))
-    sales={(s.provider,s.code):s for s in FinancialSale.objects.filter(company=company,active=True).select_related('created_from__batch','company').defer('created_from__batch__original_file')}
+    receipt_query=FinancialReceipt.objects.filter(company=company,active=True)
+    sale_query=FinancialSale.objects.filter(company=company,active=True)
+    if invoice is not None:
+        receipt_query=receipt_query.filter(provider=invoice.provider,source__invoice_code=invoice.code)
+        sale_query=sale_query.filter(pk=invoice.pk)
+    # The source rows and batch summaries can contain large JSON payloads.
+    # Linking needs ledger facts and origin IDs, not a copy of that evidence per row.
+    receipts=list(receipt_query.select_related('sale__created_from__batch','created_from__batch').only(
+        *(field.name for field in FinancialReceipt._meta.concrete_fields),
+        'created_from__batch__migration_batch', 'sale__reviewed', 'sale__active', 'sale__code',
+        'sale__source', 'sale__created_from__batch__migration_batch').order_by('pk'))
+    sales={(s.provider,s.code):s for s in sale_query.select_related('created_from__batch').only(
+        *(field.name for field in FinancialSale._meta.concrete_fields),
+        'created_from__batch__migration_batch')}
     grouped=defaultdict(list)
     for r in receipts:grouped[(r.provider,r.source.get('invoice_code'))].append(r)
-    comparisons={key:context(sales[key],rows) for key,rows in grouped.items() if key in sales}
-    legacy_codes=set(legacy_codes);changed=0
+    comparisons={}
+    for key,rows in grouped.items():
+        if key in sales and any(not r.reviewed for r in rows):
+            sale=sales[key];sale.company=company
+            comparisons[key]=context(sale,rows)
+    legacy_codes=set(legacy_codes);updated=[];events=[]
     for r in receipts:
         if r.reviewed:continue
         before=state(r);key=(r.provider,r.source.get('invoice_code'));candidate=r.sale or sales.get(key)
@@ -119,10 +135,16 @@ def refresh_links(company,actor,posting=None,legacy_codes=()):
         if not issue and not r.sale_id:r.sale=candidate
         r.link_issue=issue
         if before['sale']!=r.sale_id or before['link_issue']!=issue:
-            r.revision+=1;r.save(update_fields=['sale','link_issue','revision'])
-            event(posting,actor,'invoice_link_review' if issue else 'invoice_link',r,before);changed+=1
+            r.revision+=1
+            updated.append(r)
+            events.append(PaymentEvent(posting=posting,actor=actor,receipt=r,
+                action='invoice_link_review' if issue else 'invoice_link',before=before,after=state(r)))
+    FinancialReceipt.objects.bulk_update(updated,['sale','link_issue','revision'],batch_size=250)
+    PaymentEvent.objects.bulk_create(events,batch_size=250)
+    changed=len(updated)
     from .review_workflow import refresh_supervised
-    changed+=refresh_supervised(company,actor)
+    # Explicitly reopened invoices are excluded from automatic supervision.
+    if invoice is None:changed+=refresh_supervised(company,actor)
     if changed:advance(company)
     return changed
 

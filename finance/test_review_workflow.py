@@ -77,6 +77,28 @@ class InvoiceReviewLockTests(APITestCase):
         self.assertEqual(PaymentEvent.objects.filter(action='reopen').count(),2)
         self.assertEqual(self.action('review',revision=1).status_code,409)
 
+    def test_reopen_rechecks_its_unlinked_payment_without_touching_other_groups(self):
+        self.prepare()
+        self.assertEqual(self.action('review').status_code, 200)
+        first, second = FinancialReceipt.objects.order_by('pk')
+        second.sale = None
+        second.reviewed = False
+        second.link_issue = 'invoice_review_locked'
+        second.save(update_fields=['sale', 'reviewed', 'link_issue'])
+        unrelated = FinancialReceipt.objects.create(
+            company=self.company, number='unrelated', created_from=first.created_from,
+            source={**first.source, 'invoice_code': 'B0200000999'}, link_issue='')
+        self.profile.can_reopen_finance = True
+        self.profile.save()
+        response = self.action('reopen')
+        self.assertEqual(response.status_code, 200, response.data)
+        second.refresh_from_db()
+        self.assertEqual(second.sale_id, self.invoice.pk)
+        self.assertEqual(second.link_issue, '')
+        unrelated.refresh_from_db()
+        self.assertEqual(unrelated.revision, 1)
+        self.assertEqual(unrelated.link_issue, '')
+
     def test_routine_import_stays_pending_and_unchanged_overlap_preserves_review(self):
         self.prepare();self.assertFalse(self.invoice.reviewed)
         self.assertEqual(self.action('review').status_code,200)

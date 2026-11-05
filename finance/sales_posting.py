@@ -6,7 +6,7 @@ from collections import Counter
 from rest_framework import serializers
 from .bank_readers import normalized
 from .configuration import ConfigurationConflict
-from .mapping import resolve_source_values
+from .mapping import resolve_source_values, source_rules
 from .models import FinancialSale, SalesPosting, SalesDecision, SalesEvent
 
 VERSION = 'alegra-posting-v3'
@@ -43,23 +43,27 @@ def event(posting, actor, action, sale=None, before=None, note='', after=None):
 
 def snapshots(batch):
     """Interpret stored cells without modifying v1 previews or their summaries."""
-    item_rows = {}; customers = {}; header = []
+    item_rows = {}; customers = {}; columns = []
     for row in batch.rows.all():
         if row.kind == 'header':
-            header = row.raw
+            occurrences = Counter()
+            columns = []
+            for index, name in enumerate(row.raw):
+                key = normalized(name); occurrences[key] += 1
+                if key.startswith('producto/servicio - ') or key == 'subtotal - productos/servicios':
+                    columns.append((index, key, occurrences[key]))
+            columns.sort(key=lambda column: (column[1], column[2]))
         if row.kind != 'data':
             continue
         customers[row.row_number] = row.parsed.get('customer', '')
-        occurrences = Counter(); evidence = []
-        for name, value in zip(header, row.raw):
-            key = normalized(name); occurrences[key] += 1
-            if key.startswith('producto/servicio - ') or key == 'subtotal - productos/servicios':
-                evidence.append([key, occurrences[key], value.strip()])
+        evidence = [[key, occurrence, row.raw[index].strip()]
+                    for index, key, occurrence in columns if index < len(row.raw)]
         item_rows[row.row_number] = {'name': row.parsed.get('item_name'), 'quantity': row.parsed.get('quantity'),
             'unit_price': row.parsed.get('unit_price'), 'total': row.parsed.get('item_total'),
-            'evidence': sorted(evidence, key=lambda entry: (entry[0], entry[1]))}
+            'evidence': evidence}
     result = []
     for invoice in batch.invoices.all():
+        invoice.batch = batch
         source = dict(invoice.source)
         source.setdefault('customer', customers.get(invoice.row_numbers[0], '') if invoice.row_numbers else '')
         source['status_kind'] = {'cobrada': 'paid', 'anulada': 'cancelled'}.get(normalized(source.get('status', '')), 'review')
@@ -136,9 +140,17 @@ def preview_issues(snapshot):
     return list(dict.fromkeys(issues))
 
 
+def existing_sales(batch, company):
+    return {sale.code: sale for sale in FinancialSale.objects.filter(
+        company=company, provider=batch.provider, active=True,
+        code__in=batch.invoices.order_by().values('code')).select_related('created_from__batch').only(
+        *(field.name for field in FinancialSale._meta.concrete_fields),
+        'created_from__batch__migration_batch', 'created_from__batch__created_at')}
+
+
 def plan(batch, company):
     posting = SalesPosting.objects.filter(batch=batch).first()
-    sales = {sale.code: sale for sale in FinancialSale.objects.filter(company=company, provider=batch.provider, active=True).select_related('created_from__batch').defer('created_from__batch__original_file')}
+    sales = existing_sales(batch, company)
     decisions = {decision.invoice_id: decision for decision in posting.decisions.select_related('sale')} if posting else {}
     rows = []; counts = Counter()
     for snapshot in snapshots(batch):
@@ -189,26 +201,46 @@ def commit(batch, company, actor, expected):
     if batch.status != 'preview':
         raise serializers.ValidationError('A failed source file cannot be posted.')
     posting = SalesPosting.objects.create(batch=batch, actor=actor)
+    sales = existing_sales(batch, company)
+    rules = source_rules(company)
+    from .migration_review import supervised, approve_sale
+    is_supervised = supervised(batch)
+    decisions = []
+    new_sales = []
+    codes = set()
     for snapshot in snapshots(batch):
         invoice = snapshot['invoice']
-        sale = FinancialSale.objects.filter(company=company, provider=batch.provider, code=invoice.code, active=True).first()
+        codes.add(invoice.code)
+        sale = sales.get(invoice.code)
         status = outcome(snapshot, sale)
         resolution = 'pending'
         if status == 'new':
-            mapping = resolve_source_values(company, 'alegra', snapshot['source'])
-            from .migration_review import supervised,approve_sale
-            if supervised(batch):mapping=approve_sale(mapping)
-            sale = FinancialSale.objects.create(company=company, provider=batch.provider, code=invoice.code,
+            mapping = resolve_source_values(company, 'alegra', snapshot['source'], rules=rules)
+            if is_supervised:
+                mapping = approve_sale(mapping)
+            sale = FinancialSale(company=company, provider=batch.provider, code=invoice.code,
                 source=snapshot['source'], items=snapshot['items'], created_from=invoice,
                 studio_id=mapping['studio'], channel=mapping['channel'] or '', assignments=mapping)
-            resolution = 'created'; event(posting, actor, 'create', sale)
+            new_sales.append(sale)
+            sales[invoice.code] = sale
+            resolution = 'created'
         elif status == 'unchanged':
-            resolution = 'linked'; event(posting, actor, 'link', sale)
+            resolution = 'linked'
         elif status == 'invalid':
             resolution = 'invalid'
-        SalesDecision.objects.create(posting=posting, invoice=invoice, sale=sale, resolution=resolution)
+        decisions.append((invoice, sale, resolution))
+    FinancialSale.objects.bulk_create(new_sales, batch_size=250)
+    SalesEvent.objects.bulk_create([
+        SalesEvent(posting=posting, actor=actor, sale=sale,
+                   action='create' if resolution == 'created' else 'link', after=state(sale))
+        for _, sale, resolution in decisions if resolution in ('created', 'linked')
+    ], batch_size=250)
+    SalesDecision.objects.bulk_create([
+        SalesDecision(posting=posting, invoice=invoice, sale=sale, resolution=resolution)
+        for invoice, sale, resolution in decisions
+    ], batch_size=500)
     from .payment_posting import refresh_links
-    refresh_links(company,actor,legacy_codes=set(batch.invoices.values_list('code',flat=True)))
+    refresh_links(company,actor,legacy_codes=codes)
     event(posting, actor, 'commit', after={'interpretation_version': VERSION})
     advance(company)
     return posting

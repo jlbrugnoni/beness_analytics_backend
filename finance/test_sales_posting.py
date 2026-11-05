@@ -45,6 +45,40 @@ class SalesPostingTests(APITestCase):
         preview=self.client.get(self.url(batch,'undo-preview'));self.assertEqual(preview.status_code,200,preview.data)
         return self.client.post(self.url(batch,'undo'),{'expected_plan':preview.data['token'],'note':'Synthetic undo'},format='json')
 
+    def test_posting_many_invoices_batches_queries_and_keeps_audits(self):
+        from django.db import connection, transaction
+        from django.test.utils import CaptureQueriesContext
+        from . import sales_posting
+        from .models import FinancialReceipt, PaymentEvent, SalesImportBatch
+        from .test_payment_posting import payment_csv
+
+        self.profile.can_view_finance_bank_accounts = True
+        self.profile.save()
+        rows = [{'code': f'B02{index:08d}', 'customer': 'QA Client', 'date': '09/09/2026'}
+                for index in range(1, 51)]
+        payments = payment_csv([{'number': str(index), 'amount': '100.00', 'association': f"Facturas: {row['code']}"}
+                                for index, row in enumerate(rows, 1)])
+        response = self.client.post('/api/finance/payment-imports/', {
+            'company': self.company.pk, 'file': SimpleUploadedFile('payments.csv', payments)}, format='multipart')
+        self.assertEqual(response.status_code, 201, response.data)
+        payment_url = f"/api/finance/payment-imports/{response.data['id']}"
+        plan = self.client.get(f'{payment_url}/processing/')
+        response = self.client.post(f'{payment_url}/commit/', {'expected_plan': plan.data['token']}, format='json')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(FinancialReceipt.objects.filter(sale__isnull=True).count(), 50)
+        for action in ('create', 'link'):
+            batch = self.upload(rows)
+            token = self.plan(batch)['token']
+            with transaction.atomic(), CaptureQueriesContext(connection) as queries:
+                company = Company.objects.select_for_update().get(pk=self.company.pk)
+                posting = sales_posting.commit(SalesImportBatch.objects.get(pk=batch), company, self.user, token)
+            self.assertEqual(posting.status, 'active')
+            self.assertLess(len(queries), 45)
+            self.assertEqual(SalesEvent.objects.filter(posting__batch_id=batch, action=action).count(), 50)
+        self.assertEqual(FinancialSale.objects.count(), 50)
+        self.assertEqual(FinancialReceipt.objects.filter(sale__isnull=False, link_issue='').count(), 50)
+        self.assertEqual(PaymentEvent.objects.filter(action='invoice_link').count(), 50)
+
     def test_commit_overlap_reordered_items_and_retries_count_once(self):
         rows=[{'invoice_total':'300.00','item_name':'Item A'}, {'invoice_total':'300.00','item_name':'Item A'}, {'invoice_total':'300.00','item_name':'Item B'}]
         first=self.upload(rows);self.assertEqual(self.commit(first).status_code,200)

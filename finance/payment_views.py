@@ -217,7 +217,8 @@ class PaymentImportViewSet(PrivatePayments):
 
 class FinancialReceiptViewSet(PrivatePayments):
     def get_queryset(self):
-        qs=FinancialReceipt.objects.filter(company__in=migration_companies(self.request.user)).select_related('sale__studio','studio','created_from__batch').defer('created_from__batch__original_file')
+        qs=FinancialReceipt.objects.filter(company__in=migration_companies(self.request.user)).select_related('sale__studio','studio','created_from__batch').defer(
+            'created_from__source', 'created_from__batch__original_file', 'created_from__batch__summary')
         company=self.request.query_params.get('company')
         if company:
             if not company.isdecimal():raise serializers.ValidationError('Use a company ID.')
