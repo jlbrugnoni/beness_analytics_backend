@@ -12,6 +12,8 @@ from html.parser import HTMLParser
 from django.db import IntegrityError, transaction
 from django.utils import timezone
 
+from .room_identity import resolve_room
+
 from .models import (
     AttendanceRawRow,
     AttendanceVisit,
@@ -1074,7 +1076,7 @@ def load_trainer_availability_rows(uploaded_file):
     return parsed_rows
 
 
-def trainer_scheduled_class_natural_key(site, payload):
+def trainer_legacy_class_natural_key(site, payload):
     return hash_parts([
         site.id,
         payload.get("_class_date"),
@@ -1085,6 +1087,65 @@ def trainer_scheduled_class_natural_key(site, payload):
         payload.get("staff"),
         payload.get("event"),
     ])
+
+
+def trainer_payload_room(site, payload, cache):
+    studio_key = ("studio", normalize_name(payload.get("studio")))
+    if studio_key not in cache:
+        cache[studio_key] = Studio.objects.filter(site=site, normalized_name=studio_key[1]).first()
+    studio = cache[studio_key]
+    room_key = ("room", studio.pk if studio else None, normalize_name(payload.get("room")))
+    if room_key not in cache:
+        cache[room_key] = resolve_room(site, studio, payload.get("room")) if studio else None
+    return studio, cache[room_key]
+
+
+def trainer_scheduled_class_natural_key(site, payload, cache=None):
+    _, room = trainer_payload_room(site, payload, cache if cache is not None else {})
+    if not room:
+        return trainer_legacy_class_natural_key(site, payload)
+    return hash_parts([site.pk, payload.get("_class_date"), payload.get("_start_time"),
+                       payload.get("_end_time"), payload.get("studio"), f"room-id:{room.pk}",
+                       payload.get("staff"), payload.get("event")])
+
+
+def trainer_existing_class(site, payload, cache=None):
+    """Compatibility lookup for classes imported before stable room identity."""
+    cache = cache if cache is not None else {}
+    studio, room = trainer_payload_room(site, payload, cache)
+    if not room:
+        return None
+    key = ("existing", trainer_scheduled_class_natural_key(site, payload, cache))
+    if key not in cache:
+        candidates = list(ScheduledClass.objects.filter(site=site, studio=studio, room=room,
+            source=ScheduledClass.SOURCE_TRAINER_AVAILABILITY, class_date=payload["_class_date"],
+            start_time=payload["_start_time"], end_time=payload["_end_time"],
+            name=payload.get("event") or "Class").select_related("staff_member"))
+        candidates = [item for item in candidates if normalize_name(item.staff_member.name if item.staff_member else "") == normalize_name(payload.get("staff"))]
+        active_candidates = [item for item in candidates if item.status != ScheduledClass.STATUS_CANCELLED]
+        if active_candidates:
+            candidates = active_candidates
+        if len(candidates) > 1:
+            raise ValueError("Multiple existing classes resolve to this room/time. Consolidate duplicate rooms/classes before importing.")
+        cache[key] = candidates[0] if candidates else None
+    return cache[key]
+
+
+def trainer_preview_legacy_key(site, payload, cache):
+    existing = trainer_existing_class(site, payload, cache)
+    return existing.natural_key if existing else trainer_legacy_class_natural_key(site, payload)
+
+
+def trainer_identity_rows(site, rows):
+    # Conflict checks use resolved rooms; source payloads remain unchanged.
+    cache, result = {}, []
+    for row in rows:
+        payload = dict(row["payload"])
+        _, room = trainer_payload_room(site, payload, cache)
+        if room:
+            payload["room"] = room.name
+        result.append({**row, "payload": payload})
+    return result
 
 
 def trainer_room_capacity_key(studio_name, room_name):
@@ -1144,18 +1205,16 @@ def build_trainer_lookup_preview(site, class_rows):
         studio = existing_studios.get(normalize_name(studio_name))
         if not studio:
             continue
-        room = Room.objects.filter(
-            site=site,
-            studio=studio,
-            normalized_name=normalize_name(room_name),
-        ).first()
+        room = resolve_room(site, studio, room_name)
         if room:
             existing_rooms[(studio_name, room_name)] = room
 
     new_studios = sorted(name for name in studio_names if normalize_name(name) not in existing_studios)
     new_staff = sorted(name for name in staff_names if normalize_name(name) not in existing_staff)
     new_rooms = [
-        {"studio": studio_name, "room": room_name}
+        {"studio": studio_name, "room": room_name,
+         "existing_room_options": [{"id": item.pk, "name": item.name, "capacity": item.group_capacity}
+                                   for item in Room.objects.filter(site=site, studio=existing_studios.get(normalize_name(studio_name)), active=True)]}
         for studio_name, room_name in room_pairs
         if (studio_name, room_name) not in existing_rooms
     ]
@@ -1192,6 +1251,7 @@ def build_trainer_lookup_preview(site, class_rows):
             "total": len(room_pairs),
             "new": len(new_rooms),
             "sample_new": new_rooms[:20],
+            "unrecognized": new_rooms,
             "requiring_capacity": len(rooms_requiring_capacity),
             "sample_requiring_capacity": rooms_requiring_capacity[:20],
             "capacity_requirements": [
@@ -1330,6 +1390,7 @@ def trainer_conflict_row_numbers(class_rows):
 
 
 def preview_trainer_availability_report(uploaded_file, site):
+    identity_cache = {}
     rows = load_trainer_availability_rows(uploaded_file)
     class_rows = [row for row in rows if row["payload"]["_is_class_row"]]
     non_class_rows = [row for row in rows if not row["payload"]["_is_class_row"]]
@@ -1340,7 +1401,7 @@ def preview_trainer_availability_report(uploaded_file, site):
         for row in class_rows
         if row["payload"].get("_class_date")
     ]
-    conflict_data = class_conflict_samples(class_rows)
+    conflict_data = class_conflict_samples(trainer_identity_rows(site, class_rows))
     sample_fields = [
         "_class_date",
         "_start_time",
@@ -1396,11 +1457,12 @@ def preview_trainer_availability_report(uploaded_file, site):
             "import_impact": current_record_impact(
                 valid_class_rows,
                 ScheduledClass,
-                lambda payload: trainer_scheduled_class_natural_key(site, payload),
+                lambda payload: trainer_scheduled_class_natural_key(site, payload, identity_cache),
+                legacy_natural_key_builders=[lambda payload: trainer_preview_legacy_key(site, payload, identity_cache)],
             ),
             "natural_key_collision_samples": natural_key_collision_samples(
                 valid_class_rows,
-                lambda payload: trainer_scheduled_class_natural_key(site, payload),
+                lambda payload: trainer_scheduled_class_natural_key(site, payload, identity_cache),
                 sample_fields,
             ),
         },
@@ -1425,7 +1487,7 @@ def get_or_create_room_cached(cache, site, studio, room_name, capacity_overrides
             room.save(update_fields=["group_capacity", "updated_at"])
         return room, False
 
-    room = Room.objects.filter(site=site, studio=studio, normalized_name=normalized_name).first()
+    room = resolve_room(site, studio, cleaned_name)
     if room:
         if override.get("group_capacity") and room.group_capacity != override["group_capacity"]:
             room.group_capacity = override["group_capacity"]
@@ -1474,7 +1536,7 @@ def import_trainer_availability_report(uploaded_file, site, uploaded_by=None, ro
     class_rows = [row for row in rows_to_import if row["payload"]["_is_class_row"]]
     valid_class_rows = [row for row in class_rows if not row["errors"]]
     invalid_class_rows = [row for row in class_rows if row["errors"]]
-    conflict_rows = trainer_conflict_row_numbers(class_rows)
+    conflict_rows = trainer_conflict_row_numbers(trainer_identity_rows(site, class_rows))
 
     report_import = ReportImport.objects.create(
         report_type=TRAINER_AVAILABILITY_REPORT_TYPE,
@@ -1504,6 +1566,7 @@ def import_trainer_availability_report(uploaded_file, site, uploaded_by=None, ro
     }
 
     lookup_cache = {}
+    identity_cache = {}
     current_class_candidates = {}
 
     for row in rows_to_import:
@@ -1540,6 +1603,7 @@ def import_trainer_availability_report(uploaded_file, site, uploaded_by=None, ro
         )
         stats["new_lookups"]["staff_members"] += int(created)
 
+        Studio.objects.select_for_update().get(pk=studio.pk)
         room, created = get_or_create_room_cached(
             lookup_cache,
             site,
@@ -1549,7 +1613,7 @@ def import_trainer_availability_report(uploaded_file, site, uploaded_by=None, ro
         )
         stats["new_lookups"]["rooms"] += int(created)
 
-        natural_key = trainer_scheduled_class_natural_key(site, payload)
+        natural_key = trainer_scheduled_class_natural_key(site, payload, identity_cache)
         status, review_reason = trainer_class_status(room, row["row_number"], conflict_rows)
         if status == ScheduledClass.STATUS_CONFLICT:
             stats["scheduled_classes_conflict"] += 1
@@ -1596,6 +1660,11 @@ def import_trainer_availability_report(uploaded_file, site, uploaded_by=None, ro
         }
 
         scheduled_class = ScheduledClass.objects.filter(natural_key=natural_key).first()
+        if not scheduled_class:
+            scheduled_class = trainer_existing_class(site, payload, identity_cache)
+            if scheduled_class:
+                scheduled_class.natural_key = natural_key
+                scheduled_class.save(update_fields=["natural_key", "updated_at"])
         if not scheduled_class:
             ScheduledClass.objects.create(natural_key=natural_key, **values)
             stats["scheduled_classes_created"] += 1

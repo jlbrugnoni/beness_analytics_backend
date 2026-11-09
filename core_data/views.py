@@ -298,6 +298,46 @@ class RoomViewSet(viewsets.ModelViewSet):
     permission_classes = [IsAuthenticated, CapabilityPermission]
     write_capability = "can_edit_data"
 
+    @action(detail=True, methods=["post"], url_path="aliases")
+    def aliases(self, request, pk=None):
+        from .room_identity import add_alias
+        room = add_alias(self.get_object(), request.data.get("name"), request.user,
+                         display_name=request.data.get("display_name"))
+        return Response(self.get_serializer(room).data)
+
+    @action(detail=True, methods=["post"], url_path="consolidate")
+    def consolidate(self, request, pk=None):
+        from .room_identity import repair_plan, consolidate_rooms
+        from rest_framework.exceptions import ValidationError as APIValidationError
+        target = self.get_object()
+        try:
+            source_id = int(request.data.get("source_room"))
+        except (TypeError, ValueError):
+            raise APIValidationError("Select a valid source room.")
+        source = self.get_queryset().filter(pk=source_id).first()
+        if not source:
+            raise APIValidationError("Source room not found in your permitted scope.")
+        display_name = request.data.get("display_name")
+        if request.data.get("apply") is True:
+            plan = consolidate_rooms(source, target, request.user, request.data.get("token"), display_name)
+            return Response({"applied": True, "plan": plan})
+        plan, token, _ = repair_plan(source, target, display_name)
+        return Response({"applied": False, "plan": plan, "token": token})
+
+    @transaction.atomic
+    def perform_update(self, serializer):
+        from .room_identity import add_alias
+        from rest_framework.exceptions import ValidationError as APIValidationError
+        room = serializer.instance
+        if (serializer.validated_data.get("site", room.site).pk != room.site_id or
+                serializer.validated_data.get("studio", room.studio).pk != room.studio_id):
+            raise APIValidationError("Rooms cannot be moved between sites/studios. Create a separate room instead.")
+        name = serializer.validated_data.get("name", room.name)
+        if name != room.name:
+            room = add_alias(room, name, self.request.user, display_name=name)
+            serializer.instance = room
+        serializer.save(normalized_name=room.normalized_name)
+
     def get_queryset(self):
         queryset = Room.objects.select_related("site", "studio").all()
         queryset = scoped_queryset_for_user(queryset, self.request.user, studio_field="studio_id")

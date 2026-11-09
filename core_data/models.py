@@ -1009,3 +1009,23 @@ class LoginLog(models.Model):
 
     def __str__(self):
         return f"{self.user.email} - {self.login_type} - {self.created_at}"
+
+
+class RoomAlias(models.Model):
+    studio = models.ForeignKey(Studio, on_delete=models.PROTECT, related_name="room_aliases")
+    room = models.ForeignKey(Room, on_delete=models.PROTECT, related_name="aliases")
+    name = models.CharField(max_length=255)
+    normalized_name = models.CharField(max_length=255)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["studio", "normalized_name"], name="unique_room_alias_per_studio")]
+
+
+class RoomIdentityEvent(models.Model):
+    room = models.ForeignKey(Room, on_delete=models.PROTECT, related_name="identity_events")
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True)
+    action = models.CharField(max_length=30)
+    evidence = models.JSONField(default=dict)
+    created_at = models.DateTimeField(auto_now_add=True)

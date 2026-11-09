@@ -230,12 +230,31 @@ class StudioSerializer(serializers.ModelSerializer):
 
 
 class RoomSerializer(serializers.ModelSerializer):
+    aliases = serializers.SerializerMethodField()
+
+    def get_aliases(self, obj):
+        return list(obj.aliases.order_by("name").values_list("name", flat=True))
+
     site_name = serializers.CharField(source="site.name", read_only=True)
     studio_name = serializers.CharField(source="studio.name", read_only=True)
+
+    def validate(self, attrs):
+        from .room_identity import resolve_room
+        site = attrs.get("site", getattr(self.instance, "site", None))
+        studio = attrs.get("studio", getattr(self.instance, "studio", None))
+        name = attrs.get("name", getattr(self.instance, "name", ""))
+        if site and studio and studio.site_id != site.pk:
+            raise serializers.ValidationError("Room and studio must belong to the same site.")
+        if site and studio:
+            existing = resolve_room(site, studio, name)
+            if existing and existing.pk != getattr(self.instance, "pk", None):
+                raise serializers.ValidationError("This name is already assigned to a room in this studio.")
+        return attrs
 
     class Meta:
         model = Room
         fields = "__all__"
+        read_only_fields = ["normalized_name"]
 
 
 class ClientSerializer(serializers.ModelSerializer):
