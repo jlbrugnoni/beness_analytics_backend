@@ -70,3 +70,20 @@ commits listed above. Migration0022 is additive: leave its tables in place rathe
 than dropping assignment/audit data. Investigate failed deployments before retrying.
 Do not reset production financial data. If database recovery is required, stop writes
 and obtain explicit recovery authorization, considering all writes since snapshot.
+
+## Observed deployment outcome
+
+Backend b7b3152 deployed successfully as Railway deployment
+413a46b8-ffa7-4cd2-8ea3-46f3bcd6c88b. Startup logs confirm
+finance.0022_mindbody_assignments applied OK and both Gunicorn workers started.
+Frontend79cc16b deployed successfully as1f7bb8c5-b78f-4eec-a2c8-5c19815cb3a9.
+Both main branches are pushed; feature branches are preserved on GitHub.
+
+Live login and Finance records pages returned HTTP200; the new Mindbody detail and
+existing workspace API returned HTTP401 without credentials, as expected. Finance
+flag is enabled and the frontend API target is the correct production backend.
+No authenticated business-flow assertion or financial-data mutation was performed
+in production. Owner should complete the configuration/smoke tests above.
+Snapshot is listed by Railway under the recorded ID; workflow-status inspection
+was not authorized by the platform, and restoration was not exercised.
+Local test financial data, configuration, users and private reports were not copied.

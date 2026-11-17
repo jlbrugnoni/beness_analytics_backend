@@ -1,6 +1,6 @@
 # Spain operational finance V2
 
-Updated: 2026-11-16. Status: Steps 1–4 accepted for operational release; owner authorized deployment. Step 5 technical checks passed; publication in progress.
+Updated: 2026-11-16. Status: Steps 1–4 accepted for operational release; owner authorized deployment. Step 5 checks passed and backend/frontend production deployments succeeded.
 
 ## Delivery and acceptance agreement
 
@@ -143,15 +143,15 @@ authorized after acceptance; push does not prove deployment success.
 
 | Step | Implementation | Automated validation | Owner acceptance | Commit |
 | --- | --- | --- | --- | --- |
-| 0 | Plan documented; local branches created | Branch/status inspected | Accepted: owner said to start | None |
-| 1 | Spain mapping setup and Caixa operation dates | 427 PostgreSQL finance tests; frontend lint; browser setup dialog; real-file rehearsal | Accepted: owner said to continue | None |
-| 2 | Mindbody source-linked sales, assignments and history | 439 PostgreSQL finance tests + final12 targeted; frontend lint/build; real-source repeat rehearsal; browser | Accepted: owner said to continue | None |
-| 3 | Spain monthly/daily closures and source drill-through | 448 PostgreSQL finance tests; frontend lint/build; browser October comparison | Accepted: owner said to proceed | None |
-| 4 | Real split payment and historical importer implemented; migration audited | 462 PostgreSQL finance tests; source/ledger totals agree; see audit | Accepted for release; remaining classifications are operational review | Included in authorized release |
-| 5 | Release verification and deployment runbook | 462 PostgreSQL finance tests, 18 Analytics import checks, frontend lint/build, no migration drift | Owner authorized deployment on 2026-11-16 | Publication in progress |
+| 0 | Plan documented; local branches created | Branch/status inspected | Accepted: owner said to start | Included in Spain V2 release |
+| 1 | Spain mapping setup and Caixa operation dates | 427 PostgreSQL finance tests; frontend lint; browser setup dialog; real-file rehearsal | Accepted: owner said to continue | Included in Spain V2 release |
+| 2 | Mindbody source-linked sales, assignments and history | 439 PostgreSQL finance tests + final12 targeted; frontend lint/build; real-source repeat rehearsal; browser | Accepted: owner said to continue | Included in Spain V2 release |
+| 3 | Spain monthly/daily closures and source drill-through | 448 PostgreSQL finance tests; frontend lint/build; browser October comparison | Accepted: owner said to proceed | Included in Spain V2 release |
+| 4 | Real split payment and historical importer implemented; migration audited | 462 PostgreSQL finance tests; source/ledger totals agree; see audit | Accepted for release; remaining classifications are operational review | b7b3152 backend / 79cc16b frontend |
+| 5 | Release verification and deployment runbook | 462 PostgreSQL finance tests, 18 Analytics import checks, frontend lint/build, no migration drift | Owner authorized deployment on 2026-11-16 | b7b3152 backend / 79cc16b frontend |
 
 This register is updated at delivery, acceptance and commit, keeping those events
-separate. The current checkpoint is production publication. See SPAIN_V2_RELEASE.md for deployment, setup and recovery.
+separate. The current checkpoint is owner production setup and smoke testing. See SPAIN_V2_RELEASE.md for deployment, setup and recovery.
 
 
 ## Step 1 delivery and owner tests

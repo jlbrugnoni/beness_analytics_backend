@@ -1253,3 +1253,11 @@ changed-file frontend ESLint, optimized build and no migration drift. Release an
 configuration/recovery procedure documented in SPAIN_V2_RELEASE.md. Production
 snapshot requested before publication. No local financial data/configuration or
 user-owned exports included. Actual deployment outcome recorded separately.
+
+2026-11-16 Spain V2 publication: backend b7b3152 and frontend79cc16b merged/pushed
+to main and Railway SUCCESS verified for both exact commits. Finance0022 applied
+OK; healthy Gunicorn startup, public login/records200 and protected APIs401 verified.
+Production Finance flag/API target correct. Pre-release snapshot listed under
+7f104cd9-c6b6-4656-ae1b-b508e4ad1c34; restore not rehearsed. Existing production
+configuration/records/grants preserved. Owner production setup and business smoke
+tests remain; known refund pending behavior documented. See SPAIN_V2_RELEASE.md.
