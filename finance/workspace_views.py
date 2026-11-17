@@ -98,6 +98,9 @@ class WorkspaceViewSet(viewsets.GenericViewSet):
         if not bank and f['status'] in ('missing_category','method_review'):raise serializers.ValidationError('Choose a supported invoice status.')
         if kind=='credit' and (f.get('category') or f.get('subcategory') or f['status']=='missing_category'):
             raise serializers.ValidationError('Categories apply only to bank debits.')
+        if company.site.country_code == 'ES' and not bank:
+            from .mindbody_views import workspace
+            return workspace(self, company, f)
         if bank:
             if not can_use_finance(request.user,'can_view_finance_bank_accounts'):
                 from rest_framework.exceptions import PermissionDenied

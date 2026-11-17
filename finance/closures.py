@@ -49,7 +49,16 @@ def compare(company,accounts,month,studio=None):
         evidence.append(item)
         for reason in reasons:issues[reason]+=1
         return item
+    if company.site.country_code == 'ES':
+        from .mindbody_closures import expected_rows
+        for row in expected_rows(company,start,end,studio):
+            evidence.append(row)
+            for reason in row['issues']:issues[reason]+=1
+            if row['included']:
+                cell=grid[row['channel']][row['date']]
+                cell['gross']+=Decimal(row['amount']);cell['payments']+=1;cell['review']+=bool(row['issues'])
     receipts=FinancialReceipt.objects.filter(company=company,active=True,source__date__gte=start.isoformat(),source__date__lte=end.isoformat()).select_related('sale','created_from__batch','studio','sale__studio','sale__created_from__batch')
+    if company.site.country_code == 'ES':receipts=receipts.none()
     for receipt in receipts:
         sale=receipt.sale;sid=sale.studio_id if sale and receipt.assignments.get('studio_origin')=='invoice' else receipt.studio_id
         if studio and sid!=studio:continue
@@ -102,6 +111,7 @@ def compare(company,accounts,month,studio=None):
     # Missing payment coverage must not masquerade as a completed comparison.
     linked=FinancialReceipt.objects.filter(sale_id=OuterRef('pk'),active=True)
     sales=FinancialSale.objects.filter(company=company,active=True,source__date__gte=start.isoformat(),source__date__lte=end.isoformat()).select_related('created_from__batch')
+    if company.site.country_code == 'ES':sales=sales.none()
     if studio:sales=sales.filter(studio_id=studio)
     for sale in sales.filter(source__status_kind='paid').annotate(has_receipts=Exists(linked)).filter(has_receipts=False):
         record('invoice',sale,sale.source.get('date'),'',amount(sale.source.get('invoice_total')),sale.studio_id,sale.code,
@@ -132,4 +142,4 @@ def compare(company,accounts,month,studio=None):
             'payments':payments,'receipts':receipts_count,'review':reviews,'days':daily})
     return {'company':company.pk,'month':month,'currency':company.default_currency,'supported':True,'methods':methods,
         'issues':dict(issues),'excluded':dict(excluded),'source_coverage_verified':False,'reconciled':False,
-        'rounding_basis':'daily_method','difference_basis':'actual_minus_expected'},evidence
+        'rounding_basis':'daily_method','difference_basis':'actual_minus_expected','sales_source':'mindbody' if company.site.country_code=='ES' else 'alegra'},evidence

@@ -89,7 +89,7 @@ class ClosureTests(APITestCase):
         m.classification.operation_date=date(2026,9,1);m.classification.reviewed=False;m.classification.save()
         self.assertEqual(self.method(self.get())['actual'],'96.50') # classified, unreviewed amounts remain visible
 
-    def test_scope_and_permissions_fail_closed_and_spain_is_explicitly_unsupported(self):
+    def test_scope_and_permissions_fail_closed_and_spain_is_supported(self):
         self.receipt();self.actual(studio=self.other_studio)
         self.assertEqual(self.method(self.get(studio=self.studio.pk))['actual'],'0.00')
         for value in ('2026-00','0000-01','2026-13','2026-9'):
@@ -98,7 +98,7 @@ class ClosureTests(APITestCase):
         self.assertEqual(self.client.get('/api/finance/closures/',{'company':self.company.pk,'month':'2026-09'}).status_code,403)
         self.profile.can_view_finance_bank_accounts=True;self.profile.save()
         self.profile.allowed_sites.add(self.es)
-        self.assertFalse(self.client.get('/api/finance/closures/',{'company':self.spain.pk,'month':'2026-09'}).data['supported'])
+        self.assertTrue(self.client.get('/api/finance/closures/',{'company':self.spain.pk,'month':'2026-09'}).data['supported'])
         self.profile.allowed_studios.add(self.studio)
         self.assertEqual(self.client.get('/api/finance/closures/',{'company':self.company.pk,'month':'2026-09'}).status_code,404)
 

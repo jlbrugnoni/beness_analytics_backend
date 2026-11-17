@@ -67,6 +67,19 @@ class MoneyLedgerTests(APITestCase):
         other=Account.objects.create(company=self.spain,name='Other company cash',kind='cash',currency='EUR')
         self.assertEqual(self.client.post('/api/finance/movements/',self.payload(account=other.pk),format='json').status_code,400)
 
+    def test_manual_cash_customer_receipt_requires_cash_account_but_bank_transfers_remain_valid(self):
+        rejected=self.client.post('/api/finance/movements/',self.payload(account=self.bank.pk,channel='cash'),format='json')
+        self.assertEqual(rejected.status_code,400)
+        self.assertIn('account',rejected.data)
+        self.assertFalse(BankMovement.objects.exists())
+        obj,body=self.create()
+        moved=self.client.post(f'/api/finance/movements/{obj.pk}/edit-entry/',
+            {**body,'account':self.bank.pk,'channel':'cash','expected_revision':obj.revision},format='json')
+        self.assertEqual(moved.status_code,400)
+        obj.refresh_from_db();self.assertEqual(obj.account_id,self.cash.pk)
+        self.create(account=self.bank.pk,channel='cash',movement_kind='internal_transfer')
+        self.create(account=self.bank.pk,channel='transfer')
+
     def test_general_cash_is_idempotent_unverified_and_configured_through_settings_permission(self):
         url=f'/api/finance/companies/{self.company.pk}/general-cash/'
         first=self.client.post(url,{},format='json');self.assertEqual(first.status_code,201,first.data)

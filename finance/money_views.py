@@ -42,7 +42,10 @@ def entry_values(user,data,account):
     fields={key:value for key,value in data.items() if key not in ('account','date','direction','amount','request_key','expected_revision')}
     if direction=='debit':fields.setdefault('expense_period',day.replace(day=1))
     else:fields.setdefault('operation_date',day)
-    return source,validate_assignments(user,account,direction,{},fields)
+    values=validate_assignments(user,account,direction,{},fields)
+    if direction=='credit' and values['movement_kind']=='customer_receipt' and values.get('channel')=='cash' and account.kind!='cash':
+        raise serializers.ValidationError({'account':'Cash received from a customer must use a cash account. A cash deposit into a bank is an internal movement.'})
+    return source,values
 
 
 def store_assignments(movement,values):

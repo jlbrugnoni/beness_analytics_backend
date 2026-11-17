@@ -293,7 +293,7 @@ class BankTerminalRecognitionTests(APITestCase):
         self.assertEqual(self.client.get('/api/finance/workspace/',{'company':self.company.pk,'kind':'credit','status':'missing_category'}).status_code,400)
         self.assertEqual(self.client.get('/api/finance/workspace/',{'company':self.company.pk,'kind':'credit','category':self.category.pk}).status_code,400)
 
-    def test_caixa_recognition_uses_account_mapping_and_keeps_operation_date_pending(self):
+    def test_caixa_recognition_uses_account_mapping_and_infers_operation_date(self):
         from .test_bank_imports import CAIXA
         studio=Studio.objects.create(site=self.es,name='Estepona fixture')
         terminal=Terminal.objects.create(account=self.foreign,identifier='369092994',studio=studio,channel='card_terminal')
@@ -302,7 +302,31 @@ class BankTerminalRecognitionTests(APITestCase):
         movement=BankMovement.objects.get(account=self.foreign,source__direction='credit')
         self.assertEqual(movement.classification.terminal_id,terminal.pk)
         self.assertEqual(movement.classification.studio_id,studio.pk)
-        self.assertIsNone(movement.classification.operation_date)
+        self.assertEqual(str(movement.classification.operation_date),'2026-10-06')
+        self.assertIn('operation date inferred from Caixa ON description: 2026-10-06', movement.events.get(action='create').note)
+        self.assertFalse(movement.classification.reviewed)
+
+    def test_existing_caixa_date_fill_is_audited_idempotent_and_preserves_manual_dates(self):
+        from .test_bank_imports import CAIXA
+        studio=Studio.objects.create(site=self.es,name='Estepona fixture')
+        self.profile.allowed_sites.add(self.es)
+        self.post(CAIXA,account=self.foreign.pk,provider='caixa')
+        movement=BankMovement.objects.get(account=self.foreign,source__direction='credit')
+        terminal=Terminal.objects.create(account=self.foreign,identifier='369092994',studio=studio,channel='card_terminal')
+        # Already mapped terminals from earlier releases may still lack a date.
+        item=movement.classification
+        item.terminal=terminal;item.studio=studio;item.channel='card_terminal';item.save()
+        url='/api/finance/workspace/recognize-terminals/'
+        response=self.client.post(url,{'company':self.spain.pk},format='json')
+        self.assertEqual(response.status_code,200,response.data)
+        self.assertEqual(response.data['updated'],1)
+        movement.refresh_from_db()
+        self.assertEqual(str(movement.classification.operation_date),'2026-10-06')
+        self.assertIn('inferred from Caixa ON',movement.events.get(action='classify').note)
+        self.assertEqual(self.client.post(url,{'company':self.spain.pk},format='json').data['updated'],0)
+        item=movement.classification;item.operation_date='2026-10-05';item.save()
+        self.assertEqual(self.client.post(url,{'company':self.spain.pk},format='json').data['updated'],0)
+        item.refresh_from_db();self.assertEqual(str(item.operation_date),'2026-10-05')
 
     def test_terminal_from_another_account_is_never_used(self):
         studio=Studio.objects.create(site=self.es,name='Other company studio')

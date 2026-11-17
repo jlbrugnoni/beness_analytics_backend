@@ -1164,3 +1164,92 @@ cutover tasks. A Git push is not evidence of completed hosting deployment or liv
 production acceptance. Last full finance suite380passed; frontend build/lint passed,
 with the later Import details fix additionally browser-verified from both entry points
 and explicit no-undef lint on all three report pages.
+
+
+2026-11-15 — Spain V2 Step 1 implemented on feature/finance-spain-v2 in both
+repositories, uncommitted; owner testing pending. Added preserve-only initial
+Mindbody aliases for Spain and audited Caixa ON/DDMM operation dates within seven
+preceding calendar days, preserving manual/reviewed assignments. 427 PostgreSQL
+finance tests passed, frontend changed-file lint and setup-dialog browser checks
+passed, no migration drift. Actual-source disposable rehearsal: 94 new movements,
+45 inferred dates, then 94 unchanged/zero creations on repeat. No working financial
+data or permissions changed. See SPAIN_V2_IMPLEMENTATION.md for tests and limits.
+Wait for explicit owner acceptance/commit/progression before Step 2.
+
+
+2026-11-15 — Owner accepts Step 1 by directing continuation. Step 2 implemented,
+uncommitted: Spain Records reads latest completed Mindbody report groups directly
+from Analytics, with separate audited Finance overrides/review locks and stale tokens.
+No duplicate routine upload or stored collections projection. Completed source
+corrections and unchanged repeats preserve assignments while exposing pending source
+changes/history.439 PostgreSQL finance tests passed, final12 targeted cases passed;
+frontend changed-file lint and isolated production build passed. October sample
+loaded through the existing importer into local QA ES only after backup/migration:
+107 sales/116 items/EUR8,534.25. Disposable repeat-import/override rehearsal passed;
+browser confirmed table/detail/history/close. See SPAIN_MINDBODY_BRIDGE.md for exact
+limits, permissions, source-selection assumptions and owner tests. No production
+changes or commits/pushes. Await owner testing and explicit commit/progression.
+
+
+2026-11-15 — Owner accepts Step 2 by directing continuation. Step 3 implemented,
+uncommitted: Spain/EUR monthly/daily closures use source-linked Mindbody payments,
+Caixa operation dates and independently registered cash receipts. Reuses audited
+check/reopen/stale-evidence workflow and existing access scopes; supporting source
+sales open the Mindbody dialog.448 PostgreSQL finance tests passed; frontend lint
+and isolated production build passed; no schema drift. Browser verified October
+Card6692.60 expected/6732.09 actual/+39.49 and Cash1841.65 expected/0.00 actual,
+daily rows and source drill-through. No working transactions/checks changed by this
+increment. See SPAIN_CLOSURES.md for owner tests and provisional coverage limits.
+Await owner feedback; no commits/pushes/deployment or Step 4 implementation.
+
+
+2026-11-15 — Owner accepts Step 3 and requires Spain historical workbook migration
+before release. Step 4 in progress. Found real split-method sale301 in existing April
+export:165.00 single item/160.00Card/5.00Cash; loaded via existing Analytics importer
+into backed-up local QA ES. Added native-import split revision/repeat and synthetic
+refund-safety/fee-reimbursement/cash-deposit exception tests.23 targeted PostgreSQL
+cases passed; no schema drift. No real refund rows in supplied April/October exports.
+Historical workbook is not yet identified in uploads; parser/account-origin rules
+must await actual structure. See SPAIN_EXCEPTION_VALIDATION.md. Step 4 is not complete;
+Step 5 has not begun. No commits/pushes/production changes.
+
+
+2026-11-15 — Received Spain historical workbook Ingresos_Egresos_ES.xlsx and inspected
+it read-only.588 movement rows:359 expenses/229 incomes. Critical cash labels describe
+actual bank deposits/transfers; do not route those automatically to cash accounts.
+All94 supplied Caixa September–October rows match date/amount/concept, while workbook
+income rows86–88 have suspected month/day errors. Missing studios/classifications/
+expense months and lookup formula errors recorded in SPAIN_EXCEPTION_VALIDATION.md.
+Asked owner origin/default/date questions before implementing financial posting.
+No file edits, migration imports, financial writes, commits or production changes.
+
+
+2026-11-16 — Owner confirms cash recorded only when banked, future individual cash
+receipts, default Estepona for blank locations, unclassified expenses pending, and
+three date corrections. Local services restarted and verified. Implemented Spain
+EUR migration reader/default studio selection, bank-origin cash deposit treatment,
+approved corrections with raw-cell retention, bank-only UI and safe Caixa historical
+overlap reuse. Saved preview12 only; working financial ledger not posted. Disposable
+rehearsal588rows ->494new/84linked/10pending without duplicates.459 PostgreSQL finance
+regressions passed before final refinements; final22 migration/bank cases and frontend
+lint/build passed. QA Spain category catalog is empty; configure it before preparing
+import to preserve already-classified categories. See SPAIN_HISTORICAL_MIGRATION.md.
+Owner testing/refund-source limitation remain; no commits/pushes/production changes.
+
+
+2026-11-16 — Owner migrated Spain preview12; audited bank posting29/21 read-only.
+359 expenses/EUR233,760.79 and229 incomes/EUR233,761.52 match all588 source facts and
+occurrences exactly; no extra/missing bank entries.494created/84linked/10pending;
+created/linked classifications preserved. Fixed three avoidable ambiguities by
+filtering exact transaction facts before uniqueness: now3ready links,4genuine
+ambiguities,3cash-deposit kind conflicts remain pending.42 targeted PostgreSQL tests
+passed. Also fixed manual account-change editor clearing a compatible studio; saved
+cash entry6062 remains unmodified and needs studio/date confirmation. See
+SPAIN_MIGRATION_AUDIT_20261116.md. No working financial writes, commits or deployment.
+
+2026-11-16: Owner authorized Spain V2 deployment. Final checks passed:462 finance
+PostgreSQL tests,456 SQLite passes/six PG-only skips,18 Analytics import guard tests,
+changed-file frontend ESLint, optimized build and no migration drift. Release and
+configuration/recovery procedure documented in SPAIN_V2_RELEASE.md. Production
+snapshot requested before publication. No local financial data/configuration or
+user-owned exports included. Actual deployment outcome recorded separately.

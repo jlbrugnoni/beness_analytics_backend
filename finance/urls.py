@@ -15,6 +15,7 @@ from .workspace_views import WorkspaceViewSet
 from .money_views import MoneyMovementViewSet
 from .closure_views import ClosureViewSet
 from .catalog_views import CategoryCatalog
+from .mindbody_views import MindbodySaleViewSet
 
 class FinanceAPIRoot(APIRootView):
     permission_classes = [IsAuthenticated, FinancePermission]
@@ -36,6 +37,7 @@ router.register("payment-imports", PaymentImportViewSet, basename="finance-payme
 router.register("receipts", FinancialReceiptViewSet, basename="finance-receipt")
 router.register("migration-imports", MigrationImportViewSet, basename="finance-migration-import")
 router.register("sales", FinancialSaleViewSet, basename="finance-sale")
+router.register("mindbody-sales", MindbodySaleViewSet, basename="finance-mindbody-sale")
 router.register("sales-imports", SalesPostingImportViewSet, basename="finance-sales-import")
 router.register("bank-imports", BankPostingImportViewSet, basename="finance-bank-import")
 router.register("bank-movements", BankMovementViewSet, basename="finance-bank-movement")

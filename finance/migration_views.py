@@ -20,7 +20,10 @@ from .models import Company, MigrationImportBatch, MigrationImportRow
 
 
 def migration_companies(user):
-    companies=sales_preview_companies(user)
+    from .workspace_views import companies_for
+    companies=companies_for(user)
+    from django.db.models import Q
+    companies=companies.filter(Q(site__country_code="DO",default_currency="DOP")|Q(site__country_code="ES",default_currency="EUR"))
     return companies if can_use_finance(user,'can_view_finance_bank_accounts') else companies.none()
 
 
@@ -59,6 +62,7 @@ class MigrationRowSerializer(serializers.ModelSerializer):
 
 class MigrationUploadSerializer(serializers.Serializer):
     supervised=serializers.BooleanField(default=False)
+    default_studio=serializers.IntegerField(min_value=1,required=False)
     company=serializers.PrimaryKeyRelatedField(queryset=Company.objects.none())
     month=serializers.RegexField(r'^\d{4}-(?:0[1-9]|1[0-2])$',required=False)
     file=serializers.FileField(max_length=255,allow_empty_file=False)
@@ -70,7 +74,7 @@ class MigrationUploadSerializer(serializers.Serializer):
 
     def validate_file(self,value):
         if not value.name.lower().endswith('.xlsx') or value.size>MAX_BYTES:
-            raise serializers.ValidationError('Choose the DR enriched XLSX workbook, up to 5 MiB.')
+            raise serializers.ValidationError('Choose the enriched XLSX workbook, up to 5 MiB.')
         return value
 
 
@@ -94,7 +98,10 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
 
     @action(detail=False,methods=['get'])
     def companies(self,request):
-        return Response(list(migration_companies(request.user).values('id','name','active','default_currency')))
+        from core_data.models import Studio
+        return Response([{'id':c.pk,'name':c.name,'active':c.active,'default_currency':c.default_currency,
+            'country':c.site.country_code,'studios':list(Studio.objects.filter(site_id=c.site_id).values('id','name'))}
+            for c in migration_companies(request.user)])
 
     def create(self,request):
         if not can_use_finance(request.user,'can_import_finance_migration'):raise PermissionDenied('Financial import permission is required.')
@@ -103,7 +110,16 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
         serializer.is_valid(raise_exception=True);values=serializer.validated_data
         content=values['file'].read(MAX_BYTES+1)
         if len(content)>MAX_BYTES:raise serializers.ValidationError({'file':'The file exceeds 5 MiB.'})
-        parsed=read_migration_xlsx(content,values.get('month',''))
+        company=values['company']
+        if company.site.country_code=='ES':
+            from core_data.models import Studio
+            from .spain_migration import read_spanish_migration
+            studios=Studio.objects.filter(site_id=company.site_id)
+            studio=studios.filter(pk=values.get('default_studio')).first() if values.get('default_studio') else studios.first() if studios.count()==1 else None
+            if not studio:raise serializers.ValidationError({'default_studio':'Choose the existing studio for blank workbook locations.'})
+            parsed=read_spanish_migration(content,values.get('month',''),studio)
+        else:
+            parsed=read_migration_xlsx(content,values.get('month',''))
         month=values.get('month') or (parsed['summary'].get('first_bank_date') or datetime.now().date().isoformat())[:7]
         parsed['summary']['selected_month']=month
         parsed['summary']['selected_bank_month']=parsed['summary'].get('bank_date_months',{}).get(month,parsed['summary']['all_rows'])
@@ -135,6 +151,8 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
             company=Company.objects.select_for_update().get(pk=data.validated_data['company'].pk)
             if not migration_companies(request.user).filter(pk=company.pk).exists() or not migration_companies(request.user).filter(pk=source.company_id).exists() or not can_use_finance(request.user,'can_import_finance_migration'):raise PermissionDenied()
             if not company.active or company.pk==source.company_id:raise serializers.ValidationError('Choose another active company.')
+            if company.site.country_code!=source.company.site.country_code or company.default_currency!=source.company.default_currency or (source.company.site.country_code=='ES' and company.site_id!=source.company.site_id):
+                raise serializers.ValidationError('Reupload the original workbook to change country or studio context.')
             prior=MigrationImportBatch.objects.filter(company=company,file_hash=source.file_hash).order_by('pk').first()
             batch=MigrationImportBatch.objects.create(company=company,selected_month=source.selected_month,supervised=source.supervised,
                 file_name=source.file_name,file_hash=source.file_hash,byte_size=source.byte_size,original_file=source.original_file,
@@ -174,6 +192,7 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
         return Response(BankBatchSerializer(derived).data,status=201)
 
     def cash_account(self,request,batch,value):
+        if batch.company.site.country_code=='ES':raise serializers.ValidationError('Spain historical cash labels are bank deposits/transfers. Register actual studio cash separately.')
         from .views import visible_accounts
         from django.shortcuts import get_object_or_404
         if not str(value).isdecimal():raise serializers.ValidationError('Choose a cash account.')
@@ -182,7 +201,9 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
     @action(detail=True,methods=['get'],url_path='cash-preview')
     def cash_preview(self,request,pk=None):
         from .migration_cash import cash_plan
-        batch=self.get_object();account=self.cash_account(request,batch,request.query_params.get('account',''))
+        batch=self.get_object()
+        if batch.company.site.country_code=='ES':raise serializers.ValidationError('Spain historical cash labels are bank movements, not studio cash receipts.')
+        account=self.cash_account(request,batch,request.query_params.get('account',''))
         return Response(cash_plan(batch,account))
 
     @action(detail=True,methods=['post'],url_path='import-cash')
@@ -224,6 +245,7 @@ class MigrationImportViewSet(viewsets.ReadOnlyModelViewSet):
         from .payment_views import PaymentBatchSerializer
         from .models import PaymentImportBatch
         batch=self.get_object()
+        if batch.company.site.country_code=='ES':raise serializers.ValidationError('Spain sales come from existing Mindbody Analytics imports.')
         invoices=read_workbook_sales(bytes(batch.original_file))
         payments=read_payment_preview(bytes(batch.original_file))
         sales_batch=batch.sales_imports.select_related('company','posting').order_by('-pk').first()

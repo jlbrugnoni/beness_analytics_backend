@@ -47,8 +47,11 @@ class ClosureViewSet(viewsets.GenericViewSet):
             from core_data.models import Studio
             get_object_or_404(Studio,pk=f['studio'],site_id=company.site_id)
         if f.get('day') and f['day'].isoformat()[:7]!=f['month']:raise serializers.ValidationError('Day must belong to selected month.')
-        if company.site.country_code!='DO' or company.default_currency!='DOP':
+        if (company.site.country_code,company.default_currency) not in (('DO','DOP'),('ES','EUR')):
             return {'supported':False,'company':company.pk,'month':f['month'],'currency':company.default_currency,'methods':[]},[],f
+        if company.site.country_code=='ES':
+            from .mindbody_views import company_for
+            company=company_for(request.user,company.pk)
         accounts=visible_accounts(request.user).filter(company=company)
         # Never compare company-wide sales against a silently partial set of accounts.
         if company.accounts.exclude(pk__in=accounts.values('pk')).exists():raise PermissionDenied('Full company account visibility is required for closures.')
@@ -89,7 +92,11 @@ class ClosureViewSet(viewsets.GenericViewSet):
         with transaction.atomic():
             company=get_object_or_404(companies_for(request.user),pk=v['company'])
             company=Company.objects.select_for_update().get(pk=company.pk)
-            if not company.active or company.site.country_code!='DO' or company.default_currency!='DOP':raise serializers.ValidationError('Choose an active Dominican company.')
+            if not company.active or (company.site.country_code,company.default_currency) not in (('DO','DOP'),('ES','EUR')):
+                raise serializers.ValidationError('Choose an active supported finance company.')
+            if company.site.country_code=='ES':
+                from .mindbody_views import company_for
+                company_for(request.user,company.pk)
             from .access import can_view_sensitive_detail
             if not can_view_sensitive_detail(request.user):raise PermissionDenied()
             accounts=visible_accounts(request.user).filter(company=company)

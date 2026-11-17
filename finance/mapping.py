@@ -74,17 +74,35 @@ DO_DEFAULTS = [
     ('alegra_payment_method', 'Transferencia', 'transfer', False),
 ]
 DO_STUDIO_LABELS = ('Bella Vista', 'Piantini', 'Arroyo Hondo')
+ES_DEFAULTS = [
+    ('mindbody_payment_method', 'Efectivo', 'cash', False),
+    ('mindbody_payment_method', 'Tarjeta de crédito (Visa/MC-No Auth)', 'card_terminal', False),
+]
+ES_STUDIO_LABELS = ('Beness Pilates Estepona',)
+
+
+def create_spanish_mappings(company, studios, actor):
+    rows = [dict(source_field=field, source_value=value, channel=channel, requires_review=review)
+            for field, value, channel, review in ES_DEFAULTS]
+    rows.extend(dict(source_field='mindbody_studio', source_value=label, studio=studios[label])
+                for label in ES_STUDIO_LABELS)
+    return create_missing_mappings(company, rows, actor)
 
 
 def create_dominican_mappings(company, studios, actor):
     """Caller holds company lock and transaction; existing aliases remain authoritative."""
-    from .serializers import SourceMappingSerializer
     rows = [dict(source_field=field, source_value=value, channel=channel, requires_review=review)
             for field, value, channel, review in DO_DEFAULTS]
     rows.append(dict(source_field='alegra_price_list', source_value='General', behavior='neutral'))
     for label in DO_STUDIO_LABELS:
         for field in ('alegra_cost_center', 'alegra_price_list'):
             rows.append(dict(source_field=field, source_value=label, studio=studios[label]))
+    return create_missing_mappings(company, rows, actor)
+
+
+def create_missing_mappings(company, rows, actor):
+    """Caller holds company lock; preserve existing rules, including inactive ones."""
+    from .serializers import SourceMappingSerializer
     created = 0
     for values in rows:
         if company.source_mappings.filter(source_field=values['source_field'], normalized_value=normalized_source_value(values['source_value'])).exists():

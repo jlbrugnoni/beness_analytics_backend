@@ -69,6 +69,7 @@ def plan(batch, account):
             if value:identifiers[(key,value)].add(decision.movement_id)
     counts = Counter(fingerprint(comparable_source(r.parsed)) for r in rows if not r.issues)
     fact_counts = Counter((transaction_facts(r.parsed),r.parsed.get('balance')) for r in rows if not r.issues)
+    transaction_counts = Counter(transaction_facts(r.parsed) for r in rows if not r.issues)
     prior = defaultdict(set);prior_sources=defaultdict(list)
     evidence = BankDecision.objects.filter(posting__status__in=['active', 'partial_undo'], row__batch__account=account,
         row__batch__provider=batch.provider, row__batch__file_hash=batch.file_hash,
@@ -132,6 +133,24 @@ def plan(batch, account):
                     outcome='unchanged';target=exact_facts[0];ids={target}
                 elif exact_facts and fact_counts[(transaction_facts(data),data.get('balance'))]>1:
                     outcome='ambiguous'
+        # Spain's supervised expense workbook lacks balance/reference columns.
+        # Accept only one same-fact occurrence on each side, with no conflicting
+        # nonempty metadata, when one side is explicitly historical. Ambiguous
+        # occurrences retain the normal review path; classification conflicts below
+        # still prevent overwriting an existing manual assignment.
+        if batch.provider=='caixa' and outcome in ('correction','ambiguous'):
+            compatible=[]
+            for pk in ids:
+                candidate=by_id[pk]
+                historical_side=bool(row.migration_row_id or (candidate.created_from_id and candidate.created_from.batch.migration_batch_id))
+                if historical_side and transaction_facts(candidate.source)==transaction_facts(data) and not any(
+                    candidate.source.get(k) not in (None,'') and data.get(k) not in (None,'') and candidate.source[k]!=data[k]
+                    for k in ('balance','reference','serial')):
+                    compatible.append(pk)
+            if compatible:
+                ids=set(compatible)
+            if len(compatible)==1 and transaction_counts[transaction_facts(data)]==1 and len(facts[transaction_facts(data)])==1:
+                outcome='unchanged';target=compatible[0];ids={target}
         # A reused AZUL terminal/serial is weak evidence across days. Prefer a
         # unique compatible same-day amount/balance identity, without discarding
         # substantive description or identifier conflicts.
@@ -217,7 +236,7 @@ def commit(batch, account, actor, expected):
             apply_assignments(movement,row)
             recognize_terminal(movement,actor,patterns=patterns)
             decision.movement = movement; decision.resolution = 'created'
-            event(posting, actor, 'create', movement, row)
+            event(posting, actor, 'create', movement, row, note=getattr(movement, '_terminal_recognition_note', ''))
         elif item['outcome'] == 'unchanged' and item['target'] not in used:
             decision.movement_id = item['target']; decision.resolution = 'linked'
             movement=BankMovement.objects.get(pk=item['target'])
@@ -274,7 +293,9 @@ def resolve(decision, account, actor, action, expected_revision, note, target=No
         apply_assignments(movement,decision.row)
         recognize_terminal(movement,actor)
         decision.movement = movement; decision.resolution = 'created'
-        event(posting, actor, 'create', movement, decision.row, note=note)
+        recognition_note = getattr(movement, '_terminal_recognition_note', '')
+        event(posting, actor, 'create', movement, decision.row,
+              note='; '.join(value for value in (note, recognition_note) if value))
     elif action == 'ignore':
         decision.resolution = 'ignored'; event(posting, actor, 'ignore', row=decision.row, note=note)
     else:

@@ -2,6 +2,29 @@
 from .models import BankMovementClassification
 
 
+def caixa_operation_date(source, identifier):
+    """Recognize only an exact ON settlement within seven preceding calendar days."""
+    import re
+    from datetime import date
+    match = re.fullmatch(r'ON\s+' + re.escape(identifier.strip()) + r'\s+(\d{2})(\d{2})',
+                         str(source.get('description') or '').strip(), re.IGNORECASE)
+    if not match:
+        return None
+    try:
+        bank_date = date.fromisoformat(source['bank_date'])
+    except (KeyError, TypeError, ValueError):
+        return None
+    candidates = []
+    for year in (bank_date.year - 1, bank_date.year):
+        try:
+            candidate = date(year, int(match[2]), int(match[1]))
+        except ValueError:
+            continue
+        if 0 <= (bank_date - candidate).days <= 7:
+            candidates.append(candidate)
+    return candidates[0] if len(candidates) == 1 else None
+
+
 def snapshot(movement):
     try: item=movement.classification
     except BankMovementClassification.DoesNotExist: return {}
@@ -78,7 +101,8 @@ def recognize_terminal(movement, actor, existing=False, patterns=None):
     """Apply one exact account terminal match; caller holds company/account locks.
 
     Only fill compatible, unreviewed credit assignments. Never change source facts,
-    infer a sale/date, overwrite manual choices, or mark recognition/reconciliation.
+    overwrite manual choices, or mark recognition/reconciliation. Caixa ON dates
+    may fill an empty operation date; the audit note records the inference.
     New movements include this snapshot in their create event; existing ones get
     a separate audited revision so undo and stale-edit protection remain effective.
     """
@@ -87,7 +111,7 @@ def recognize_terminal(movement, actor, existing=False, patterns=None):
     if not movement.active or movement.reconciled or movement.source.get('direction') != 'credit':
         return False
     values=snapshot(movement)
-    if values.get('reviewed') or values.get('administration') or values.get('terminal'):
+    if values.get('reviewed') or values.get('administration'):
         return False
     if values.get('movement_kind') not in (None,'','customer_receipt'):
         return False
@@ -100,14 +124,28 @@ def recognize_terminal(movement, actor, existing=False, patterns=None):
     if len(matches)!=1:
         return False
     terminal=matches[0]
+    # Existing terminal assignments can receive a missing Caixa date, but cannot
+    # be remapped by this operation. Other providers retain their original behavior.
+    if values.get('terminal') and (movement.provider != 'caixa' or values['terminal'] != terminal.pk):
+        return False
     if values.get('studio') not in (None,terminal.studio_id) or values.get('channel') not in (None,'',terminal.channel):
         return False
     before=operations.movement_data(movement) if existing else None
     item,_=BankMovementClassification.objects.get_or_create(movement=movement)
+    inferred = caixa_operation_date(movement.source, terminal.identifier) if movement.provider == 'caixa' and not item.operation_date else None
+    if values.get('terminal') and not inferred:
+        return False
     item.terminal=terminal;item.studio_id=terminal.studio_id;item.channel=terminal.channel
+    if inferred:
+        item.operation_date = inferred
+    note = 'Automatic terminal recognition: ' + terminal.identifier
+    if inferred:
+        note += '; operation date inferred from Caixa ON description: ' + inferred.isoformat()
+    # The caller's create event records provenance for newly imported movements.
+    movement._terminal_recognition_note = note
     item.save();movement.classification=item
     if existing:
         movement.revision+=1;movement.save(update_fields=['revision','updated_at'])
         operations.event(BankPosting.objects.get(batch=movement.created_from.batch) if movement.created_from_id else None,actor,'classify',movement,
-            before=before,note='Automatic terminal recognition: '+terminal.identifier)
+            before=before,note=note)
     return True

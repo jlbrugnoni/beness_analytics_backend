@@ -204,6 +204,36 @@ class MappingTests(APITestCase):
         self.assertFalse(response.data['requires_review']);self.assertEqual(response.data['channel'],'card_terminal')
         self.assertEqual(self.other.source_mappings.count(),3)
 
+    def test_spain_initial_setup_is_scoped_audited_and_preserves_existing_rules(self):
+        url=f'/api/finance/companies/{self.other.pk}/initialize-mappings/'
+        payload={'studios':{'Beness Pilates Estepona':self.foreign.pk},'expected_revision':1}
+        self.assertEqual(self.client.post(url,payload,format='json').status_code,404)
+        self.profile.allowed_sites.add(self.es)
+        self.create(company=self.other.pk,source_field='mindbody_payment_method',source_value='Efectivo',channel='other')
+        response=self.client.post(url,payload,format='json')
+        self.assertEqual(response.status_code,200,response.data)
+        self.assertEqual(response.data['created'],2)
+        self.assertEqual(response.data['preserved'],1)
+        self.assertEqual(self.other.source_mappings.get(source_value='Efectivo').channel,'other')
+        self.assertEqual(self.other.source_mappings.get(source_value='Tarjeta de crédito (Visa/MC-No Auth)').channel,'card_terminal')
+        self.assertEqual(self.other.source_mappings.get(source_field='mindbody_studio').studio_id,self.foreign.pk)
+        audits=ConfigurationChange.objects.count()
+        self.assertEqual(self.client.post(url,payload,format='json').data['created'],0)
+        self.assertEqual(ConfigurationChange.objects.count(),audits)
+
+    def test_spain_initial_setup_rejects_wrong_studios_stale_revision_and_missing_permission(self):
+        self.profile.allowed_sites.add(self.es)
+        url=f'/api/finance/companies/{self.other.pk}/initialize-mappings/'
+        payload={'studios':{'Beness Pilates Estepona':self.studios['Piantini'].pk},'expected_revision':1}
+        self.assertEqual(self.client.post(url,payload,format='json').status_code,400)
+        payload['studios']['Beness Pilates Estepona']=self.foreign.pk
+        payload['expected_revision']=0
+        self.assertEqual(self.client.post(url,payload,format='json').status_code,409)
+        self.profile.can_manage_finance_settings=False;self.profile.save()
+        payload['expected_revision']=1
+        self.assertEqual(self.client.post(url,payload,format='json').status_code,403)
+        self.assertFalse(self.other.source_mappings.exists())
+
     def test_company_with_only_mappings_cannot_change_site(self):
         self.create();self.profile.allowed_sites.add(self.es)
         self.assertEqual(self.client.patch(f'/api/finance/companies/{self.company.pk}/',{'site':self.es.pk,'expected_revision':1}).status_code,400)

@@ -726,6 +726,33 @@ class PaymentEvent(models.Model):
         ordering=['created_at','pk']
 
 
+class MindbodySaleAssignment(models.Model):
+    """Finance overrides only; authoritative facts remain in Analytics imports."""
+    company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name='mindbody_assignments')
+    code = models.CharField(max_length=100)
+    assignments = models.JSONField(default=dict)
+    source_hash = models.CharField(max_length=64)
+    source_snapshot = models.JSONField(default=dict)
+    reviewed = models.BooleanField(default=False)
+    revision = models.PositiveIntegerField(default=1)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['company', 'code'], name='finance_mindbody_assignment_code')]
+
+
+class MindbodySaleEvent(models.Model):
+    assignment = models.ForeignKey(MindbodySaleAssignment, on_delete=models.PROTECT, related_name='events')
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, on_delete=models.SET_NULL)
+    action = models.CharField(max_length=30)
+    before = models.JSONField(default=dict)
+    after = models.JSONField(default=dict)
+    note = models.TextField(blank=True, max_length=2000)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-pk']
+
+
 class ClosureCheck(models.Model):
     """Operational review of a whole company/day/method, never a month lock."""
     company=models.ForeignKey(Company,on_delete=models.PROTECT,related_name='closure_checks')

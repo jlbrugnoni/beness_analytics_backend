@@ -1,5 +1,16 @@
 # Finance module handover
 
+Spain V2 planning (2026-11-15): [Implementation steps and acceptance gates](SPAIN_V2_IMPLEMENTATION.md).
+[Spain V2 release and production setup](SPAIN_V2_RELEASE.md) is the current release checkpoint.
+[Spain historical importer and owner tests](SPAIN_HISTORICAL_MIGRATION.md) describes the migration workflow.
+Earlier discovery/exception evidence is in [Spain exceptions](SPAIN_EXCEPTION_VALIDATION.md).
+Accepted Step 3 is documented in [Spain closures](SPAIN_CLOSURES.md).
+The accepted Step 2 source integration is in [Mindbody bridge](SPAIN_MINDBODY_BRIDGE.md).
+Development branches are `feature/finance-spain-v2` in both repositories. Each step
+is tested by the owner before an explicitly authorized commit and progression.
+The Spain plan is the current entry point for this work; DR release history below
+remains historical context.
+
 Latest delivery: [Category catalog restore and CSV transfer](CATEGORY_CATALOG_TRANSFER.md)
 uses the migration permission and preserves existing expense links. Finance paginated
 loaders retain the configured backend origin for HTTPS deployments.

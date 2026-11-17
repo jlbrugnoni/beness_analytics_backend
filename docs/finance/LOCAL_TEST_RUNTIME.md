@@ -50,3 +50,13 @@ change, role expansion or permission changes. Other users were not modified.
 
 Keep the working database and source blobs backed up before destructive maintenance.
 Do not commit these databases, logs, source workbooks or local runtime settings.
+
+
+2026-11-15 — Concurrent frontend development fix: finance launcher now sets
+NEXT_DIST_DIR=.next-finance as well as NEXT_PUBLIC_BACKEND_URL=http://127.0.0.1:8027.
+Frontend next.config.js accepts NEXT_DIST_DIR, defaulting to .next for existing
+workflows; .next-finance is ignored by Git. This isolates finance3037 output from
+another frontend on3000, which was overwriting the shared login bundle with a
+localhost8000 backend URL. Local backend credentials were verified; browser login
+and authenticated Finance page verified after restart. No password reset, role
+change or production configuration changes. Changes remain uncommitted.

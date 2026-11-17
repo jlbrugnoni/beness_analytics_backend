@@ -115,36 +115,43 @@ class CompanyViewSet(ConfigurationViewSet):
 
     @action(detail=True, methods=["post"], url_path="initialize-mappings")
     def initialize_mappings(self, request, pk=None):
-        from .mapping import DO_DEFAULTS, DO_STUDIO_LABELS, create_dominican_mappings
+        from .mapping import (DO_DEFAULTS, DO_STUDIO_LABELS, ES_DEFAULTS, ES_STUDIO_LABELS,
+                              create_dominican_mappings, create_spanish_mappings)
         self.check_write_access()
         with transaction.atomic():
             company = self.get_write_instance()
             if not configuration_sites(request.user).filter(pk=company.site_id).exists():
                 raise PermissionDenied("Starting mappings require company-wide settings access.")
-            if company.site.country_code != "DO" or not company.active:
-                raise serializers.ValidationError("Use an active Dominican company for this starting configuration.")
+            country = company.site.country_code
+            if country not in ("DO", "ES") or not company.active:
+                raise serializers.ValidationError("Use an active Dominican or Spanish company for this starting configuration.")
+            labels = DO_STUDIO_LABELS if country == "DO" else ES_STUDIO_LABELS
+            defaults = DO_DEFAULTS if country == "DO" else ES_DEFAULTS
             studio_field = serializers.DictField(child=serializers.PrimaryKeyRelatedField(queryset=visible_studios(request.user)))
             studios = studio_field.run_validation(request.data.get("studios"))
-            if set(studios) != set(DO_STUDIO_LABELS) or len({studio.pk for studio in studios.values()}) != 3:
-                raise serializers.ValidationError({"studios": "Choose one distinct studio for Bella Vista, Piantini and Arroyo Hondo."})
+            if set(studios) != set(labels) or len({studio.pk for studio in studios.values()}) != len(labels):
+                raise serializers.ValidationError({"studios": "Choose one distinct studio for each label: " + ", ".join(labels) + "."})
             if any(studio.site_id != company.site_id for studio in studios.values()):
                 raise serializers.ValidationError({"studios": "Use studios from this company's site."})
-            expected = {(field, normalized_source_value(value)) for field, value, _, _ in DO_DEFAULTS}
-            expected.add(("alegra_price_list", "general"))
-            expected.update((field, normalized_source_value(label)) for label in DO_STUDIO_LABELS for field in ("alegra_cost_center", "alegra_price_list"))
+            expected = {(field, normalized_source_value(value)) for field, value, _, _ in defaults}
+            if country == "DO":
+                expected.add(("alegra_price_list", "general"))
+            studio_fields = ("alegra_cost_center", "alegra_price_list") if country == "DO" else ("mindbody_studio",)
+            expected.update((field, normalized_source_value(label)) for label in labels for field in studio_fields)
             existing = set(company.source_mappings.values_list("source_field", "normalized_value"))
             if expected <= existing:
-                return Response({"company": self.get_serializer(company).data, "created": 0, "preserved": 11})
+                return Response({"company": self.get_serializer(company).data, "created": 0, "preserved": len(expected)})
             if request.data.get("expected_revision") != company.revision:
                 raise ConfigurationConflict()
             before = dict(self.get_serializer(company).data)
-            created = create_dominican_mappings(company, studios, request.user)
+            create_mappings = create_dominican_mappings if country == "DO" else create_spanish_mappings
+            created = create_mappings(company, studios, request.user)
             company.revision += 1
             company.save(update_fields=["revision", "updated_at"])
             after = dict(self.get_serializer(company).data)
             ConfigurationChange.objects.create(actor=request.user, target_type="company", target_id=company.pk,
                 target_label=company.name, before=before, after=after)
-            return Response({"company": after, "created": created, "preserved": 11 - created})
+            return Response({"company": after, "created": created, "preserved": len(expected) - created})
 
 
 class AccountViewSet(ConfigurationViewSet):

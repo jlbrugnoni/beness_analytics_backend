@@ -11,7 +11,7 @@ from core_data.models import Studio
 def bank_issue(row):
     if not row.bank_date or row.amount is None or not row.amount:
         return 'invalid_bank_facts'
-    if row.kind=='credit' and normalized(str(row.parsed.get('payment_method') or '')) in ('efectivo','cash'):
+    if row.parsed.get('payment_origin')!='bank' and row.kind=='credit' and normalized(str(row.parsed.get('payment_method') or '')) in ('efectivo','cash'):
         return 'cash_entry'
     return ''
 
@@ -19,7 +19,7 @@ def bank_issue(row):
 def bank_source(row):
     raw=parsed_business_fields(row)
     return {'bank_date':row.bank_date.isoformat(),'amount':str(row.amount),'balance':raw.get('balance'),
-        'currency':'DOP','direction':row.kind,'description':raw.get('original_description') or '',
+        'currency':raw.get('currency') or 'DOP','direction':row.kind,'description':raw.get('original_description') or '',
         'short_description':'','reference':raw.get('reference') or '', 'serial':raw.get('serial') or ''}
 
 
@@ -39,15 +39,15 @@ def prepare(batch,account,actor,ids):
     if any(bank_issue(row) for row in selected):
         from rest_framework.exceptions import ValidationError
         raise ValidationError({'row_ids':'Cash entries or invalid bank dates/amounts cannot be posted to a bank account.'})
-    if batch.status!='preview' or batch.file_issues or account.company_id!=batch.company_id or account.currency!='DOP':
+    if batch.status!='preview' or batch.file_issues or account.company_id!=batch.company_id or account.currency!=batch.company.default_currency:
         from rest_framework.exceptions import ValidationError
-        raise ValidationError('Use a readable Dominican workbook and a bank account in the same company.')
+        raise ValidationError('Use a readable workbook and a bank account in the same company and currency.')
     credit=sum((row.amount for row in selected if row.kind=='credit'),Decimal(0))
     debit=-sum((row.amount for row in selected if row.kind=='debit'),Decimal(0))
-    derived=BankImportBatch.objects.create(account=account,provider='popular',migration_batch=batch,
+    derived=BankImportBatch.objects.create(account=account,provider='caixa' if batch.company.site.country_code=='ES' else 'popular',migration_batch=batch,
         file_name=batch.file_name,file_hash=batch.file_hash,byte_size=batch.byte_size,original_file=batch.original_file,
         encoding='xlsx',parser_version='historical-bank-v2',status='preview',summary={
-            'valid_rows':len(selected),'invalid_rows':0,'currency':'DOP','credit_total':str(credit),
+            'valid_rows':len(selected),'invalid_rows':0,'currency':account.currency,'credit_total':str(credit),
             'debit_total':str(debit),'net_total':str(credit-debit),'financial_records_created':0,
             'origin':'historical','bank_origin_confirmed':True,'confirmed_row_ids':sorted(chosen)})
     BankImportRow.objects.bulk_create([BankImportRow(batch=derived,migration_row=row,row_number=index,
@@ -68,18 +68,19 @@ def map_assignments(movement,row):
     if location in ('administracion','administration'):
         item.administration=True
     else:
-        studios=[s for s in Studio.objects.filter(site_id=company.site_id) if normalized(s.name)==location and location]
+        studios=list(Studio.objects.filter(site_id=company.site_id,pk=raw['default_studio_id'])) if raw.get('default_studio_id') else [s for s in Studio.objects.filter(site_id=company.site_id) if normalized(s.name)==location and location]
         if len(studios)==1 and (not movement.account.studios.exists() or movement.account.studios.filter(pk=studios[0].pk).exists()):
             item.studio=studios[0]
     if row.migration_row.kind=='debit':
-        parents=[c for c in Category.objects.filter(company=company,parent__isnull=True) if normalized(c.name)==normalized(str(raw.get('category') or ''))]
+        parents=[c for c in Category.objects.filter(company=company,parent__isnull=True) if normalized(c.name)==normalized(str(raw.get('category') or '')) or (company.site.country_code=='ES' and normalized(str(raw.get('category') or ''))=='local' and c.catalog_code=='local')]
         if len(parents)==1:
             item.category=parents[0]
             children=[c for c in Category.objects.filter(parent=item.category) if normalized(c.name)==normalized(str(raw.get('subcategory') or ''))]
             if len(children)==1:item.subcategory=children[0]
     methods={'cierre':'card_terminal','recurrente':'recurring','recurrentes':'recurring','link':'payment_link',
         'transferencia':'transfer','efectivo':'cash','cash':'cash'}
-    item.channel=methods.get(normalized(str(raw.get('payment_method') or '')),'')
+    item.channel=raw.get('channel_override',methods.get(normalized(str(raw.get('payment_method') or '')),''))
+    if raw.get('movement_kind')=='internal_transfer':item.movement_kind='internal_transfer'
     identifier=str(raw.get('terminal') or '').strip()
     terminal=Terminal.objects.filter(account=movement.account,identifier=identifier,active=True).first() if identifier else None
     if terminal and (not item.studio_id or item.studio_id==terminal.studio_id) and (not item.channel or item.channel==terminal.channel) and not item.administration:
@@ -90,6 +91,9 @@ def map_assignments(movement,row):
         'channel':item.channel,'operation_date':item.operation_date}
     item.reviewed=bool((row.migration_row.batch.supervised or raw.get('legacy_reviewed') is True) and not missing_fields(row.migration_row.kind,values,
         bool(item.category_id and item.category.children.filter(active=True).exists())))
+    if company.site.country_code=='ES' and ((raw.get('subcategory') and not item.subcategory_id) or
+            (terminal and terminal.studio_id!=item.studio_id)):
+        item.reviewed=False
     movement.classification=item
     return snapshot(movement)
 
