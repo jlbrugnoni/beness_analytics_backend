@@ -1,8 +1,9 @@
+from datetime import date
 from django.contrib.auth import get_user_model
 from django.test import override_settings
 from rest_framework.test import APITestCase
 from core_data.access import get_or_create_user_access_profile
-from . import test_bank_imports as fixtures
+from . import bank_posting, test_bank_imports as fixtures
 POPULAR = fixtures.POPULAR
 from .models import BankDecision, BankEvent, BankImportBatch, BankMovement, BankPosting
 
@@ -218,9 +219,53 @@ class BankPostingTests(APITestCase):
         initial = SINGLE.replace(',,123,', ',,,')
         self.post(initial)
         for changed, outcome in [(initial.replace('100.00','110.00').replace('200.00','210.00'),'new'),
-                                 (initial.replace('01/09/2026,','02/09/2026,'),'correction')]:
+                                 (initial.replace('01/09/2026,','12/09/2026,'),'correction')]:
             batch = self.preview(changed)
             self.assertEqual(self.processing(batch)['counts'], {outcome: 1})
+
+    def test_matching_uses_bank_date_even_when_editable_movement_date_differs(self):
+        header = '\n'.join(POPULAR.splitlines()[:3]) + '\n'
+        initial = header + '01/09/2026,Crédito Transferencia,100.00,,,,Transfer\n'
+        self.post(initial)
+        movement = BankMovement.objects.get()
+        movement.classification.operation_date = date(2026, 10, 1)
+        movement.classification.save(update_fields=['operation_date'])
+
+        batch = self.preview(initial.replace('Crédito Transferencia', 'Crédito Cuenta'))
+        self.assertEqual(self.processing(batch)['counts'], {'correction': 1})
+
+    def test_candidate_window_includes_three_days_on_each_side_of_report_period(self):
+        header = '\n'.join(POPULAR.splitlines()[:3]) + '\n'
+        self.post(header + ''.join(
+            f'{day:02d}/09/2026,Crédito Transferencia,100.00,,,,Transfer\n'
+            for day in (6, 7, 14, 15)
+        ))
+        batch = BankImportBatch.objects.get(pk=self.preview(header + ''.join(
+            f'{day:02d}/09/2026,Crédito Transferencia,50.00,,,,Incoming\n'
+            for day in (10, 11)
+        )))
+        ledger = BankMovement.objects.filter(account=self.account, provider='popular', active=True)
+        candidates, _ = bank_posting.matching_movements(
+            ledger, batch.rows.filter(kind='data'), batch.provider, {},
+        )
+        self.assertEqual(
+            {movement.source['bank_date'] for movement in candidates.values()},
+            {'2026-09-07', '2026-09-14'},
+        )
+
+    def test_reference_and_same_file_evidence_survive_outside_bank_date_window(self):
+        header = '\n'.join(POPULAR.splitlines()[:3]) + '\n'
+        initial = header + '01/09/2026,Crédito Transferencia,100.00,,BANK-REF,,Transfer\n'
+        self.post(initial)
+        movement = BankMovement.objects.get()
+        changed = header + '12/09/2026,Crédito Transferencia,100.00,,BANK-REF,,Updated concept\n'
+        self.assertEqual(self.processing(self.preview(changed))['counts'], {'correction': 1})
+
+        # A previously reviewed source correction can change both the date and reference.
+        movement.source.update(bank_date='2026-09-12', reference='OTHER-REF')
+        movement.save(update_fields=['source'])
+        repeat = self.preview(initial)
+        self.assertEqual(self.processing(repeat)['counts'], {'correction': 1})
 
     def test_resolution_rejects_stale_plan_and_missing_edit_permission(self):
         self.post()

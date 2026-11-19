@@ -1,4 +1,13 @@
 """Comparison-only normalization. Original report and ledger values stay intact."""
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import MD5
+
+
+def bank_lookup_key(field, key):
+    # Bound the index entry even when a report supplies a very long reference.
+    return MD5(KeyTextTransform(key, field))
+
+
 def description_text(value):
     return ' '.join(str(value or '').split())
 

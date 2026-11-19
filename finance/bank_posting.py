@@ -2,10 +2,13 @@
 import hashlib
 import json
 from collections import Counter, defaultdict
+from datetime import date
+from django.db.models import Q
+from django.db.models.fields.json import KeyTextTransform
 from django.utils import timezone
 from rest_framework import serializers
 from .configuration import ConfigurationConflict
-from .bank_identity import comparable_source, transaction_facts, identity_fields
+from .bank_identity import bank_lookup_key, comparable_source, transaction_facts, identity_fields
 from .bank_classification import recognize_terminal, terminal_patterns, initialize_classification
 from .models import BankDecision, BankEvent, BankMovement, BankPosting
 
@@ -39,14 +42,98 @@ def event(posting, actor, action, movement=None, row=None, before=None, note='')
         row=row, before=before or {}, after=movement_data(movement) if movement else {}, note=note)
 
 
+def lookup_batches(queryset, field, key, values):
+    # Keep each IN clause within SQLite's parameter limit for large reports.
+    hashes = [hashlib.md5(value.encode(), usedforsecurity=False).hexdigest()
+              for value in values if isinstance(value, str)]
+    indexed = queryset.alias(lookup_hash=bank_lookup_key(field, key))
+    for start in range(0, len(hashes), 500):
+        yield indexed.filter(lookup_hash__in=hashes[start:start + 500])
+
+    # Legacy JSON can contain numeric values. Preserve JSON equality for those.
+    other = [value for value in values if not isinstance(value, str)]
+    for start in range(0, len(other), 500):
+        yield queryset.filter(**{f'{field}__{key}__in': other[start:start + 500]})
+
+
+def matching_movements(ledger, rows, provider, prior):
+    valid = [row.parsed for row in rows if not row.issues]
+    identifiers = defaultdict(set)
+    if not valid:
+        return {}, identifiers
+
+    dates = [date.fromisoformat(source['bank_date']).toordinal() for source in valid]
+    first = date.fromordinal(max(date.min.toordinal(), min(dates) - 3)).isoformat()
+    last = date.fromordinal(min(date.max.toordinal(), max(dates) + 3)).isoformat()
+    window = ledger.alias(bank_date=KeyTextTransform('bank_date', 'source')).filter(
+        bank_date__range=(first, last),
+    )
+    candidate_ids = set(window.values_list('pk', flat=True).iterator())
+    for movement_ids in prior.values():
+        candidate_ids.update(movement_ids)
+
+    keys = defaultdict(set)
+    pairs = set()
+    for source in valid:
+        for key in identity_fields(source, provider):
+            if source.get(key):
+                keys[key].add(source[key])
+        if source.get('balance') is not None:
+            pairs.add((source['balance'], source['description']))
+
+    # Prior reports can add a reference that was missing in the historical source.
+    linked = BankDecision.objects.filter(
+        Q(movement__created_from__isnull=True) |
+        Q(movement__created_from__batch__migration_batch__isnull=False),
+        posting__status__in=['active', 'partial_undo'],
+        movement__in=ledger,
+    )
+    for key, values in keys.items():
+        for direct in lookup_batches(ledger, 'source', key, values):
+            candidate_ids.update(direct.values_list('pk', flat=True).iterator())
+        for evidence in lookup_batches(linked, 'row__parsed', key, values):
+            for movement_id, source in evidence.values_list('movement_id', 'row__parsed').iterator():
+                value = source.get(key)
+                if value in values and key in identity_fields(source, provider):
+                    identifiers[(key, value)].add(movement_id)
+                    candidate_ids.add(movement_id)
+
+    for balances in lookup_batches(ledger, 'source', 'balance', {balance for balance, _ in pairs}):
+        for movement_id, source in balances.values_list('pk', 'source').iterator():
+            if (source.get('balance'), source.get('description')) in pairs:
+                candidate_ids.add(movement_id)
+
+    # Matching uses batch provenance. The archive and preview summary repeat for each movement.
+    movements = (
+        ledger.select_related('classification', 'created_from__batch')
+        .defer('created_from__batch__original_file', 'created_from__batch__summary')
+        .in_bulk(candidate_ids)
+    )
+    return movements, identifiers
+
+
 def plan(batch, account):
     rows = list(batch.rows.filter(kind='data').select_related('migration_row'))
-    from django.db.models import Q
-    movements = list(BankMovement.objects.filter(Q(provider=batch.provider)|Q(provider='manual',manual_key__isnull=False),account=account,active=True).select_related('classification','created_from__batch'))
-    normalized_exact = defaultdict(list); identifiers = defaultdict(set); balances = defaultdict(set); weak = defaultdict(set); day_description = defaultdict(set); balance_description = defaultdict(set)
+    ledger = BankMovement.objects.filter(
+        Q(provider=batch.provider) | Q(provider='manual', manual_key__isnull=False),
+        account=account,
+        active=True,
+    ).order_by()
+    prior = defaultdict(set)
+    prior_sources = defaultdict(list)
+    evidence = BankDecision.objects.filter(
+        posting__status__in=['active', 'partial_undo'], row__batch__account=account,
+        row__batch__provider=batch.provider, row__batch__file_hash=batch.file_hash,
+        movement__in=ledger,
+    ).exclude(row__batch=batch).select_related('row')
+    for decision in evidence:
+        prior[decision.row.row_number].add(decision.movement_id)
+        prior_sources[decision.row.row_number].append(decision.row.parsed)
+
+    by_id, identifiers = matching_movements(ledger, rows, batch.provider, prior)
+    normalized_exact = defaultdict(list); balances = defaultdict(set); weak = defaultdict(set); day_description = defaultdict(set); balance_description = defaultdict(set)
     historical=defaultdict(set); facts=defaultdict(set)
-    by_id = {m.pk: m for m in movements}
-    for m in movements:
+    for m in by_id.values():
         data = m.source
         normalized_exact[fingerprint(comparable_source(data))].append(m.pk)
         facts[transaction_facts(data)].add(m.pk)
@@ -58,25 +145,9 @@ def plan(batch, account):
             balance_description[(data['balance'], data['description'])].add(m.pk)
         weak[(data['bank_date'], data['amount'], data['description'])].add(m.pk)
         day_description[(data['bank_date'], data['description'])].add(m.pk)
-    # Linked raw reports may supply IDs absent in the original workbook. Retain
-    # those identities as evidence without rewriting the historical primary source.
-    linked=BankDecision.objects.filter(posting__status__in=['active','partial_undo'],movement_id__in=by_id).select_related('row')
-    for decision in linked:
-        original=by_id[decision.movement_id]
-        if original.created_from_id and not original.created_from.batch.migration_batch_id:continue
-        for key in identity_fields(decision.row.parsed,batch.provider):
-            value=decision.row.parsed.get(key)
-            if value:identifiers[(key,value)].add(decision.movement_id)
     counts = Counter(fingerprint(comparable_source(r.parsed)) for r in rows if not r.issues)
     fact_counts = Counter((transaction_facts(r.parsed),r.parsed.get('balance')) for r in rows if not r.issues)
     transaction_counts = Counter(transaction_facts(r.parsed) for r in rows if not r.issues)
-    prior = defaultdict(set);prior_sources=defaultdict(list)
-    evidence = BankDecision.objects.filter(posting__status__in=['active', 'partial_undo'], row__batch__account=account,
-        row__batch__provider=batch.provider, row__batch__file_hash=batch.file_hash,
-        movement__active=True).exclude(row__batch=batch).select_related('row')
-    for decision in evidence:
-        prior[decision.row.row_number].add(decision.movement_id)
-        prior_sources[decision.row.row_number].append(decision.row.parsed)
     posting = BankPosting.objects.filter(batch=batch).first()
     decisions = {d.row_id: d for d in posting.decisions.all()} if posting else {}
     elsewhere=set()

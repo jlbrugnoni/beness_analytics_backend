@@ -4,6 +4,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.validators import RegexValidator
 from django.db import models
+from django.db.models.fields.json import KeyTextTransform
+from .bank_identity import bank_lookup_key
 
 
 currency_validator = RegexValidator(r"^[A-Z]{3}$", "Use a three-letter uppercase currency code.")
@@ -409,6 +411,10 @@ class BankImportRow(models.Model):
     class Meta:
         ordering = ['row_number']
         constraints = [models.UniqueConstraint(fields=['batch', 'row_number'], name='finance_preview_row_number')]
+        indexes = [
+            models.Index(bank_lookup_key('parsed', key), name=f'finance_bankrow_{key}_idx')
+            for key in ('reference', 'serial')
+        ]
 
 
 class BankPosting(models.Model):
@@ -440,6 +446,19 @@ class BankMovement(models.Model):
 
     class Meta:
         ordering = ['-pk']
+        indexes = [
+            models.Index(
+                models.F('account'), KeyTextTransform('bank_date', 'source'),
+                condition=models.Q(active=True), name='finance_bank_move_date_idx',
+            ),
+            *[
+                models.Index(
+                    models.F('account'), bank_lookup_key('source', key),
+                    condition=models.Q(active=True), name=f'finance_bankmove_{key}_idx',
+                )
+                for key in ('reference', 'serial', 'balance')
+            ],
+        ]
 
 
 class BankMovementClassification(models.Model):

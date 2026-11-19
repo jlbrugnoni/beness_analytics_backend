@@ -47,6 +47,20 @@ class BankIdentityTests(APITestCase):
         batch=self.raw(['01/09/2026,Crédito Transferencia,100.00,,,TERMINAL,AZUL'])
         self.assertEqual(self.plan(batch)['counts'],{'correction':1})
 
+    def test_reference_from_linked_report_is_found_outside_bank_date_window(self):
+        self.history([{'bank_date':'2026-09-01','amount':100,'balance':1000,
+                       'original_description':'Bank transfer'}])
+        first = self.raw(['01/09/2026,Crédito Transferencia,100.00,1000.00,LINKED-REF,,Bank transfer'])
+        self.assertEqual(self.plan(first)['counts'], {'unchanged': 1})
+        self.commit(first)
+        movement = BankMovement.objects.get()
+        self.assertEqual(movement.source['reference'], '')
+
+        changed = self.raw(['12/09/2026,Crédito Transferencia,100.00,,LINKED-REF,,Updated concept'])
+        result = self.plan(changed)
+        self.assertEqual(result['counts'], {'correction': 1})
+        self.assertEqual(result['rows']['results'][0]['candidates'][0]['id'], movement.pk)
+
     def test_equal_amount_occurrences_use_distinct_balances_and_substantive_changes_stay_reviewable(self):
         self.history([{'bank_date':'2026-09-01','amount':6800,'balance':10000,'original_description':'Client transfer'},
             {'bank_date':'2026-09-01','amount':6800,'balance':16800,'original_description':'Client transfer'}])

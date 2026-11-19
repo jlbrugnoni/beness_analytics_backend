@@ -1,5 +1,7 @@
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.db import connection
 from django.test import override_settings
+from django.test.utils import CaptureQueriesContext
 from rest_framework.test import APITestCase
 from core_data.models import Studio
 from .models import Account, BankMovement, BankMovementClassification, BankEvent, BankImportBatch, MigrationImportBatch, Category, Terminal
@@ -99,8 +101,14 @@ class HistoricalBankTests(APITestCase):
         credit=BankMovement.objects.get(source__direction='credit')
         original=dict(credit.source)
         normal=self.native()
-        self.assertEqual(self.plan(normal)['counts'],{'unchanged':1})
-        self.commit(normal)
+        with CaptureQueriesContext(connection) as queries:
+            self.assertEqual(self.plan(normal)['counts'],{'unchanged':1})
+            self.commit(normal)
+        statements = [query['sql'] for query in queries]
+        self.assertFalse(any('"original_file"' in sql for sql in statements))
+        ledger_reads = [sql for sql in statements if 'FROM "finance_bankmovement"' in sql]
+        self.assertTrue(any('JOIN "finance_bankimportbatch"' in sql for sql in ledger_reads))
+        self.assertFalse(any('"finance_bankimportbatch"."summary"' in sql for sql in ledger_reads))
         self.assertEqual(BankMovement.objects.count(),2)
         credit.refresh_from_db();self.assertEqual(credit.source,original)
         self.assertEqual(str(credit.classification.operation_date),'2026-09-02')
